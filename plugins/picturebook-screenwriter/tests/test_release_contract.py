@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 import unittest
 from pathlib import Path
 
@@ -10,6 +11,9 @@ MANIFEST = ROOT / ".codex-plugin" / "plugin.json"
 CONTRACT = ROOT / "config" / "plugin-contract.json"
 PLUGIN_README = ROOT / "README.md"
 REPO_README = ROOT.parent.parent / "README.md"
+sys.path.insert(0, str(ROOT / "skills" / "feishu-knowledge-store" / "scripts"))
+from shared_schema import PAGE_TYPES
+
 EXPECTED_RELEASE_VERSION = os.environ.get(
     "PICTUREBOOK_EXPECTED_VERSION", "",
 ).strip().removeprefix("v")
@@ -97,7 +101,7 @@ class ReleaseChecklistTests(unittest.TestCase):
         self.assertIn(r'"$codexHome\skills\.system', text)
 
     def test_readme_documents_workspace_config_discovery(self):
-        text = PLUGIN_README.read_text(encoding="utf-8")
+        text = REPO_README.read_text(encoding="utf-8")
         for value in (
             "feishu-knowledge-base.json",
             "PICTUREBOOK_KB_CONFIG",
@@ -115,7 +119,7 @@ class ReleaseChecklistTests(unittest.TestCase):
         self.assertIn("非权威", text)
 
     def test_readme_documents_portable_config_discovery(self):
-        text = PLUGIN_README.read_text(encoding="utf-8")
+        text = REPO_README.read_text(encoding="utf-8")
         for value in (
             "ancestor",
             "%APPDATA%\\picturebook-screenwriter",
@@ -127,9 +131,35 @@ class ReleaseChecklistTests(unittest.TestCase):
                 self.assertIn(value, text)
 
     def test_readme_has_no_author_machine_paths(self):
-        text = PLUGIN_README.read_text(encoding="utf-8")
-        self.assertNotIn("E:\\海外绘本", text)
-        self.assertNotIn("C:\\Users\\lvan", text)
+        for path in (REPO_README, PLUGIN_README):
+            with self.subTest(path=path.name):
+                text = path.read_text(encoding="utf-8")
+                self.assertNotIn("E:\\海外绘本", text)
+                self.assertNotIn("C:\\Users\\lvan", text)
+
+    def test_plugin_readme_links_to_canonical_operator_guide(self):
+        plugin_text = PLUGIN_README.read_text(encoding="utf-8")
+        repo_text = REPO_README.read_text(encoding="utf-8")
+        base_url = "https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md"
+        headings = re.findall(r"^## (.+)$", repo_text, re.MULTILINE)
+        anchors = {heading.lower().replace(" ", "-") for heading in headings}
+        for anchor in (
+            "add-the-plugin", "use-the-plugin", "feishu-knowledge-setup",
+            "configuration-discovery", "feishu-runtime-commands", "verify-locally",
+        ):
+            with self.subTest(anchor=anchor):
+                self.assertIn(f"{base_url}#{anchor}", plugin_text)
+                self.assertIn(anchor, anchors)
+        self.assertNotIn("```", plugin_text, "operator examples belong in the root README")
+
+    def test_documented_authority_page_types_match_runtime_schema(self):
+        text = REPO_README.read_text(encoding="utf-8")
+        examples = re.findall(r"--page-types\s+([A-Za-z0-9,-]+)", text)
+        self.assertTrue(examples, "root README must include an authority query example")
+        for example in examples:
+            with self.subTest(example=example):
+                self.assertLessEqual(set(example.split(",")), PAGE_TYPES)
+        self.assertIn("`source.wiki_url`", text)
 
 
 class LiveAcceptanceTests(unittest.TestCase):

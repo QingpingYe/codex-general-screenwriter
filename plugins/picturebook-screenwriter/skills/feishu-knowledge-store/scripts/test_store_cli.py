@@ -369,9 +369,9 @@ class StoreCliTests(unittest.TestCase):
 
     def test_documented_operator_commands_use_store_cli(self):
         repo_root = Path(__file__).parents[5]
-        for relative in ("README.md", "plugins/picturebook-screenwriter/README.md"):
-            text = (repo_root / relative).read_text(encoding="utf-8")
-            for command in ("source-baseline", "prepare", "publish", "verify"):
+        text = (repo_root / "README.md").read_text(encoding="utf-8")
+        for command in ("source-baseline", "prepare", "publish", "verify"):
+            with self.subTest(command=command):
                 self.assertNotIn(f"sync_runner.py {command}", text)
                 self.assertIn(f"store_cli.py {command}", text)
 

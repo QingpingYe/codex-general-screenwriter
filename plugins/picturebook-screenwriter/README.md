@@ -23,75 +23,15 @@
 - 原生 hooks 与平台级硬约束
 - 未确认的默认图片 API 调用
 
-运行时强制、脚本校验与提示词约束的边界见 `docs/ENFORCEMENT.md`。
+运行时强制、脚本校验与提示词约束的边界见 [ENFORCEMENT.md](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/docs/ENFORCEMENT.md)。
 
-## 飞书知识库
+## 操作指南
 
-本插件不得编辑原始资料库，只能从它读取候选内容。多人同步时，目标飞书 Wiki 是唯一共享权威；其页面内容以候选正文为权威——只比较候选与当前页正文且仅忽略纯排版标记，正文不同即覆盖目标页；例外是页面含资源、评论或未知块时本轮不做比较也不写入，标记 `needs_review` 待复核。成功覆盖人工编辑时必须在同步报告的 `overwritten_human_edits` 中披露对应逻辑键。若目标 Wiki 不可用，只能使用最后确认的本地缓存，且必须在提示中说明“离线”和“非权威”。
+安装、使用、配置、同步和验证流程统一维护在仓库根 README。本文件保留插件能力与边界说明；以下链接在独立安装的插件包中同样可用。
 
-### Configuration discovery
-
-Configuration is local to each user or workspace. The plugin ships only `config/feishu-knowledge-base.example.json`; that template is never discovered.
-
-Resolution order:
-
-1. Explicit `--config`.
-2. `PICTUREBOOK_KB_CONFIG`.
-3. The nearest ancestor of `<workspace>` containing `feishu-knowledge-base.json`.
-4. Windows: `%APPDATA%\picturebook-screenwriter\feishu-knowledge-base.json`; macOS: `~/Library/Application Support/picturebook-screenwriter/feishu-knowledge-base.json`; Linux: `${XDG_CONFIG_HOME:-~/.config}/picturebook-screenwriter/feishu-knowledge-base.json`.
-5. deprecated: `~/.picturebook-screenwriter/feishu-knowledge-base.json`.
-
-A project subdirectory inherits a config from its nearest ancestor. Do not commit a real configuration to a repository, and do not store one in a plugin cache. `config-status` reports `origin`, `path`, and `searched` so the selected file is explicit.
-
-Target Wiki roots support two modes. Use `target.root_mode: "space"` when the four system containers live at the Wiki space root; omit `target.root_token` in this mode. Use `target.root_mode: "node"` when they live under a specific Wiki node and set `target.root_token` to that node token. The example uses space mode with generic placeholders.
-
-## Feishu runtime commands
-
-配置文件使用 schema v2，明确区分 `source` 与 `target`。
-
-```powershell
-python .\skills\feishu-knowledge-store\scripts\lark_cli_bootstrap.py
-python .\skills\feishu-knowledge-store\scripts\store_cli.py config-status --workspace <workspace>
-python .\skills\knowledge-loader\scripts\authority_cli.py load --workspace <workspace> --project-id <project_id> --series-id <series_id> --page-types worldview,characters,content_spec
-python .\skills\feishu-knowledge-store\scripts\store_cli.py source-baseline --config <config> --out <run_dir>\source_baseline.json
-python .\skills\feishu-knowledge-store\scripts\store_cli.py prepare --config <config> --run-dir <run_dir>
-python .\skills\feishu-knowledge-store\scripts\store_cli.py publish --config <config> --run-dir <run_dir>
-python .\skills\feishu-knowledge-store\scripts\store_cli.py verify --config <config> --run-dir <run_dir>
-```
-
-`authority_cli.py` 只做只读检索。页面 revision 落后于远端索引时读取失败；页面前移但索引尚未同步时输出 `index_synced=false` 和警告，且不得覆盖最后确认缓存。离线缓存不是权威版本，只有在用户显式批准后加 `--allow-offline-cache` 使用，输出必须继续说明“非权威”。
-
-`lark_cli_bootstrap.py` 支持 `1.0.95` / `1.0.96`，按 `LARK_CLI_PATH`、`PATH`、`%APPDATA%\npm`、`%ProgramFiles%\nodejs` 和 Unix 标准 bin 目录的顺序查找；没有作者专用的盘符 fallback。缺 CLI 时会输出官方安装命令；只有在用户明确批准后，才加 `--install` 执行 `npx @larksuite/cli@latest install`。安装机需要 Node.js 16+，且每个用户安装后仍需本人执行 `lark-cli auth login`。
-
-## 安装
-
-从 GitHub marketplace 安装：
-
-```powershell
-codex plugin marketplace add QingpingYe/codex-picturebook-agent --ref main
-codex plugin add picturebook-screenwriter@picturebook-github
-```
-
-如果 GitHub marketplace 已注册，只需执行第二条。
-
-## 使用
-
-安装后选择或调用 Picture Book Screenwriter，输入：
-
-```text
-帮我从零开始策划一个 32 页、面向 3-6 岁儿童的中文绘本故事，主题是学会分享。
-```
-
-也可以使用默认提示：
-
-```text
-帮我从零开始策划一个绘本故事
-```
-
-## 验证
-
-```powershell
-python .\scripts\run_plugin_tests.py
-```
-
-Windows 上如果 `python` 指向 Microsoft Store 存根，请先使用可用的 Python 3.10+ 解释器。
+- [安装插件](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md#add-the-plugin)
+- [使用插件](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md#use-the-plugin)
+- [飞书知识库准备](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md#feishu-knowledge-setup)
+- [配置发现规则](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md#configuration-discovery)
+- [飞书操作命令](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md#feishu-runtime-commands)
+- [本地验证与发布](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md#verify-locally)
