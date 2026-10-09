@@ -36,6 +36,28 @@ class PluginContractTests(unittest.TestCase):
         )
         self.assertEqual(contract["type_registry"], "config/type-packs.json")
 
+    def test_type_contract_metadata_separates_core_and_optional_workflows(self):
+        contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        type_contract = contract["type_pack_contract"]
+        self.assertEqual(type_contract["schema_version"], "type-pack-contract-v1")
+        self.assertEqual(type_contract["active_medium_ids"], ["picturebook"])
+        self.assertEqual(set(type_contract["planned_medium_ids"]),
+                         {"film", "shortdrama", "tv_longform"})
+        self.assertEqual(type_contract["core_artifact_ids"],
+                         ["positioning", "topic_plan", "worldview", "characters", "outline", "script"])
+        optional = type_contract["optional_workflows"]["illustration"]
+        self.assertFalse(optional["required"])
+        self.assertFalse(optional["blocks_core_completion"])
+        self.assertEqual(optional["input"], {"artifact_id": "script", "required_status": "approved"})
+        self.assertEqual(set(optional["artifact_ids"]),
+                         {"illustration_prompt_payload", "image_asset", "asset_registry", "html_preview"})
+
+    def test_plugin_readme_does_not_offer_planned_workflows(self):
+        text = PLUGIN_README.read_text(encoding="utf-8")
+        self.assertIn("唯一可执行", text)
+        self.assertIn("知识库 schema v2", text)
+        self.assertIn("独立可选插画工作流", text)
+
     def test_contract_matches_installed_skills(self):
         contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
         installed = {

@@ -13,6 +13,16 @@ description: Picture book screenwriting workshop entry workflow. Use when the us
 
 把用户请求当作一次绘本编辑部工作流处理。你自己承担四个内部角色：主编、编剧、质检、知识管理。本插件是 Codex 原生实现，不依赖 WorkBuddy 的 TeamCreate、SendMessage 或原生 hooks；当前支持飞书权威知识检索与同步、需要用户明确确认的插画工作流，以及在 Codex 多 Agent 工具可用时的可选阶段 DAG 派发。多 Agent 工具不可用时，使用同一条件决策引擎顺序降级。
 
+## 类型能力包契约 v1
+
+`picturebook` 是当前唯一 active 且可执行的类型包；`film`、`shortdrama`、`tv_longform` 仍为 planned，只可展示/读取，不能派发创作流程。读取旧 run 保持兼容，不凭空补写 context 或解析快照。
+
+positioning 是简报输入，由 `brief_gate` 读取，不是该阶段生产的文件。一次 run 仅选择一个核心产出目标（`topic_plan`、`worldview`、`characters`、`outline` 或 `script`）；`preflight` 与 `qa` 是检查阶段，不能据此推定它们产出了这些文件。产物的 `depends_on` 是已声明的来源引用，不按列表顺序推断强制先后依赖。
+
+插画是独立可选工作流，以已批准脚本为输入；若用户明确提供脚本并要求插画，仍须遵守现有前置确认规则。`asset_registry`、`illustration_prompt_payload`、`image_asset`、`html_preview` 只属于插画工作流，不阻塞文字 run 的确认、持久化与完成。插画工作流中的资产确认和最终确认仍由主编持有，不得派发。
+
+后续专项为知识库 schema v2、作用域继承与 AuthorityQuery/page_codec 迁移，不把 planned 媒介描述为已实现的完整流程。
+
 ## Workflow
 
 1. **Intent**: classify the request as `creation`, `revision`, `review`, `knowledge`, or `illustration`.

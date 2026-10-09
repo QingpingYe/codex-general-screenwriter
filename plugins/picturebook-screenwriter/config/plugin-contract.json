@@ -4,7 +4,12 @@
   "type_registry": "config/type-packs.json",
   "creative_context": {
     "schema_version": "screenwriter-context-v1",
-    "medium_ids": ["picturebook", "film", "shortdrama", "tv_longform"],
+    "medium_ids": [
+      "picturebook",
+      "film",
+      "shortdrama",
+      "tv_longform"
+    ],
     "scope_levels": [
       "global",
       "medium",
@@ -166,5 +171,40 @@
     "native_workbuddy_hooks",
     "multi_subagent_team_runtime",
     "workbuddy_local_library"
-  ]
+  ],
+  "type_pack_contract": {
+    "schema_version": "type-pack-contract-v1",
+    "active_medium_ids": [
+      "picturebook"
+    ],
+    "planned_medium_ids": [
+      "film",
+      "shortdrama",
+      "tv_longform"
+    ],
+    "core_artifact_ids": [
+      "positioning",
+      "topic_plan",
+      "worldview",
+      "characters",
+      "outline",
+      "script"
+    ],
+    "optional_workflows": {
+      "illustration": {
+        "required": false,
+        "blocks_core_completion": false,
+        "input": {
+          "artifact_id": "script",
+          "required_status": "approved"
+        },
+        "artifact_ids": [
+          "asset_registry",
+          "illustration_prompt_payload",
+          "image_asset",
+          "html_preview"
+        ]
+      }
+    }
+  }
 }

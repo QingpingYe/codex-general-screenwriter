@@ -13,6 +13,9 @@
 - Portable Feishu config discovery for project subdirectories, user directories, and shared plugin distribution.
 - Typed creative context and a type-pack registry for picturebook-compatible screenwriting workflows.
 
+- Type-pack contract v1 separates core picturebook artifacts/stages from an optional illustration workflow; planned media are read-only and cannot dispatch.
+- New optional run snapshots record type-pack, target artifact, delivery form, and workflow selection while retaining old manifest/revision compatibility.
+
 ### Changed
 
 - KB-AI 同步改为内容权威：候选正文与当前页正文比较时只忽略纯排版标记，正文变化即条件覆盖目标页；成功覆盖人工编辑时在报告 `overwritten_human_edits` 中披露逻辑键。退役人工优先三方合并、冲突队列读写与 `queued`/`third_party_edits` 报告字段；`source_edit_times` 作为可选兼容字段接入索引与页尾；`needs_review` 改为可重试的安全状态。共享兼容协议 1.4.0 已于 2026-09-30 由 Codex/WorkBuddy 双方确认。
@@ -21,6 +24,9 @@
 - Revision rounds create new runs and rerun preflight, collision, and QA checks.
 - v1 run manifests require explicit migration.
 - Dispatch plans and task envelopes carry validated creative context snapshots while legacy picturebook runs remain readable.
+
+- Type-pack loading rejects empty active v1 packs, invalid artifact/stage links, and workflows that would block core completion.
+- Next design slice: knowledge schema v2, scope inheritance, and AuthorityQuery/page_codec migration.
 
 ### Fixed
 

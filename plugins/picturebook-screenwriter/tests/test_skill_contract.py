@@ -80,6 +80,14 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("lexile-check", text)
         self.assertIn("实测", text)
 
+    def test_entry_skill_separates_input_core_target_and_optional_illustration(self):
+        text = ENTRY_SKILL.read_text(encoding="utf-8")
+        self.assertIn("positioning 是简报输入", text)
+        self.assertIn("一次 run 仅选择一个核心产出目标", text)
+        self.assertIn("已批准脚本", text)
+        self.assertIn("不阻塞文字 run", text)
+        self.assertIn("planned", text)
+
     def test_skills_document_conditional_revision_workflow(self):
         stage_skill = (
             ROOT / "skills" / "stage-orchestration" / "SKILL.md"

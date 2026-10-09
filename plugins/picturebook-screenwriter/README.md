@@ -18,6 +18,12 @@
 - 通用创作上下文基础：注册媒介类型、题材与系列/项目标识，并兼容旧绘本运行记录
 - `lexile-check`：仅使用用户提供的实测结果
 
+## 类型契约边界
+
+`picturebook` 是当前唯一可执行的媒介类型包，核心产物为 positioning、topic_plan、worldview、characters、outline、script；其中定位信息作为简报输入。film、shortdrama、tv_longform 仅为 planned 注册项，不支持创作派发。
+
+插画是独立可选插画工作流，输入要求已批准脚本；资产清单、结构化提示、图片与 HTML 预览都不属于文字核心阶段，也不阻塞文字 run 的确认或完成。旧绘本入口、run manifest 和产物标识继续兼容读取。下一专项为知识库 schema v2、作用域继承和权威查询迁移。
+
 ## 暂不支持
 
 - WorkBuddy TeamCreate / SendMessage / 持久多 Agent 团队运行时
