@@ -23,6 +23,8 @@ class DependencyRecord:
     artifact_type: str
     built_at: str
     evidence: tuple[Mapping[str, Any], ...]
+    scope_chain: tuple[Mapping[str, Any], ...] = ()
+    knowledge_schema: str = "v1"
 
 
 @dataclass(frozen=True)
@@ -175,6 +177,12 @@ def _validate_evidence(items: tuple[dict[str, Any], ...]) -> tuple[dict[str, Any
                        or not isinstance(revision, str) or not revision.strip()
                        for node, revision in revisions.items())):
             raise ValueError("依赖证据字段无效")
+        if "scope_chain" in item:
+            item["scope_chain"] = tuple(
+                dict(scope) for scope in item["scope_chain"] if isinstance(scope, Mapping)
+            )
+        if "scope" in item and item["scope"] is not None and not isinstance(item["scope"], Mapping):
+            raise ValueError("依赖证据字段无效")
     return items
 
 
@@ -184,6 +192,8 @@ def render_dependency_record(record: DependencyRecord) -> str:
         "artifact_type": record.artifact_type,
         "built_at": record.built_at,
         "evidence": [dict(item) for item in record.evidence],
+        "scope_chain": [dict(item) for item in record.scope_chain],
+        "knowledge_schema": record.knowledge_schema,
     }
     return "## built_against\n```json\n" + json.dumps(
         payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -201,7 +211,8 @@ def parse_dependency_record(markdown: str) -> DependencyRecord:
     except json.JSONDecodeError as error:
         raise ValueError("invalid built_against JSON") from error
     if (not isinstance(payload, dict)
-            or set(payload) != {"artifact_id", "artifact_type", "built_at", "evidence"}
+            or not {"artifact_id", "artifact_type", "built_at", "evidence"} <= set(payload)
+            or not set(payload) <= {"artifact_id", "artifact_type", "built_at", "evidence", "scope_chain", "knowledge_schema"}
             or not isinstance(payload["artifact_id"], str) or not payload["artifact_id"].strip()
             or payload["artifact_type"] not in ARTIFACT_TYPES
             or not isinstance(payload["built_at"], str) or not payload["built_at"].strip()
@@ -211,9 +222,18 @@ def parse_dependency_record(markdown: str) -> DependencyRecord:
     if not items:
         raise ValueError("knowledge bundle has no evidence")
     items = _validate_evidence(items)
+    scope_chain = tuple(
+        dict(item) for item in payload.get("scope_chain", ())
+        if isinstance(item, Mapping)
+    )
+    knowledge_schema = payload.get("knowledge_schema", "v1")
+    if not isinstance(knowledge_schema, str) or not knowledge_schema.strip():
+        raise ValueError("invalid knowledge_schema")
     return DependencyRecord(
         artifact_id=payload["artifact_id"],
         artifact_type=payload["artifact_type"],
         built_at=payload["built_at"],
         evidence=items,
+        scope_chain=scope_chain,
+        knowledge_schema=knowledge_schema,
     )
