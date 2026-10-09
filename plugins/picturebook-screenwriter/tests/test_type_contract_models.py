@@ -37,6 +37,16 @@ class TypeContractModelTests(unittest.TestCase):
         with self.assertRaises(FrozenInstanceError):
             stage.stage_id = "other"
 
+    def test_stage_runtime_semantics_are_immutable(self):
+        stage = StageContract(
+            stage_id="draft", stage_type="creation", owner="writer",
+            gate="none", produces_artifact_ids=["script"],
+        )
+        self.assertEqual((stage.stage_type, stage.owner, stage.gate),
+                         ("creation", "writer", "none"))
+        with self.assertRaises(FrozenInstanceError):
+            stage.stage_type = "validation"
+
     def test_positioning_can_be_input_without_producer(self):
         brief = ArtifactDescriptor(
             artifact_id="positioning", origin="user_input",

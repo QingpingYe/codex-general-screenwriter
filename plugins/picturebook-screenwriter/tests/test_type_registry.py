@@ -10,6 +10,19 @@ import type_registry as tr
 
 CORE = {"positioning", "topic_plan", "worldview", "characters", "outline", "script"}
 OPTIONAL = {"asset_registry", "illustration_prompt_payload", "image_asset", "html_preview"}
+STAGE_TYPES = {
+    "session_init": "session_init",
+    "brief_gate": "brief_gate",
+    "knowledge_load": "knowledge_load",
+    "draft": "creation",
+    "preflight": "validation",
+    "collision_check": "validation",
+    "qa": "validation",
+    "qa_synthesis": "synthesis",
+    "confirmation_gate": "confirmation",
+    "persistence": "persistence",
+    "knowledge_reminder": "delivery",
+}
 
 
 def artifact(aid="script", **kwargs):
@@ -27,9 +40,16 @@ def stage(sid, **kwargs):
         stage_id=sid, aliases=[], depends_on=[], consumes_artifact_ids=[],
         produces_artifact_ids=[], validates_artifact_ids=[],
         confirmation_required=False, status="active",
+        stage_type="validation", owner="runtime", gate="none",
     )
     result.update(kwargs)
     return result
+
+
+def with_runtime_semantics(payload):
+    for raw in payload["packs"][0]["stages"]:
+        raw.update(stage_type=STAGE_TYPES[raw["stage_id"]], owner="runtime", gate="none")
+    return payload
 
 
 def valid_payload():
@@ -210,6 +230,16 @@ class TypeRegistryTests(unittest.TestCase):
                                     workflow_policy="shortdrama-v1", status="planned"))
         with self.assertRaises(tr.TypeRegistryError):
             tr.parse_type_registry(payload)
+
+    def test_full_active_v1_requires_runtime_semantics(self):
+        payload = with_runtime_semantics(valid_payload())
+        for index in range(3):
+            field = ("stage_type", "owner", "gate")[index]
+            target = payload["packs"][0]["stages"][1]
+            saved = target.pop(field)
+            with self.subTest(field=field), self.assertRaises(tr.TypeRegistryError):
+                tr.parse_type_registry(payload)
+            target[field] = saved
         for value in (None, [], "bad"):
             payload = valid_payload()
             payload["packs"][0]["status"] = value

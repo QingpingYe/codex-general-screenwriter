@@ -65,6 +65,9 @@ class StageContract:
     validates_artifact_ids: tuple[str, ...] = ()
     confirmation_required: bool = False
     status: str = "active"
+    stage_type: str | None = None
+    owner: str | None = None
+    gate: str = "none"
 
     def __post_init__(self):
         _freeze_sequences(self, (
@@ -135,7 +138,13 @@ _PACK_REQUIRED = {"medium_id", "aliases", "delivery_forms", "artifact_types", "w
 _PACK_OPTIONAL = {"legacy_aliases", "version", "stages", "validators", "exporters", "capabilities", "optional_workflows"}
 _ARTIFACT_FIELDS = set(ArtifactDescriptor.__dataclass_fields__)
 _STAGE_FIELDS = set(StageContract.__dataclass_fields__)
+_STAGE_OPTIONAL = {"stage_type", "owner"}
 _WORKFLOW_FIELDS = set(WorkflowContract.__dataclass_fields__)
+STAGE_TYPES = {
+    "session_init", "brief_gate", "knowledge_load", "delegation", "creation",
+    "validation", "synthesis", "confirmation", "persistence", "export",
+    "delivery",
+}
 
 
 def _normalized_name(value: str) -> str:
@@ -218,7 +227,7 @@ def _parse_artifact(raw, label):
 
 
 def _parse_stage(raw, label):
-    _object(raw, _STAGE_FIELDS, set(), label, StageContractError)
+    _object(raw, _STAGE_FIELDS - _STAGE_OPTIONAL, _STAGE_OPTIONAL, label, StageContractError)
     error = StageContractError
     return StageContract(
         stage_id=_id(raw["stage_id"], f"{label}.stage_id", error),
@@ -227,6 +236,9 @@ def _parse_stage(raw, label):
         )},
         confirmation_required=_boolean(raw["confirmation_required"], f"{label}.confirmation_required", error),
         status=_status(raw["status"], f"{label}.status", error),
+        stage_type=_nullable_text(raw.get("stage_type"), f"{label}.stage_type", error),
+        owner=_nullable_text(raw.get("owner"), f"{label}.owner", error),
+        gate=_text(raw["gate"], f"{label}.gate", error),
     )
 
 
@@ -362,6 +374,18 @@ def _validate_scope(pack, artifacts, stages, external=()):
     _acyclic(artifact_graph, "artifact", ArtifactContractError)
 
 
+def _validate_stage_runtime(pack: TypePackDescriptor, stage: StageContract) -> None:
+    if pack.contract_schema == "legacy":
+        return
+    label = f"stage {stage.stage_id}"
+    if stage.stage_type not in STAGE_TYPES:
+        raise StageContractError(
+            f"type pack {pack.medium_id}.{label}.stage_type 无效：{stage.stage_type!r}"
+        )
+    _text(stage.owner, f"type pack {pack.medium_id}.{label}.owner", StageContractError)
+    _text(stage.gate, f"type pack {pack.medium_id}.{label}.gate", StageContractError)
+
+
 def validate_type_contract(pack: TypePackDescriptor) -> TypePackDescriptor:
     _id(pack.medium_id, "type pack.medium_id")
     _status(pack.status, f"type pack {pack.medium_id}.status", TypeRegistryError)
@@ -379,6 +403,8 @@ def validate_type_contract(pack: TypePackDescriptor) -> TypePackDescriptor:
         raise TypeRegistryError("未知 type pack contract schema")
     if pack.status == "active" and (not pack.artifact_types or not pack.stages):
         raise TypeRegistryError(f"type pack {pack.medium_id} 的 active v1 包必须有核心产物和阶段")
+    for stage in pack.stages:
+        _validate_stage_runtime(pack, stage)
     _validate_scope(pack, pack.artifact_types, pack.stages)
     if pack.status == "active" and any(stage.status != "active" for stage in pack.stages):
         raise StageContractError(f"type pack {pack.medium_id} 的必需核心阶段必须全部 active")
@@ -415,6 +441,8 @@ def validate_type_contract(pack: TypePackDescriptor) -> TypePackDescriptor:
         if all_artifacts & workflow_artifacts:
             raise ArtifactContractError(f"workflow {workflow.workflow_id} 产物与 core/其他 workflow 冲突")
         all_artifacts.update(workflow_artifacts)
+        for stage in workflow.stages:
+            _validate_stage_runtime(pack, stage)
         _validate_scope(pack, workflow.artifact_types, workflow.stages, inputs)
     return pack
 

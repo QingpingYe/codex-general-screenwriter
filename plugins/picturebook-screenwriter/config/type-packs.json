@@ -151,7 +151,10 @@
           "produces_artifact_ids": [],
           "validates_artifact_ids": [],
           "confirmation_required": false,
-          "status": "active"
+          "status": "active",
+          "stage_type": "session_init",
+          "owner": "intake",
+          "gate": "none"
         },
         {
           "stage_id": "brief_gate",
@@ -167,7 +170,10 @@
           "produces_artifact_ids": [],
           "validates_artifact_ids": [],
           "confirmation_required": false,
-          "status": "active"
+          "status": "active",
+          "stage_type": "brief_gate",
+          "owner": "intake",
+          "gate": "brief"
         },
         {
           "stage_id": "knowledge_load",
@@ -181,7 +187,10 @@
           "produces_artifact_ids": [],
           "validates_artifact_ids": [],
           "confirmation_required": false,
-          "status": "active"
+          "status": "active",
+          "stage_type": "knowledge_load",
+          "owner": "knowledge_steward",
+          "gate": "authority"
         },
         {
           "stage_id": "creation_delegate",
@@ -209,7 +218,10 @@
           ],
           "validates_artifact_ids": [],
           "confirmation_required": false,
-          "status": "active"
+          "status": "active",
+          "stage_type": "creation",
+          "owner": "screenwriter",
+          "gate": "none"
         },
         {
           "stage_id": "preflight",
@@ -229,7 +241,10 @@
             "script"
           ],
           "confirmation_required": false,
-          "status": "active"
+          "status": "active",
+          "stage_type": "validation",
+          "owner": "preflight_agent",
+          "gate": "redline"
         },
         {
           "stage_id": "collision_check",
@@ -249,7 +264,10 @@
           "produces_artifact_ids": [],
           "validates_artifact_ids": [],
           "confirmation_required": false,
-          "status": "active"
+          "status": "active",
+          "stage_type": "validation",
+          "owner": "knowledge_steward",
+          "gate": "collision"
         },
         {
           "stage_id": "qa",
@@ -270,7 +288,10 @@
             "script"
           ],
           "confirmation_required": false,
-          "status": "active"
+          "status": "active",
+          "stage_type": "validation",
+          "owner": "quality_reviewer",
+          "gate": "quality"
         },
         {
           "stage_id": "qa_synthesis",
@@ -284,7 +305,10 @@
           "produces_artifact_ids": [],
           "validates_artifact_ids": [],
           "confirmation_required": false,
-          "status": "active"
+          "status": "active",
+          "stage_type": "synthesis",
+          "owner": "picturebook-screenwriter-team-lead",
+          "gate": "none"
         },
         {
           "stage_id": "confirmation_gate",
@@ -298,7 +322,10 @@
           "produces_artifact_ids": [],
           "validates_artifact_ids": [],
           "confirmation_required": true,
-          "status": "active"
+          "status": "active",
+          "stage_type": "confirmation",
+          "owner": "picturebook-screenwriter-team-lead",
+          "gate": "confirmation"
         },
         {
           "stage_id": "persistence",
@@ -318,7 +345,10 @@
           "produces_artifact_ids": [],
           "validates_artifact_ids": [],
           "confirmation_required": false,
-          "status": "active"
+          "status": "active",
+          "stage_type": "persistence",
+          "owner": "persistence_agent",
+          "gate": "none"
         },
         {
           "stage_id": "knowledge_reminder",
@@ -332,7 +362,10 @@
           "produces_artifact_ids": [],
           "validates_artifact_ids": [],
           "confirmation_required": false,
-          "status": "active"
+          "status": "active",
+          "stage_type": "delivery",
+          "owner": "picturebook-screenwriter-team-lead",
+          "gate": "none"
         }
       ],
       "workflow_policy": "picturebook-v1",
@@ -459,7 +492,10 @@
               "produces_artifact_ids": [],
               "validates_artifact_ids": [],
               "confirmation_required": false,
-              "status": "active"
+              "status": "active",
+              "stage_type": "session_init",
+              "owner": "intake",
+              "gate": "script-approved"
             },
             {
               "stage_id": "asset_extraction",
@@ -475,7 +511,10 @@
               ],
               "validates_artifact_ids": [],
               "confirmation_required": false,
-              "status": "active"
+              "status": "active",
+              "stage_type": "creation",
+              "owner": "picturebook-art-agent",
+              "gate": "none"
             },
             {
               "stage_id": "asset_confirmation",
@@ -491,7 +530,10 @@
                 "asset_registry"
               ],
               "confirmation_required": true,
-              "status": "active"
+              "status": "active",
+              "stage_type": "confirmation",
+              "owner": "picturebook-screenwriter-team-lead",
+              "gate": "asset-list"
             },
             {
               "stage_id": "asset_preproduction",
@@ -508,7 +550,10 @@
               ],
               "validates_artifact_ids": [],
               "confirmation_required": false,
-              "status": "active"
+              "status": "active",
+              "stage_type": "creation",
+              "owner": "picturebook-art-agent",
+              "gate": "none"
             },
             {
               "stage_id": "asset_final_confirmation",
@@ -524,7 +569,10 @@
                 "illustration_prompt_payload"
               ],
               "confirmation_required": true,
-              "status": "active"
+              "status": "active",
+              "stage_type": "confirmation",
+              "owner": "picturebook-screenwriter-team-lead",
+              "gate": "asset-final"
             },
             {
               "stage_id": "illustration_generation",
@@ -541,7 +589,10 @@
               ],
               "validates_artifact_ids": [],
               "confirmation_required": false,
-              "status": "active"
+              "status": "active",
+              "stage_type": "creation",
+              "owner": "picturebook-art-agent",
+              "gate": "none"
             },
             {
               "stage_id": "html_export",
@@ -558,7 +609,10 @@
               ],
               "validates_artifact_ids": [],
               "confirmation_required": false,
-              "status": "active"
+              "status": "active",
+              "stage_type": "export",
+              "owner": "picturebook-art-agent",
+              "gate": "none"
             },
             {
               "stage_id": "illustration_delivery",
@@ -574,7 +628,10 @@
               "produces_artifact_ids": [],
               "validates_artifact_ids": [],
               "confirmation_required": false,
-              "status": "active"
+              "status": "active",
+              "stage_type": "delivery",
+              "owner": "picturebook-screenwriter-team-lead",
+              "gate": "none"
             }
           ],
           "required": false,
