@@ -26,17 +26,33 @@ class StageContractError(TypeRegistryError):
     """Raised when a stage contract is invalid or unknown."""
 
 
+def _freeze_sequences(instance, names):
+    """Detach caller-owned list collections in frozen descriptor constructors."""
+    for name in names:
+        value = getattr(instance, name)
+        if not isinstance(value, (tuple, list)):
+            raise TypeError(f"{name} must be a list or tuple")
+        object.__setattr__(instance, name, tuple(value))
+
+
 @dataclass(frozen=True)
 class ArtifactDescriptor:
     artifact_id: str
     aliases: tuple[str, ...] = ()
     delivery_forms: tuple[str, ...] = ()
-    stage_id: str = ""
+    stage_id: str = ""  # Temporary constructor bridge until the parser migrates.
     depends_on: tuple[str, ...] = ()
     required: bool = True
     validator: str | None = None
     exporter: str | None = None
     status: str = "active"
+    origin: str = "workflow_output"
+    input_stage: str | None = None
+    production_stage: str | None = None
+    validation_stages: tuple[str, ...] = ()
+
+    def __post_init__(self):
+        _freeze_sequences(self, ("aliases", "delivery_forms", "depends_on", "validation_stages"))
 
 
 @dataclass(frozen=True)
@@ -44,9 +60,38 @@ class StageContract:
     stage_id: str
     aliases: tuple[str, ...] = ()
     depends_on: tuple[str, ...] = ()
-    artifact_ids: tuple[str, ...] = ()
+    artifact_ids: tuple[str, ...] = ()  # Temporary old-config constructor bridge.
     confirmation_required: bool = False
     status: str = "active"
+    consumes_artifact_ids: tuple[str, ...] = ()
+    produces_artifact_ids: tuple[str, ...] = ()
+    validates_artifact_ids: tuple[str, ...] = ()
+
+    def __post_init__(self):
+        _freeze_sequences(self, (
+            "aliases", "depends_on", "artifact_ids", "consumes_artifact_ids",
+            "produces_artifact_ids", "validates_artifact_ids",
+        ))
+
+
+@dataclass(frozen=True)
+class WorkflowInputRequirement:
+    artifact_id: str
+    required_status: str
+
+
+@dataclass(frozen=True)
+class WorkflowContract:
+    workflow_id: str
+    trigger_intent: str
+    inputs: tuple[WorkflowInputRequirement, ...] = ()
+    artifact_types: tuple[ArtifactDescriptor, ...] = ()
+    stages: tuple[StageContract, ...] = ()
+    required: bool = False
+    blocks_core_completion: bool = False
+
+    def __post_init__(self):
+        _freeze_sequences(self, ("inputs", "artifact_types", "stages"))
 
 
 @dataclass(frozen=True)
@@ -63,6 +108,13 @@ class TypePackDescriptor:
     validators: tuple[str, ...] = ()
     exporters: tuple[str, ...] = ()
     capabilities: tuple[str, ...] = ()
+    optional_workflows: tuple[WorkflowContract, ...] = ()
+
+    def __post_init__(self):
+        _freeze_sequences(self, (
+            "aliases", "delivery_forms", "artifact_types", "legacy_aliases", "stages",
+            "validators", "exporters", "capabilities", "optional_workflows",
+        ))
 
     @property
     def artifact_ids(self) -> tuple[str, ...]:
@@ -73,6 +125,9 @@ class TypePackDescriptor:
 @dataclass(frozen=True)
 class TypeRegistry:
     packs: tuple[TypePackDescriptor, ...]
+
+    def __post_init__(self):
+        _freeze_sequences(self, ("packs",))
 
 
 _REGISTRY_PATH = Path(__file__).resolve().parents[1] / "config" / "type-packs.json"

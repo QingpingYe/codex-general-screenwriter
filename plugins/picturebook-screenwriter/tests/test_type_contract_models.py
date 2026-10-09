@@ -6,79 +6,82 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from type_registry import (  # noqa: E402
-    ArtifactDescriptor,
-    StageContract,
-    TypePackDescriptor,
-    parse_type_registry,
+from type_registry import (
+    ArtifactDescriptor, StageContract, TypePackDescriptor,
+    WorkflowInputRequirement, WorkflowContract, parse_type_registry,
 )
 
 
 class TypeContractModelTests(unittest.TestCase):
-    def test_artifact_and_stage_descriptors_are_immutable(self):
+    def test_artifact_origin_production_and_validation_are_explicit(self):
         artifact = ArtifactDescriptor(
-            artifact_id="script",
-            aliases=("screenplay",),
-            delivery_forms=("page_script",),
-            stage_id="draft",
-            depends_on=("outline",),
-            required=True,
-            validator="script-v1",
-            exporter=None,
-            status="active",
+            artifact_id="script", origin="workflow_output",
+            production_stage="draft", validation_stages=["qa"],
+            delivery_forms=["page_script"],
         )
-        stage = StageContract(
-            stage_id="draft",
-            aliases=("writing",),
-            depends_on=("outline",),
-            artifact_ids=("script",),
-            confirmation_required=False,
-            status="active",
-        )
+        self.assertEqual(artifact.production_stage, "draft")
+        self.assertEqual(artifact.validation_stages, ("qa",))
         with self.assertRaises(FrozenInstanceError):
-            artifact.required = False
+            artifact.origin = "user_input"
+
+    def test_stage_consumption_production_and_validation_are_separate(self):
+        consumed = ["positioning"]
+        stage = StageContract(
+            stage_id="draft", consumes_artifact_ids=consumed,
+            produces_artifact_ids=["script"], validates_artifact_ids=["outline"],
+        )
+        consumed.append("changed")
+        self.assertEqual(stage.consumes_artifact_ids, ("positioning",))
+        self.assertEqual(stage.produces_artifact_ids, ("script",))
+        self.assertEqual(stage.validates_artifact_ids, ("outline",))
         with self.assertRaises(FrozenInstanceError):
             stage.stage_id = "other"
-        self.assertEqual(artifact.depends_on, ("outline",))
-        self.assertEqual(stage.artifact_ids, ("script",))
+
+    def test_positioning_can_be_input_without_producer(self):
+        brief = ArtifactDescriptor(
+            artifact_id="positioning", origin="user_input",
+            input_stage="brief_gate", production_stage=None,
+        )
+        self.assertEqual(brief.origin, "user_input")
+        self.assertIsNone(brief.production_stage)
+
+    def test_optional_workflow_and_input_requirements_are_immutable(self):
+        requirement = WorkflowInputRequirement("script", "approved")
+        stages = [StageContract("illustration_init")]
+        workflow = WorkflowContract(
+            workflow_id="illustration", trigger_intent="illustration",
+            inputs=[requirement], stages=stages, artifact_types=[],
+            required=False, blocks_core_completion=False,
+        )
+        stages.clear()
+        self.assertEqual(workflow.stages[0].stage_id, "illustration_init")
+        self.assertEqual(workflow.inputs[0].required_status, "approved")
+        with self.assertRaises(FrozenInstanceError):
+            requirement.required_status = "draft"
+        with self.assertRaises(FrozenInstanceError):
+            workflow.blocks_core_completion = True
 
     def test_legacy_string_artifacts_normalize_to_descriptors(self):
-        registry = parse_type_registry({
-            "schema_version": 1,
-            "packs": [{
-                "medium_id": "picturebook",
-                "aliases": [],
-                "delivery_forms": ["page_script"],
-                "artifact_types": ["script", "outline"],
-                "workflow_policy": "picturebook-v1",
-                "status": "active",
-            }],
-        })
-        pack = registry.packs[0]
+        pack = parse_type_registry({"schema_version": 1, "packs": [{
+            "medium_id": "picturebook", "aliases": [],
+            "delivery_forms": ["page_script"],
+            "artifact_types": ["script", "outline"],
+            "workflow_policy": "picturebook-v1", "status": "active",
+        }]}).packs[0]
         self.assertEqual(pack.artifact_ids, ("script", "outline"))
-        self.assertTrue(all(
-            isinstance(artifact, ArtifactDescriptor)
-            for artifact in pack.artifact_types
-        ))
-        self.assertEqual(pack.artifact_types[0].artifact_id, "script")
+        self.assertTrue(all(isinstance(a, ArtifactDescriptor) for a in pack.artifact_types))
 
-    def test_type_pack_descriptor_exposes_contract_collections(self):
+    def test_type_pack_collections_are_isolated(self):
+        capabilities = ["illustration"]
         pack = TypePackDescriptor(
-            medium_id="picturebook",
-            version="picturebook-v1",
-            aliases=(),
-            delivery_forms=("page_script",),
-            artifact_types=(),
-            workflow_policy="picturebook-v1",
-            status="active",
-            stages=(),
-            validators=(),
-            exporters=(),
-            capabilities=("illustration",),
+            medium_id="picturebook", aliases=[], delivery_forms=["page_script"],
+            artifact_types=[], workflow_policy="picturebook-v1", status="active",
+            version="picturebook-v1", capabilities=capabilities,
+            optional_workflows=[],
         )
-        self.assertEqual(pack.version, "picturebook-v1")
+        capabilities.clear()
         self.assertEqual(pack.capabilities, ("illustration",))
-        self.assertEqual(pack.artifact_ids, ())
+        self.assertEqual(pack.optional_workflows, ())
 
 
 if __name__ == "__main__":
