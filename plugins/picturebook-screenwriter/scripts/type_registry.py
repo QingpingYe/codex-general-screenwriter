@@ -66,7 +66,7 @@ class TypePackDescriptor:
 
     @property
     def artifact_ids(self) -> tuple[str, ...]:
-        """Return the canonical artifact IDs for legacy callers."""
+        """Return canonical artifact IDs for legacy callers."""
         return tuple(artifact.artifact_id for artifact in self.artifact_types)
 
 
@@ -133,8 +133,7 @@ def _parse_artifact_descriptor(
 ) -> ArtifactDescriptor:
     if not isinstance(value, dict):
         raise ArtifactContractError(f"{label} must be an object")
-    keys = set(value)
-    if keys != _ARTIFACT_FIELDS:
+    if set(value) != _ARTIFACT_FIELDS:
         raise ArtifactContractError(f"{label} has missing or unknown fields")
     artifact_id = value["artifact_id"]
     if not isinstance(artifact_id, str) or not re.fullmatch(
@@ -191,11 +190,7 @@ def _parse_artifact_types(
     if all(isinstance(item, str) for item in value):
         ids = _string_list(value, label, allow_empty=True)
         return tuple(
-            ArtifactDescriptor(
-                artifact_id=artifact_id,
-                delivery_forms=(),
-                stage_id="",
-            )
+            ArtifactDescriptor(artifact_id=artifact_id)
             for artifact_id in ids
         )
     if any(isinstance(item, str) for item in value):
@@ -240,6 +235,143 @@ def _parse_stage_contract(value: Any, label: str) -> StageContract:
     )
 
 
+def _validate_local_names(
+    values: tuple[str, ...], label: str, *, error_type: type[TypeRegistryError]
+) -> None:
+    seen: set[str] = set()
+    for value in values:
+        key = _normalized_name(value)
+        if key in seen:
+            raise error_type(f"{label} contains duplicate identifier: {value}")
+        seen.add(key)
+
+
+def validate_type_contract(type_pack: TypePackDescriptor) -> TypePackDescriptor:
+    """Validate one normalized type-pack contract and return it unchanged."""
+    if type_pack.status not in {"active", "planned"}:
+        raise TypeRegistryError(
+            f"type pack {type_pack.medium_id!r}.status must be active or planned"
+        )
+    if not type_pack.version.strip():
+        raise TypeRegistryError(f"type pack {type_pack.medium_id!r}.version must be non-empty")
+    if not type_pack.workflow_policy.strip():
+        raise TypeRegistryError(
+            f"type pack {type_pack.medium_id!r}.workflow_policy must be non-empty"
+        )
+
+    artifact_ids = tuple(artifact.artifact_id for artifact in type_pack.artifact_types)
+    _validate_local_names(
+        artifact_ids,
+        f"type pack {type_pack.medium_id}.artifacts",
+        error_type=ArtifactContractError,
+    )
+    artifact_names = set(_normalized_name(value) for value in artifact_ids)
+    for artifact in type_pack.artifact_types:
+        names = (artifact.artifact_id, *artifact.aliases)
+        _validate_local_names(
+            names,
+            f"artifact {artifact.artifact_id}",
+            error_type=ArtifactContractError,
+        )
+        for name in artifact.aliases:
+            key = _normalized_name(name)
+            if key in artifact_names:
+                raise ArtifactContractError(
+                    f"artifact alias collision: {name!r} in {type_pack.medium_id}"
+                )
+            artifact_names.add(key)
+
+    stage_ids = tuple(stage.stage_id for stage in type_pack.stages)
+    _validate_local_names(
+        stage_ids,
+        f"type pack {type_pack.medium_id}.stages",
+        error_type=StageContractError,
+    )
+    stage_names = set(_normalized_name(value) for value in stage_ids)
+    for stage in type_pack.stages:
+        names = (stage.stage_id, *stage.aliases)
+        _validate_local_names(
+            names,
+            f"stage {stage.stage_id}",
+            error_type=StageContractError,
+        )
+        for name in stage.aliases:
+            key = _normalized_name(name)
+            if key in stage_names:
+                raise StageContractError(
+                    f"stage alias collision: {name!r} in {type_pack.medium_id}"
+                )
+            stage_names.add(key)
+
+    structured = bool(type_pack.stages) or any(
+        artifact.stage_id for artifact in type_pack.artifact_types
+    )
+    if structured and type_pack.version == "legacy-v1":
+        raise TypeRegistryError(
+            f"type pack {type_pack.medium_id!r}.version is required for structured contracts"
+        )
+    if structured and type_pack.status == "active" and not type_pack.stages:
+        raise StageContractError(
+            f"type pack {type_pack.medium_id!r}.stages must not be empty for active contracts"
+        )
+
+    artifact_id_set = set(artifact_ids)
+    stage_id_set = set(stage_ids)
+    for artifact in type_pack.artifact_types:
+        if artifact.stage_id and artifact.stage_id not in stage_id_set:
+            raise StageContractError(
+                f"artifact {artifact.artifact_id!r} references unknown stage "
+                f"{artifact.stage_id!r}"
+            )
+        unknown_dependencies = sorted(
+            set(artifact.depends_on) - artifact_id_set
+        )
+        if unknown_dependencies:
+            raise ArtifactContractError(
+                f"artifact {artifact.artifact_id!r} references unknown dependencies: "
+                f"{unknown_dependencies}"
+            )
+        if not set(artifact.delivery_forms).issubset(type_pack.delivery_forms):
+            unknown_forms = sorted(
+                set(artifact.delivery_forms) - set(type_pack.delivery_forms)
+            )
+            raise ArtifactContractError(
+                f"artifact {artifact.artifact_id!r} has unsupported delivery forms: "
+                f"{unknown_forms}"
+            )
+
+    for stage in type_pack.stages:
+        unknown_dependencies = sorted(set(stage.depends_on) - stage_id_set)
+        if unknown_dependencies:
+            raise StageContractError(
+                f"stage {stage.stage_id!r} references unknown dependencies: "
+                f"{unknown_dependencies}"
+            )
+        unknown_artifacts = sorted(set(stage.artifact_ids) - artifact_id_set)
+        if unknown_artifacts:
+            raise StageContractError(
+                f"stage {stage.stage_id!r} references unknown artifacts: "
+                f"{unknown_artifacts}"
+            )
+    return type_pack
+
+
+def _validate_global_artifact_aliases(packs: tuple[TypePackDescriptor, ...]) -> None:
+    type_names: dict[str, str] = {}
+    for pack in packs:
+        for name in (pack.medium_id, *pack.aliases, *pack.legacy_aliases):
+            type_names[_normalized_name(name)] = pack.medium_id
+    for pack in packs:
+        for artifact in pack.artifact_types:
+            for name in artifact.aliases:
+                key = _normalized_name(name)
+                owner = type_names.get(key)
+                if owner is not None:
+                    raise ArtifactContractError(
+                        f"artifact alias collision: {name!r} is used by type pack {owner!r}"
+                    )
+
+
 def load_type_registry(path: str | Path | None = None) -> TypeRegistry:
     """Load and validate the JSON type-pack registry."""
     source = Path(path) if path is not None else _REGISTRY_PATH
@@ -279,8 +411,9 @@ def parse_type_registry(payload: Any) -> TypeRegistry:
         delivery_forms = _string_list(
             item["delivery_forms"], f"{label}.delivery_forms", allow_empty=False
         )
+        raw_artifacts = item["artifact_types"]
         artifact_types = _parse_artifact_types(
-            item["artifact_types"],
+            raw_artifacts,
             f"{label}.artifact_types",
             default_delivery_forms=delivery_forms,
         )
@@ -295,9 +428,6 @@ def parse_type_registry(payload: Any) -> TypeRegistry:
         status = item["status"]
         if status not in {"active", "planned"}:
             raise TypeRegistryError(f"{label}.status must be active or planned")
-        version = item.get("version", "legacy-v1")
-        if not isinstance(version, str) or not version.strip():
-            raise TypeRegistryError(f"{label}.version must be non-empty")
         stages_value = item.get("stages", [])
         if not isinstance(stages_value, list):
             raise StageContractError(f"{label}.stages must be an array")
@@ -305,6 +435,14 @@ def parse_type_registry(payload: Any) -> TypeRegistry:
             _parse_stage_contract(stage, f"{label}.stages[{stage_index}]")
             for stage_index, stage in enumerate(stages_value)
         )
+        structured = bool(stages) or any(
+            isinstance(artifact, dict) for artifact in raw_artifacts
+        )
+        if structured and "version" not in item:
+            raise TypeRegistryError(f"{label}.version is required for structured contracts")
+        version = item.get("version", "legacy-v1")
+        if not isinstance(version, str) or not version.strip():
+            raise TypeRegistryError(f"{label}.version must be non-empty")
         validators = _string_list(
             item.get("validators", []), f"{label}.validators", allow_empty=True
         )
@@ -329,6 +467,7 @@ def parse_type_registry(payload: Any) -> TypeRegistry:
             exporters=exporters,
             capabilities=capabilities,
         )
+        validate_type_contract(descriptor)
         for name in (medium_id, *aliases, *legacy_aliases):
             key = _normalized_name(name)
             previous = names.get(key)
@@ -338,7 +477,9 @@ def parse_type_registry(payload: Any) -> TypeRegistry:
                 )
             names[key] = medium_id
         packs.append(descriptor)
-    return TypeRegistry(tuple(packs))
+    registry = TypeRegistry(tuple(packs))
+    _validate_global_artifact_aliases(registry.packs)
+    return registry
 
 
 def resolve_type_pack(registry: TypeRegistry, identifier: str) -> TypePackDescriptor:
@@ -351,6 +492,48 @@ def resolve_type_pack(registry: TypeRegistry, identifier: str) -> TypePackDescri
         if any(_normalized_name(candidate) == key for candidate in candidates):
             return pack
     raise TypeRegistryError(f"unknown medium_id: {identifier!r}")
+
+
+def resolve_artifact(
+    type_pack: TypePackDescriptor, identifier: str
+) -> ArtifactDescriptor:
+    """Resolve an artifact ID or alias within one type pack."""
+    if not isinstance(identifier, str) or not identifier.strip():
+        raise ArtifactContractError("artifact identifier must be a non-empty string")
+    key = _normalized_name(identifier)
+    for artifact in type_pack.artifact_types:
+        if any(
+            _normalized_name(candidate) == key
+            for candidate in (artifact.artifact_id, *artifact.aliases)
+        ):
+            return artifact
+    raise ArtifactContractError(
+        f"unknown artifact {identifier!r} in type pack {type_pack.medium_id!r}"
+    )
+
+
+def resolve_stage(type_pack: TypePackDescriptor, identifier: str) -> StageContract:
+    """Resolve a stage ID or alias within one type pack."""
+    if not isinstance(identifier, str) or not identifier.strip():
+        raise StageContractError("stage identifier must be a non-empty string")
+    key = _normalized_name(identifier)
+    for stage in type_pack.stages:
+        if any(
+            _normalized_name(candidate) == key
+            for candidate in (stage.stage_id, *stage.aliases)
+        ):
+            return stage
+    raise StageContractError(
+        f"unknown stage {identifier!r} in type pack {type_pack.medium_id!r}"
+    )
+
+
+def assert_type_pack_executable(type_pack: TypePackDescriptor) -> None:
+    """Reject planned packs at the workflow execution boundary."""
+    if type_pack.status != "active":
+        raise TypePackNotExecutableError(
+            f"type pack {type_pack.medium_id!r} is not executable (status={type_pack.status!r})"
+        )
 
 
 @lru_cache(maxsize=1)
