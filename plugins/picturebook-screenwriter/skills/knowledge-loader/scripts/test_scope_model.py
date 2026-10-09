@@ -25,12 +25,12 @@ class ScopeModelTests(unittest.TestCase):
         self.assertEqual(chain[-1].scope_type, "global")
 
     def test_absent_levels_are_skipped(self):
-        scope = ScopeRef(project_id="project-1", medium_id="film")
+        scope = ScopeRef(project_id="project-1", medium_id="shortdrama")
         chain = expand_scope_chain(scope)
         self.assertEqual([node.scope_type for node in chain], ["project", "medium", "global"])
 
     def test_multiple_genre_entries_are_individually_matched(self):
-        scope = ScopeRef(genre_ids=("mystery", "comedy"), medium_id="film")
+        scope = ScopeRef(genre_ids=("mystery", "comedy"), medium_id="shortdrama")
         chain = expand_scope_chain(scope)
         self.assertEqual(
             [node.scope_id for node in chain if node.scope_type == "genre"],
@@ -38,7 +38,7 @@ class ScopeModelTests(unittest.TestCase):
         )
 
     def test_matching_by_scope_type_and_id(self):
-        scope = ScopeRef(project_id="project-1", medium_id="film")
+        scope = ScopeRef(project_id="project-1", medium_id="shortdrama")
         chain = expand_scope_chain(scope)
         self.assertTrue(scope_matches(chain, ScopeChainNode("project", "project-1")))
         self.assertFalse(scope_matches(chain, ScopeChainNode("project", "project-2")))

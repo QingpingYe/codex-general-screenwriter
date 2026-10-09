@@ -15,7 +15,7 @@ class TypePackExecutionGateTests(unittest.TestCase):
         return manifest
 
     def test_planned_medium_rejected_before_plan_fallback_and_task(self):
-        for medium in ('film','shortdrama','tv_longform'):
+        for medium in ('shortdrama','tv_longform'):
             manifest=self.manifest_for(medium)
             for operation in (
                 lambda: stage_dag_codex.build_dispatch_plan(manifest),

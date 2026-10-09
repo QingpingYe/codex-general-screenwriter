@@ -53,9 +53,9 @@ class TypePackSnapshotTests(unittest.TestCase):
         self.assertNotIn("artifact", dag.build_resolution_snapshot(self.pack))
 
     def test_builder_rejects_foreign_or_input_only_descriptors(self):
-        film = resolve_type_pack(load_type_registry(), "film")
-        for pack, artifact, workflow in ((film, self.script, None),
-                                         (film, None, self.workflow),
+        shortdrama = resolve_type_pack(load_type_registry(), "shortdrama")
+        for pack, artifact, workflow in ((shortdrama, self.script, None),
+                                         (shortdrama, None, self.workflow),
                                          (self.pack, resolve_artifact(self.pack, "positioning"), None),
                                          (self.pack, replace(self.script, depends_on=("positioning",)), None)):
             with self.subTest(pack=pack.medium_id), self.assertRaises(dag.StageDagError):

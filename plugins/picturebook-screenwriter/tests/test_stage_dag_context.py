@@ -63,34 +63,34 @@ class StageDagContextTests(unittest.TestCase):
         with self.assertRaises(stage_dag.StageDagError):
             stage_dag.attach_context(
                 stage_dag._creation_template_manifest(),
-                CreativeContext("film"),
-                {"type_pack": {"medium_id": "film", "version": "0.1.0"}},
+                CreativeContext("shortdrama"),
+                {"type_pack": {"medium_id": "shortdrama", "version": "shortdrama-v1"}},
             )
 
     def test_explicit_context_in_manifest_requires_project_id(self):
         manifest = stage_dag._creation_template_manifest()
-        manifest["context"] = {"medium_id": "film"}
+        manifest["context"] = {"medium_id": "shortdrama"}
         with self.assertRaises(stage_dag.StageDagError):
             stage_dag.validate_manifest(manifest)
 
     def test_attach_context_is_deep_copy_and_validates_snapshot(self):
         manifest = stage_dag._creation_template_manifest()
-        context = CreativeContext("film", ("mystery",), project_id="p1")
+        context = CreativeContext("shortdrama", ("mystery",), project_id="p1")
         enriched = stage_dag.attach_context(
             manifest,
             context,
-            {"type_pack": {"medium_id": "film", "version": "0.1.0"}},
+            {"type_pack": {"medium_id": "shortdrama", "version": "shortdrama-v1"}},
         )
         self.assertNotIn("context", manifest)
-        self.assertEqual(enriched["context"]["medium_id"], "film")
+        self.assertEqual(enriched["context"]["medium_id"], "shortdrama")
         self.assertEqual(stage_dag.validate_manifest(enriched), enriched)
 
     def test_rejects_snapshot_for_a_different_medium(self):
         with self.assertRaises(stage_dag.StageDagError):
             stage_dag.attach_context(
                 stage_dag._creation_template_manifest(),
-                CreativeContext("film", project_id="p1"),
-                {"type_pack": {"medium_id": "shortdrama", "version": "0.1.0"}},
+                CreativeContext("shortdrama", project_id="p1"),
+                {"type_pack": {"medium_id": "tv_longform", "version": "tv_longform-v1"}},
             )
 
     def test_revision_copies_context_snapshot_and_updates_lineage(self):

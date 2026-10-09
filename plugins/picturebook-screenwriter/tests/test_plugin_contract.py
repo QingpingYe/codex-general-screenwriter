@@ -32,8 +32,9 @@ class PluginContractTests(unittest.TestCase):
         )
         self.assertEqual(
             set(contract["creative_context"]["medium_ids"]),
-            {"picturebook", "film", "shortdrama", "tv_longform"},
+            {"picturebook", "shortdrama", "tv_longform"},
         )
+        self.assertNotIn("film", contract["creative_context"]["medium_ids"])
         self.assertEqual(contract["type_registry"], "config/type-packs.json")
 
     def test_type_contract_metadata_separates_core_and_optional_workflows(self):
@@ -42,7 +43,8 @@ class PluginContractTests(unittest.TestCase):
         self.assertEqual(type_contract["schema_version"], "type-pack-contract-v1")
         self.assertEqual(type_contract["active_medium_ids"], ["picturebook"])
         self.assertEqual(set(type_contract["planned_medium_ids"]),
-                         {"film", "shortdrama", "tv_longform"})
+                         {"shortdrama", "tv_longform"})
+        self.assertNotIn("film", type_contract["planned_medium_ids"])
         self.assertEqual(type_contract["core_artifact_ids"],
                          ["positioning", "topic_plan", "worldview", "characters", "outline", "script"])
         optional = type_contract["optional_workflows"]["illustration"]

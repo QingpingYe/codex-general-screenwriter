@@ -50,11 +50,13 @@ def valid_payload():
 
 
 class TypeRegistryTests(unittest.TestCase):
-    def test_loads_four_mediums_with_only_picturebook_active(self):
+    def test_loads_three_mediums_with_only_picturebook_active(self):
         registry = tr.load_type_registry()
         self.assertEqual({p.medium_id for p in registry.packs},
-                         {"picturebook", "film", "shortdrama", "tv_longform"})
+                         {"picturebook", "shortdrama", "tv_longform"})
         self.assertEqual({p.medium_id for p in registry.packs if p.status == "active"}, {"picturebook"})
+        with self.assertRaises(tr.TypeRegistryError):
+            tr.resolve_type_pack(registry, "film")
 
     def test_picturebook_core_contract_is_not_an_illustration_pipeline(self):
         pack = tr.resolve_type_pack(tr.load_type_registry(), "picturebook-screenwriter")
@@ -104,7 +106,7 @@ class TypeRegistryTests(unittest.TestCase):
 
     def test_planned_is_readable_but_never_executable(self):
         registry = tr.load_type_registry()
-        for medium in ("film", "shortdrama", "tv_longform"):
+        for medium in ("shortdrama", "tv_longform"):
             pack = tr.resolve_type_pack(registry, medium)
             with self.subTest(medium=medium), self.assertRaises(tr.TypePackNotExecutableError):
                 tr.assert_type_pack_executable(pack)
@@ -203,9 +205,9 @@ class TypeRegistryTests(unittest.TestCase):
     def test_alias_collision_with_legacy_entry_and_bad_status_are_rejected(self):
         payload = valid_payload()
         payload["packs"][0]["aliases"] = ["picturebook-screenwriter"]
-        payload["packs"].append(dict(medium_id="film", aliases=["picturebook-screenwriter"],
-                                    delivery_forms=["screenplay"], artifact_types=[],
-                                    workflow_policy="film-v1", status="planned"))
+        payload["packs"].append(dict(medium_id="shortdrama", aliases=["picturebook-screenwriter"],
+                                    delivery_forms=["episode_script"], artifact_types=[],
+                                    workflow_policy="shortdrama-v1", status="planned"))
         with self.assertRaises(tr.TypeRegistryError):
             tr.parse_type_registry(payload)
         for value in (None, [], "bad"):

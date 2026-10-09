@@ -25,6 +25,7 @@
 - Revision rounds create new runs and rerun preflight, collision, and QA checks.
 - v1 run manifests require explicit migration.
 - Dispatch plans and task envelopes carry validated creative context snapshots while legacy picturebook runs remain readable.
+- Film is no longer registered as a supported medium; supported planned media are shortdrama and tv_longform.
 
 - Type-pack loading rejects empty active v1 packs, invalid artifact/stage links, and workflows that would block core completion.
 - Next design slice: knowledge schema v2, scope inheritance, and AuthorityQuery/page_codec migration.

@@ -51,16 +51,16 @@ class ScreenwriterFoundationIntegrationTests(unittest.TestCase):
 
     def test_registry_context_dispatch_and_revision_compatibility(self):
         registry = load_type_registry(ROOT / "config" / "type-packs.json")
-        film = resolve_type_pack(registry, "film")
-        self.assertEqual(film.medium_id, "film")
-        self.assertEqual(film.status, "planned")
+        planned = resolve_type_pack(registry, "shortdrama")
+        self.assertEqual(planned.medium_id, "shortdrama")
+        self.assertEqual(planned.status, "planned")
 
         manifest = stage_dag._creation_template_manifest()
         manifest["project_root"] = str(REPO_ROOT)
         manifest = stage_dag.attach_context(
             manifest,
-            CreativeContext("film", ("mystery",), project_id="film-one"),
-            {"type_pack": {"medium_id": "film", "version": "0.1.0"}},
+            CreativeContext("shortdrama", ("mystery",), project_id="shortdrama-one"),
+            {"type_pack": {"medium_id": "shortdrama", "version": "shortdrama-v1"}},
         )
         stage_dag.validate_manifest(manifest)
         with self.assertRaises(TypePackNotExecutableError):

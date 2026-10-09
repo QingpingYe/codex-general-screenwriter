@@ -119,7 +119,7 @@ class StageDagCodexAdapterTest(unittest.TestCase):
         task = stage_dag_codex.format_task_envelope(
             manifest, manifest["stages"][1]
         )
-        task["inputs"]["run_context"]["creative_context"]["medium_id"] = "film"
+        task["inputs"]["run_context"]["creative_context"]["medium_id"] = "shortdrama"
         self.assertEqual(manifest["context"]["medium_id"], "picturebook")
 
     def test_format_task_envelope_validates(self):

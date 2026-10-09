@@ -20,7 +20,7 @@
 
 ## 类型契约边界
 
-`picturebook` 是当前唯一可执行的媒介类型包，核心产物为 positioning、topic_plan、worldview、characters、outline、script；其中定位信息作为简报输入。film、shortdrama、tv_longform 仅为 planned 注册项，不支持创作派发。
+`picturebook` 是当前唯一可执行的媒介类型包，核心产物为 positioning、topic_plan、worldview、characters、outline、script；其中定位信息作为简报输入。shortdrama、tv_longform 仅为 planned 注册项，不支持创作派发。
 
 插画是独立可选插画工作流，输入要求已批准脚本；资产清单、结构化提示、图片与 HTML 预览都不属于文字核心阶段，也不阻塞文字 run 的确认或完成。旧绘本入口、run manifest 和产物标识继续兼容读取。显式上下文派发必须匹配当前类型包版本；历史快照只读。插画派发前需记录获批脚本或用户明确提供脚本的来源声明，不能把声明当作用户确认的替代。下一专项为知识库 schema v2、作用域继承和权威查询迁移。
 

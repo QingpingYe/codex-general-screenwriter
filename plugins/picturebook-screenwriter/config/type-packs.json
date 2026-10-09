@@ -583,26 +583,6 @@
       ]
     },
     {
-      "medium_id": "film",
-      "version": "film-v1",
-      "aliases": [
-        "movie",
-        "电影"
-      ],
-      "delivery_forms": [
-        "screenplay"
-      ],
-      "artifact_types": [],
-      "stages": [],
-      "workflow_policy": "film-v1",
-      "validators": [],
-      "exporters": [],
-      "capabilities": [],
-      "status": "planned",
-      "legacy_aliases": [],
-      "optional_workflows": []
-    },
-    {
       "medium_id": "shortdrama",
       "version": "shortdrama-v1",
       "aliases": [

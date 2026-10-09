@@ -7,7 +7,7 @@ description: Picture book screenwriting workshop entry workflow. Use when the us
 
 ## Creative Context Foundation
 
-新项目在进入类型创作前记录 `medium_id`、`genre_ids`、`series_id` 和 `project_id`。首批媒介标识为 `picturebook`、`film`、`shortdrama` 和 `tv_longform`，类型目录位于 `config/type-packs.json`。当前只有 `picturebook` 类型包可执行；其他媒介先作为计划中的注册项，待各自类型包完成后启用。
+新项目在进入类型创作前记录 `medium_id`、`genre_ids`、`series_id` 和 `project_id`。首批媒介标识为 `picturebook`、`shortdrama` 和 `tv_longform`，类型目录位于 `config/type-packs.json`。当前只有 `picturebook` 类型包可执行；其他媒介先作为计划中的注册项，待各自类型包完成后启用。
 
 旧项目或旧 run manifest 没有媒介字段时，使用 `legacy_default_medium=picturebook` 的兼容路径读取，不回写虚构的上下文。新通用项目必须在类型化创作前明确 `medium_id`，系列与项目是独立维度，项目可以属于同一系列的不同媒介版本。
 
@@ -15,7 +15,7 @@ description: Picture book screenwriting workshop entry workflow. Use when the us
 
 ## 类型能力包契约 v1
 
-`picturebook` 是当前唯一 active 且可执行的类型包；`film`、`shortdrama`、`tv_longform` 仍为 planned，只可展示/读取，不能派发创作流程。读取旧 run 保持兼容，不凭空补写 context 或解析快照。
+`picturebook` 是当前唯一 active 且可执行的类型包；`shortdrama`、`tv_longform` 仍为 planned，只可展示/读取，不能派发创作流程。读取旧 run 保持兼容，不凭空补写 context 或解析快照。
 
 positioning 是简报输入，由 `brief_gate` 读取，不是该阶段生产的文件。一次 run 仅选择一个核心产出目标（`topic_plan`、`worldview`、`characters`、`outline` 或 `script`）；`preflight` 与 `qa` 是检查阶段，不能据此推定它们产出了这些文件。产物的 `depends_on` 是已声明的来源引用，不按列表顺序推断强制先后依赖。
 

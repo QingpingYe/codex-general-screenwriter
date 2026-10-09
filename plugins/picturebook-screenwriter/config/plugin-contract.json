@@ -6,7 +6,6 @@
     "schema_version": "screenwriter-context-v1",
     "medium_ids": [
       "picturebook",
-      "film",
       "shortdrama",
       "tv_longform"
     ],
@@ -178,7 +177,6 @@
       "picturebook"
     ],
     "planned_medium_ids": [
-      "film",
       "shortdrama",
       "tv_longform"
     ],

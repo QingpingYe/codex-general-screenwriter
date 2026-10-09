@@ -22,12 +22,12 @@ class ReviewRegressionTests(unittest.TestCase):
         return dag.attach_context(m,CreativeContext(medium,project_id='p1'),snapshot)
 
     def test_planned_media_have_no_public_dag_execution_entry(self):
-        film=self.typed('film')
-        self.assertEqual(dag.validate_manifest(film),film)
+        shortdrama=self.typed('shortdrama')
+        self.assertEqual(dag.validate_manifest(shortdrama),shortdrama)
         for action in (dag.ready_stages,dag.next_batches,dag.parallel_batches,dag.resolve_stage_decisions,
                        lambda m: dag.transition_stage(m,'session_init','ready')):
             with self.subTest(action=action),self.assertRaises(tr.TypePackNotExecutableError):
-                action(film)
+                action(shortdrama)
 
     def test_historical_snapshots_are_readable_but_not_dispatchable(self):
         for snapshot in (

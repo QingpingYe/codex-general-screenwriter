@@ -14,7 +14,7 @@ class ScopePagesTests(unittest.TestCase):
   "scope_type": "project",
   "scope_id": "project-1",
   "authority": "system",
-  "medium_id": "film",
+  "medium_id": "shortdrama",
   "genre_ids": ["mystery"],
   "version": 3,
   "depends_on": [],
@@ -27,7 +27,7 @@ class ScopePagesTests(unittest.TestCase):
         self.assertEqual(envelope.scope_type, "project")
         self.assertEqual(envelope.scope_id, "project-1")
         self.assertEqual(envelope.authority, "system")
-        self.assertEqual(envelope.medium_id, "film")
+        self.assertEqual(envelope.medium_id, "shortdrama")
         self.assertEqual(envelope.genre_ids, ("mystery",))
         self.assertEqual(envelope.version, 3)
 
