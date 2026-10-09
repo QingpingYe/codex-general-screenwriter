@@ -16,6 +16,7 @@ from load_knowledge import (
     bundle_to_dict,
 )
 from page_codec import render_remote_page
+from scope_model import ScopeRef
 
 
 def remote_page(key: str, page_type: str, body: str, last_ai_revision_id: int = 1) -> str:
@@ -155,6 +156,36 @@ class KnowledgeLoaderTests(unittest.TestCase):
         bundle = loader.load(KnowledgeQuery(project_id="小老鼠迈尔斯"))
         self.assertEqual(bundle.items, ())
         self.assertTrue(any("已归档" in warning for warning in bundle.warnings))
+
+    def test_loader_keeps_v1_page_without_scope_metadata(self):
+        loader = KnowledgeLoader(FakePlane(), FakeCli())
+        bundle = loader.load(
+            KnowledgeQuery(
+                project_id="小老鼠迈尔斯",
+                scope_ref=ScopeRef(project_id="小老鼠迈尔斯"),
+            )
+        )
+        self.assertEqual(len(bundle.items), 2)
+        self.assertIsNone(bundle.items[0].scope)
+        self.assertEqual(bundle.conflicts, ())
+
+    def test_loader_excludes_page_outside_scope_chain(self):
+        body = """## knowledge-scope
+```json
+{"schema_version":2,"scope_type":"project","scope_id":"other-project","authority":"project"}
+```
+"""
+        cli = FakeCli()
+        original_fetch = cli.fetch_doc
+        cli.fetch_doc = lambda token: original_fetch(token)
+        loader = KnowledgeLoader(FakePlane(), cli)
+        bundle = loader.load(
+            KnowledgeQuery(
+                project_id="小老鼠迈尔斯",
+                scope_ref=ScopeRef(project_id="小老鼠迈尔斯"),
+            )
+        )
+        self.assertNotIn("other-project", bundle.warnings[0])
 
 
 if __name__ == "__main__":

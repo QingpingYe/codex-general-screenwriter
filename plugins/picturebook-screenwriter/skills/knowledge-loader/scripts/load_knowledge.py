@@ -12,6 +12,8 @@ if str(STORE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(STORE_SCRIPTS))
 
 from page_codec import parse_remote_page, PageCodecError
+from scope_model import ScopeChainNode, ScopeRef, expand_scope_chain, scope_matches
+from scope_pages import ScopeEnvelope, ScopeEnvelopeError, parse_scope_envelope
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,7 @@ class KnowledgeQuery:
     terms: tuple[str, ...] = ()
     page_types: tuple[str, ...] = ()
     limit: int = 8
+    scope_ref: ScopeRef | None = None
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,8 @@ class KnowledgeEvidence:
     source_revisions: dict[str, str]
     status: Literal["published", "needs_review", "archived"] = "published"
     index_synced: bool = True
+    scope: ScopeEnvelope | None = None
+    scope_chain: tuple[ScopeChainNode, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,15 @@ class KnowledgeEvidenceBundle:
     warnings: tuple[str, ...]
     offline: bool
     fetched_at: str
+    conflicts: tuple["ConflictReport", ...] = ()
+
+
+@dataclass(frozen=True)
+class ConflictReport:
+    scope_type: str
+    scope_id: str
+    reason: str
+    keys: tuple[str, ...]
 
 
 class KnowledgeLoader:
@@ -106,13 +120,24 @@ class KnowledgeLoader:
                 score = sum(1 for term in query.terms if term in page.body)
                 if query.terms and score == 0:
                     continue
-                items.append((score, entry, page, document, index_synced))
+                scope = parse_scope_envelope(page.body)
+                if query.scope_ref is not None and scope is not None:
+                    node = ScopeChainNode(scope.scope_type, scope.scope_id, scope.authority)
+                    if not scope_matches(scope_chain, node):
+                        warnings.append(f"{entry.key} 不在当前 scope chain 内，已排除")
+                        continue
+                items.append((score, entry, page, document, index_synced, scope))
                 if entry.status == "needs_review":
                     warnings.append(f"{entry.key} 同步未完成，待下一轮复核")
             except PageCodecError:
                 warnings.append(f"{entry.key} 的系统元数据无效")
 
         items.sort(key=lambda value: (-value[0], value[1].key))
+        scope_chain = expand_scope_chain(query.scope_ref) if query.scope_ref is not None else ()
+        if query.scope_ref is not None:
+            conflicts = _detect_conflicts(items)
+        else:
+            conflicts = ()
         evidence = tuple(
             KnowledgeEvidence(
                 key=entry.key,
@@ -123,8 +148,10 @@ class KnowledgeLoader:
                 source_revisions=dict(entry.source_revisions),
                 status=entry.status,
                 index_synced=index_synced,
+                scope=scope,
+                scope_chain=scope_chain,
             )
-            for score, entry, page, document, index_synced in items[:query.limit]
+            for score, entry, page, document, index_synced, scope in items[:query.limit]
         )
 
         bundle = KnowledgeEvidenceBundle(
@@ -132,6 +159,7 @@ class KnowledgeLoader:
             warnings=tuple(warnings),
             offline=False,
             fetched_at=_now(),
+            conflicts=conflicts,
         )
         if (
             self.cache_store is not None
@@ -153,12 +181,41 @@ def bundle_to_dict(bundle: KnowledgeEvidenceBundle) -> dict[str, Any]:
                 "source_revisions": item.source_revisions,
                 "status": item.status,
                 "index_synced": item.index_synced,
+                "scope": None if item.scope is None else {
+                    "schema_version": item.scope.schema_version,
+                    "scope_type": item.scope.scope_type,
+                    "scope_id": item.scope.scope_id,
+                    "authority": item.scope.authority,
+                    "medium_id": item.scope.medium_id,
+                    "genre_ids": list(item.scope.genre_ids),
+                    "version": item.scope.version,
+                    "depends_on": list(item.scope.depends_on),
+                    "source_refs": list(item.scope.source_refs),
+                    "built_against": item.scope.built_against,
+                },
+                "scope_chain": [
+                    {
+                        "scope_type": node.scope_type,
+                        "scope_id": node.scope_id,
+                        "authority": node.authority,
+                    }
+                    for node in item.scope_chain
+                ],
             }
             for item in bundle.items
         ],
         "warnings": list(bundle.warnings),
         "offline": bundle.offline,
         "fetched_at": bundle.fetched_at,
+        "conflicts": [
+            {
+                "scope_type": conflict.scope_type,
+                "scope_id": conflict.scope_id,
+                "reason": conflict.reason,
+                "keys": list(conflict.keys),
+            }
+            for conflict in bundle.conflicts
+        ],
     }
 
 
@@ -170,7 +227,37 @@ def bundle_from_dict(raw: dict[str, Any] | None) -> KnowledgeEvidenceBundle | No
         warnings=tuple(raw.get("warnings", [])),
         offline=bool(raw.get("offline", False)),
         fetched_at=raw["fetched_at"],
+        conflicts=tuple(
+            ConflictReport(
+                scope_type=conflict["scope_type"],
+                scope_id=conflict["scope_id"],
+                reason=conflict["reason"],
+                keys=tuple(conflict["keys"]),
+            )
+            for conflict in raw.get("conflicts", [])
+        ),
     )
+
+
+def _detect_conflicts(items):
+    seen = {}
+    conflicts = []
+    for score, entry, page, document, index_synced, scope in items:
+        if scope is None:
+            continue
+        key = (scope.scope_type, scope.scope_id)
+        seen.setdefault(key, []).append(entry.key)
+    for (scope_type, scope_id), keys in seen.items():
+        if len(keys) > 1:
+            conflicts.append(
+                ConflictReport(
+                    scope_type=scope_type,
+                    scope_id=scope_id,
+                    reason="multiple pages claim the same scope node",
+                    keys=tuple(keys),
+                )
+            )
+    return tuple(conflicts)
 
 
 def _now() -> str:
