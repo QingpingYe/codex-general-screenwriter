@@ -153,7 +153,11 @@ class TypePackSnapshotTests(unittest.TestCase):
                                                    "plugins/picturebook-screenwriter/config/type-packs.json", "new-revision")
             self.assertEqual(revision["revision_of_run_id"], parent["run_id"])
             if typed:
-                self.assertEqual(revision["resolution_snapshot"], parent["resolution_snapshot"])
+                snapshot = revision["resolution_snapshot"]
+                self.assertEqual(snapshot["type_pack"], parent["resolution_snapshot"]["type_pack"])
+                self.assertEqual(snapshot["artifact"], parent["resolution_snapshot"]["artifact"])
+                self.assertEqual([r["check_id"] for r in snapshot["quality_rules"]],
+                                 ["project_authority", "knowledge_collision", "craft_benchmark"])
                 revision["resolution_snapshot"]["artifact"]["artifact_id"] = "changed"
                 self.assertEqual(parent["resolution_snapshot"]["artifact"]["artifact_id"], "script")
             else:

@@ -116,7 +116,13 @@ class StageDagContextTests(unittest.TestCase):
         )
         self.assertEqual(revision["context"], parent["context"])
         self.assertEqual(
-            revision["resolution_snapshot"], parent["resolution_snapshot"]
+            {key: revision["resolution_snapshot"]["type_pack"][key]
+             for key in parent["resolution_snapshot"]["type_pack"]},
+            parent["resolution_snapshot"]["type_pack"],
+        )
+        self.assertEqual(
+            [item["check_id"] for item in revision["resolution_snapshot"]["quality_rules"]],
+            ["project_authority", "knowledge_collision", "craft_benchmark"],
         )
         self.assertNotEqual(revision["run_id"], parent["run_id"])
         self.assertEqual(revision["revision_of_run_id"], parent["run_id"])

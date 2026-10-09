@@ -1435,11 +1435,35 @@ def build_revision_manifest(parent_run, feedback, artifact_ref, run_id):
     manifest["revision_feedback"] = copy.deepcopy(feedback)
     manifest["source_artifact_ref"] = artifact_ref
     if "context" in parent:
-        manifest["context"] = copy.deepcopy(parent["context"])
-    if "resolution_snapshot" in parent:
-        manifest["resolution_snapshot"] = copy.deepcopy(
-            parent["resolution_snapshot"]
-        )
+        from creative_run_builder import CreativeRunRequest, build_creative_run
+
+        try:
+            context = context_from_dict(parent["context"], require_project=True)
+            pack = resolve_type_pack(default_type_registry(), context.medium_id)
+            assert_type_pack_executable(pack)
+            locked = (parent.get("resolution_snapshot") or {}).get("type_pack")
+            if not locked:
+                raise TypeRegistryError("带 context 的父 run 缺少 type pack 快照")
+            if locked["version"] != pack.version:
+                raise TypeRegistryError("历史 type pack 快照只读，revision 前须重新解析当前版本")
+            workflow = parent["resolution_snapshot"].get("workflow") or {}
+            return build_creative_run(CreativeRunRequest(
+                type_pack=pack,
+                context=context,
+                intent="revision",
+                target=parent["artifact_type"],
+                run_id=run_id,
+                project_root=parent["project_root"],
+                root_run_id=parent["root_run_id"],
+                revision_of_run_id=parent["run_id"],
+                revision_iteration=parent["iteration"] + 1,
+                revision_feedback=feedback,
+                source_artifact_ref=artifact_ref,
+                workflow_id=workflow.get("workflow_id"),
+                workflow_inputs=parent["resolution_snapshot"].get("workflow_inputs"),
+            ))
+        except (ContextError, TypeRegistryError) as error:
+            raise StageDagError(f"无法构建 typed revision run：{error}") from error
     return validate_manifest(manifest)
 
 
