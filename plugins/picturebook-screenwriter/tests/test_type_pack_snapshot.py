@@ -144,6 +144,60 @@ class TypePackSnapshotTests(unittest.TestCase):
         task["inputs"]["run_context"]["resolution_snapshot"]["artifact"]["artifact_id"] = "changed"
         self.assertEqual(manifest, original)
 
+    def test_quality_rules_are_dispatched_isolated(self):
+        manifest = self.manifest(dag.build_resolution_snapshot(
+            self.pack, self.script,
+            quality_rule_ids=("project_authority", "knowledge_collision", "craft_benchmark"),
+        ))
+        original = copy.deepcopy(manifest)
+        outputs = [
+            codex.build_dispatch_plan(manifest),
+            codex.build_sequential_fallback(manifest),
+            codex.format_task_envelope(manifest, manifest["stages"][0]),
+        ]
+        def source(output):
+            if "inputs" in output:
+                return output["inputs"]["run_context"]["resolution_snapshot"]
+            return output["resolution_snapshot"]
+
+        for output in outputs:
+            self.assertEqual(
+                [rule["check_id"] for rule in source(output)["quality_rules"]],
+                ["project_authority", "knowledge_collision", "craft_benchmark"],
+            )
+            source(output)["quality_rules"][0]["check_id"] = "changed"
+        self.assertEqual(
+            [rule["check_id"] for rule in manifest["resolution_snapshot"]["quality_rules"]],
+            ["project_authority", "knowledge_collision", "craft_benchmark"],
+        )
+        self.assertEqual(manifest, original)
+
+    def test_current_version_snapshot_rejects_wrong_quality_rules_before_dispatch(self):
+        snapshot = dag.build_resolution_snapshot(
+            self.pack, self.script,
+            quality_rule_ids=("project_authority",),
+        )
+        mutations = [
+            lambda s: s["quality_rules"][0].update(check_id="unknown"),
+            lambda s: s["quality_rules"][0].update(stage_id="qa"),
+            lambda s: s["quality_rules"].clear(),
+            lambda s: s["quality_rules"].append(copy.deepcopy(s["quality_rules"][0])),
+        ]
+        for index, mutation in enumerate(mutations):
+            broken = copy.deepcopy(snapshot)
+            mutation(broken)
+            with self.subTest(index=index), self.assertRaises(dag.StageDagError):
+                codex.build_dispatch_plan(self.manifest(broken))
+
+    def test_current_version_snapshot_without_quality_rules_remains_dispatchable(self):
+        snapshot = {"type_pack": {
+            "medium_id": "picturebook", "version": "picturebook-v1",
+            "workflow_policy": "picturebook-v1",
+        }}
+        manifest = self.manifest(snapshot)
+        plan = codex.build_dispatch_plan(manifest)
+        self.assertNotIn("quality_rules", plan["resolution_snapshot"])
+
     def test_revision_deep_copies_snapshot_and_legacy_does_not_gain_fields(self):
         for typed in (True, False):
             manifest = self.manifest() if typed else dag._creation_template_manifest()

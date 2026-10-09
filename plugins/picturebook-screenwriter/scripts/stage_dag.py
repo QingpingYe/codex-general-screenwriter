@@ -43,6 +43,16 @@ def _compact_quality_rule(rule: QualityRuleDescriptor) -> dict:
         "validator": rule.validator,
     }
 
+
+def _expected_quality_rules(pack, artifact_id):
+    if artifact_id is None:
+        return []
+    return [
+        _compact_quality_rule(rule)
+        for rule in pack.quality_rules
+        if artifact_id in rule.artifact_ids
+    ]
+
 RUN_SCHEMA_V1 = "pb-stage-run-v1"
 RUN_SCHEMA = "pb-stage-run-v2"
 TASK_SCHEMA = "pb-stage-task-v1"
@@ -331,6 +341,24 @@ def assert_manifest_type_executable(manifest):
                 raise TypeRegistryError("历史 type pack 快照只读，执行前须重新解析当前版本")
             if locked.get("workflow_policy") is not None and locked["workflow_policy"] != pack.workflow_policy:
                 raise TypeRegistryError("resolution_snapshot workflow_policy 与当前 type pack 不一致")
+            if "quality_rules" in snapshot:
+                core_target = None
+                optional_target = None
+                workflow_data = snapshot.get("workflow")
+                if workflow_data is None:
+                    core_target = assert_core_artifact_target(pack, manifest["artifact_type"])
+                else:
+                    workflow = resolve_workflow(pack, workflow_data["workflow_id"])
+                    if manifest["artifact_type"] != workflow.workflow_id:
+                        optional_target = resolve_workflow_artifact(workflow, manifest["artifact_type"])
+                expected = _expected_quality_rules(
+                    pack,
+                    core_target.artifact_id if core_target is not None else (
+                        optional_target.artifact_id if optional_target is not None else None
+                    ),
+                )
+                if snapshot["quality_rules"] != expected:
+                    raise TypeRegistryError("resolution_snapshot quality_rules 与当前 type pack 不一致")
         stage_ids = {stage["stage_id"] for stage in manifest["stages"]}
         workflow_data = snapshot.get("workflow")
         if workflow_data is None:
