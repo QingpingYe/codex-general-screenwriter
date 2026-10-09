@@ -23,6 +23,12 @@ positioning 是简报输入，由 `brief_gate` 读取，不是该阶段生产的
 
 后续专项为知识库 schema v2、作用域继承与 AuthorityQuery/page_codec 迁移，不把 planned 媒介描述为已实现的完整流程。
 
+## Creative Workflow and Quality Gate v1
+
+带 context 的新 run 使用 `creative-workflow-v1` 由 `scripts/creative_run_builder.py` 从当前类型包解析核心阶段、负责人、门和产物目标。旧无 context run 继续走 `legacy_no_context_runs=picturebook_compatible` 路径。`shortdrama` 与 `tv_longform` 仍是 planned，不能派发。
+
+`quality-gate-v1` 只记录结构化检查、`hard_block`、`require_user_confirmation`、`advisory` 和 `informational` 的策略结果。质量报告只提供结构化证据，不执行验证器、不写文件、不得替代确认门。`hard_block` 失败阻断确认；`require_user_confirmation` 失败必须获得用户明确接受；advisory 只显示。确认门仍由主编处理，结果只能是 `approved`、`revision_requested` 或 `cancelled`。
+
 显式 context 派发使用当前类型包版本；历史快照只读，需新 run 重新解析后才能继续执行。插画运行须先由主编核实脚本来源，并在 `resolution_snapshot.workflow_inputs` 声明已批准脚本的引用；对用户明确提供的脚本则标记 `user_supplied` 和 `user_confirmation=true`。该声明不能代替对话中的真实用户确认。
 
 ## Workflow

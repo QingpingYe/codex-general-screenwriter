@@ -88,6 +88,15 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("不阻塞文字 run", text)
         self.assertIn("planned", text)
 
+    def test_entry_documents_type_pack_runs_and_quality_contract(self):
+        text = ENTRY_SKILL.read_text(encoding="utf-8")
+        self.assertIn("creative-workflow-v1", text)
+        self.assertIn("quality-gate-v1", text)
+        self.assertIn("hard_block", text)
+        self.assertIn("require_user_confirmation", text)
+        self.assertIn("质量报告只提供结构化证据", text)
+        self.assertIn("不得替代确认门", text)
+
     def test_stage_skill_documents_explicit_workflow_input_evidence(self):
         text = (ROOT / "skills" / "stage-orchestration" / "SKILL.md").read_text(encoding="utf-8")
         self.assertIn("workflow_inputs", text)

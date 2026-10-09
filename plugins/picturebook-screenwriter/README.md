@@ -16,6 +16,7 @@
 - `knowledge-loader`：只读检索多人协作飞书权威知识库
 - `feishu-knowledge-store`：正文内容权威、写后回读与远端租约
 - 通用创作上下文基础：注册媒介类型、题材与系列/项目标识，并兼容旧绘本运行记录
+- 通用创作 DAG 与质量门 v1：类型包解析核心阶段/负责人/门，快照携带质量规则，结构化报告区分阻断与确认风险
 - `lexile-check`：仅使用用户提供的实测结果
 
 ## 类型契约边界
@@ -23,6 +24,8 @@
 `picturebook` 是当前唯一可执行的媒介类型包，核心产物为 positioning、topic_plan、worldview、characters、outline、script；其中定位信息作为简报输入。shortdrama、tv_longform 仅为 planned 注册项，不支持创作派发。
 
 插画是独立可选插画工作流，输入要求已批准脚本；资产清单、结构化提示、图片与 HTML 预览都不属于文字核心阶段，也不阻塞文字 run 的确认或完成。旧绘本入口、run manifest 和产物标识继续兼容读取。显式上下文派发必须匹配当前类型包版本；历史快照只读。插画派发前需记录获批脚本或用户明确提供脚本的来源声明，不能把声明当作用户确认的替代。下一专项为知识库 schema v2、作用域继承和权威查询迁移。
+
+质量门 v1 是声明与报告契约：`hard_block` 失败阻断确认，`require_user_confirmation` 失败必须用户明确接受，`advisory` 只提示，`informational` 仅记录。报告本身不执行验证器、不写文件，也不替代确认门。
 
 ## 暂不支持
 

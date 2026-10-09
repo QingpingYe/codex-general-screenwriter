@@ -207,6 +207,37 @@ class PluginContractTests(unittest.TestCase):
             },
         )
 
+    def test_contract_declares_creative_workflow_and_quality_contract(self):
+        contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        self.assertEqual(
+            contract["creative_workflow"],
+            {
+                "schema_version": "creative-workflow-v1",
+                "run_builder": "scripts/creative_run_builder.py",
+                "runtime_source": "scripts/stage_dag.py",
+                "explicit_context_runs": "type_pack_resolved",
+                "legacy_no_context_runs": "picturebook_compatible",
+                "planned_medium_ids": ["shortdrama", "tv_longform"],
+            },
+        )
+        self.assertEqual(
+            contract["quality_gate_contract"],
+            {
+                "schema_version": "quality-gate-v1",
+                "blocking_policies": [
+                    "hard_block",
+                    "require_user_confirmation",
+                    "advisory",
+                    "informational",
+                ],
+                "result_statuses": [
+                    "pass", "warn", "fail", "skipped", "unknown",
+                ],
+                "executes_validators": False,
+                "confirmation_role": "report_only",
+            },
+        )
+
     def test_enforcement_matrix_documents_levels(self):
         text = ENFORCEMENT.read_text(encoding="utf-8")
         for level in ("runtime_required", "script_checked", "prompt_only"):

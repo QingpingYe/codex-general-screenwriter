@@ -16,6 +16,7 @@
 - Type-pack contract v1 separates core picturebook artifacts/stages from an optional illustration workflow; planned media are read-only and cannot dispatch.
 - New optional run snapshots record type-pack, target artifact, delivery form, and workflow selection while retaining old manifest/revision compatibility.
 - Knowledge loading now supports optional scope metadata and a task-to-global scope chain while keeping schema v1 pages readable.
+- General creative DAG and quality gate v1: full v1 packs declare runtime stage semantics; explicit-context runs are built from type packs; structured quality reports distinguish hard blockers from user-confirmation risks; dispatch snapshots enforce declared quality rules.
 
 ### Changed
 
