@@ -4,7 +4,11 @@
     {
       "medium_id": "picturebook",
       "version": "picturebook-v1",
-      "aliases": ["picture-book", "picture book", "绘本"],
+      "aliases": [
+        "picture-book",
+        "picture book",
+        "绘本"
+      ],
       "delivery_forms": [
         "positioning",
         "topic_plan",
@@ -20,225 +24,574 @@
       "artifact_types": [
         {
           "artifact_id": "positioning",
-          "aliases": ["brief-positioning"],
-          "delivery_forms": ["positioning"],
-          "stage_id": "brief_gate",
+          "aliases": [
+            "brief-positioning"
+          ],
+          "delivery_forms": [
+            "positioning"
+          ],
           "depends_on": [],
-          "required": true,
-          "validator": "positioning-v1",
+          "origin": "user_input",
+          "input_stage": "brief_gate",
+          "production_stage": null,
+          "validation_stages": [],
+          "validator": null,
           "exporter": null,
           "status": "active"
         },
         {
           "artifact_id": "topic_plan",
-          "aliases": ["topic-plan"],
-          "delivery_forms": ["topic_plan"],
-          "stage_id": "creation_delegate",
-          "depends_on": ["positioning"],
-          "required": true,
-          "validator": "topic-plan-v1",
+          "aliases": [
+            "topic-plan"
+          ],
+          "delivery_forms": [
+            "topic_plan"
+          ],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "creation_delegate",
+          "validation_stages": [
+            "preflight",
+            "qa"
+          ],
+          "validator": "pre_output-baseline",
           "exporter": null,
           "status": "active"
         },
         {
           "artifact_id": "worldview",
-          "aliases": ["world-building"],
-          "delivery_forms": ["worldview"],
-          "stage_id": "creation_delegate",
-          "depends_on": ["topic_plan"],
-          "required": true,
-          "validator": "worldview-v1",
+          "aliases": [
+            "world-building"
+          ],
+          "delivery_forms": [
+            "worldview"
+          ],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "creation_delegate",
+          "validation_stages": [
+            "preflight",
+            "qa"
+          ],
+          "validator": "pre_output-baseline",
           "exporter": null,
           "status": "active"
         },
         {
           "artifact_id": "characters",
-          "aliases": ["character-bible"],
-          "delivery_forms": ["characters"],
-          "stage_id": "creation_delegate",
-          "depends_on": ["worldview"],
-          "required": true,
-          "validator": "characters-v1",
+          "aliases": [
+            "character-bible"
+          ],
+          "delivery_forms": [
+            "characters"
+          ],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "creation_delegate",
+          "validation_stages": [
+            "preflight",
+            "qa"
+          ],
+          "validator": "pre_output-baseline",
           "exporter": null,
           "status": "active"
         },
         {
           "artifact_id": "outline",
-          "aliases": ["story-outline"],
-          "delivery_forms": ["outline"],
-          "stage_id": "creation_delegate",
-          "depends_on": ["characters"],
-          "required": true,
-          "validator": "outline-v1",
+          "aliases": [
+            "story-outline"
+          ],
+          "delivery_forms": [
+            "outline"
+          ],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "creation_delegate",
+          "validation_stages": [
+            "preflight",
+            "qa"
+          ],
+          "validator": "pre_output-baseline",
           "exporter": null,
           "status": "active"
         },
         {
           "artifact_id": "script",
-          "aliases": ["final-script"],
-          "delivery_forms": ["page_script"],
-          "stage_id": "creation_delegate",
-          "depends_on": ["outline"],
-          "required": true,
+          "aliases": [
+            "final-script"
+          ],
+          "delivery_forms": [
+            "page_script"
+          ],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "creation_delegate",
+          "validation_stages": [
+            "preflight",
+            "qa"
+          ],
           "validator": "craft-benchmark-check",
           "exporter": null,
-          "status": "active"
-        },
-        {
-          "artifact_id": "illustration_prompt_payload",
-          "aliases": ["illustration-prompts"],
-          "delivery_forms": ["illustration_prompt_payload"],
-          "stage_id": "creation_delegate",
-          "depends_on": ["script"],
-          "required": false,
-          "validator": "image-prompt-architect",
-          "exporter": null,
-          "status": "active"
-        },
-        {
-          "artifact_id": "image_asset",
-          "aliases": ["illustration-assets"],
-          "delivery_forms": ["image_asset"],
-          "stage_id": "persistence",
-          "depends_on": ["illustration_prompt_payload"],
-          "required": false,
-          "validator": null,
-          "exporter": "image-generate",
-          "status": "active"
-        },
-        {
-          "artifact_id": "asset_registry",
-          "aliases": ["assets"],
-          "delivery_forms": ["asset_registry"],
-          "stage_id": "persistence",
-          "depends_on": ["image_asset"],
-          "required": false,
-          "validator": null,
-          "exporter": "illustration-export",
-          "status": "active"
-        },
-        {
-          "artifact_id": "html_preview",
-          "aliases": ["preview"],
-          "delivery_forms": ["html_preview"],
-          "stage_id": "knowledge_reminder",
-          "depends_on": ["asset_registry"],
-          "required": false,
-          "validator": null,
-          "exporter": "illustration-export",
           "status": "active"
         }
       ],
       "stages": [
         {
           "stage_id": "session_init",
-          "aliases": ["intake"],
+          "aliases": [
+            "intake"
+          ],
           "depends_on": [],
-          "artifact_ids": [],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
           "confirmation_required": false,
           "status": "active"
         },
         {
           "stage_id": "brief_gate",
-          "aliases": ["briefing"],
-          "depends_on": ["session_init"],
-          "artifact_ids": ["positioning"],
-          "confirmation_required": true,
+          "aliases": [
+            "briefing"
+          ],
+          "depends_on": [
+            "session_init"
+          ],
+          "consumes_artifact_ids": [
+            "positioning"
+          ],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
           "status": "active"
         },
         {
           "stage_id": "knowledge_load",
-          "aliases": ["authority-knowledge"],
-          "depends_on": ["session_init"],
-          "artifact_ids": [],
+          "aliases": [
+            "authority-knowledge"
+          ],
+          "depends_on": [
+            "session_init"
+          ],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
           "confirmation_required": false,
           "status": "active"
         },
         {
           "stage_id": "creation_delegate",
-          "aliases": ["drafting"],
-          "depends_on": ["brief_gate", "knowledge_load"],
-          "artifact_ids": ["topic_plan", "worldview", "characters", "outline", "script", "illustration_prompt_payload"],
+          "aliases": [
+            "drafting"
+          ],
+          "depends_on": [
+            "brief_gate",
+            "knowledge_load"
+          ],
+          "consumes_artifact_ids": [
+            "positioning",
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
+          "produces_artifact_ids": [
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
+          "validates_artifact_ids": [],
           "confirmation_required": false,
           "status": "active"
         },
         {
           "stage_id": "preflight",
-          "aliases": ["pre-output"],
-          "depends_on": ["creation_delegate"],
-          "artifact_ids": ["script"],
+          "aliases": [
+            "pre-output"
+          ],
+          "depends_on": [
+            "creation_delegate"
+          ],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
           "confirmation_required": false,
           "status": "active"
         },
         {
           "stage_id": "collision_check",
-          "aliases": ["knowledge-collision"],
-          "depends_on": ["creation_delegate"],
-          "artifact_ids": [],
+          "aliases": [
+            "knowledge-collision"
+          ],
+          "depends_on": [
+            "creation_delegate"
+          ],
+          "consumes_artifact_ids": [
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
           "confirmation_required": false,
           "status": "active"
         },
         {
           "stage_id": "qa",
-          "aliases": ["quality"],
-          "depends_on": ["preflight", "collision_check"],
-          "artifact_ids": ["script"],
+          "aliases": [
+            "quality"
+          ],
+          "depends_on": [
+            "preflight",
+            "collision_check"
+          ],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
           "confirmation_required": false,
           "status": "active"
         },
         {
           "stage_id": "qa_synthesis",
-          "aliases": ["quality-synthesis"],
-          "depends_on": ["qa"],
-          "artifact_ids": [],
+          "aliases": [
+            "quality-synthesis"
+          ],
+          "depends_on": [
+            "qa"
+          ],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
           "confirmation_required": false,
           "status": "active"
         },
         {
           "stage_id": "confirmation_gate",
-          "aliases": ["confirmation"],
-          "depends_on": ["qa_synthesis"],
-          "artifact_ids": [],
+          "aliases": [
+            "confirmation"
+          ],
+          "depends_on": [
+            "qa_synthesis"
+          ],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
           "confirmation_required": true,
           "status": "active"
         },
         {
           "stage_id": "persistence",
-          "aliases": ["save"],
-          "depends_on": ["confirmation_gate"],
-          "artifact_ids": ["image_asset", "asset_registry"],
+          "aliases": [
+            "save"
+          ],
+          "depends_on": [
+            "confirmation_gate"
+          ],
+          "consumes_artifact_ids": [
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
           "confirmation_required": false,
           "status": "active"
         },
         {
           "stage_id": "knowledge_reminder",
-          "aliases": ["landing"],
-          "depends_on": ["persistence"],
-          "artifact_ids": ["html_preview"],
+          "aliases": [
+            "landing"
+          ],
+          "depends_on": [
+            "persistence"
+          ],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
           "confirmation_required": false,
           "status": "active"
         }
       ],
       "workflow_policy": "picturebook-v1",
       "validators": [
-        "positioning-v1",
-        "topic-plan-v1",
-        "worldview-v1",
-        "characters-v1",
-        "outline-v1",
+        "pre_output-baseline",
+        "quality-baseline",
         "craft-benchmark-check",
         "image-prompt-architect"
       ],
-      "exporters": ["image-generate", "illustration-export"],
-      "capabilities": ["illustration", "asset-export", "html-preview"],
+      "exporters": [
+        "illustration-export"
+      ],
+      "capabilities": [
+        "illustration",
+        "asset-export",
+        "html-preview"
+      ],
       "status": "active",
-      "legacy_aliases": ["picturebook-screenwriter"]
+      "legacy_aliases": [
+        "picturebook-screenwriter"
+      ],
+      "optional_workflows": [
+        {
+          "workflow_id": "illustration",
+          "trigger_intent": "illustration",
+          "inputs": [
+            {
+              "artifact_id": "script",
+              "required_status": "approved"
+            }
+          ],
+          "artifact_types": [
+            {
+              "artifact_id": "asset_registry",
+              "aliases": [
+                "assets"
+              ],
+              "delivery_forms": [
+                "asset_registry"
+              ],
+              "depends_on": [
+                "script"
+              ],
+              "origin": "workflow_output",
+              "input_stage": null,
+              "production_stage": "asset_extraction",
+              "validation_stages": [
+                "asset_confirmation"
+              ],
+              "validator": null,
+              "exporter": "illustration-export",
+              "status": "active"
+            },
+            {
+              "artifact_id": "illustration_prompt_payload",
+              "aliases": [
+                "illustration-prompts"
+              ],
+              "delivery_forms": [
+                "illustration_prompt_payload"
+              ],
+              "depends_on": [
+                "asset_registry",
+                "script"
+              ],
+              "origin": "workflow_output",
+              "input_stage": null,
+              "production_stage": "asset_preproduction",
+              "validation_stages": [
+                "asset_final_confirmation"
+              ],
+              "validator": "image-prompt-architect",
+              "exporter": null,
+              "status": "active"
+            },
+            {
+              "artifact_id": "image_asset",
+              "aliases": [
+                "illustration-assets"
+              ],
+              "delivery_forms": [
+                "image_asset"
+              ],
+              "depends_on": [
+                "illustration_prompt_payload"
+              ],
+              "origin": "workflow_output",
+              "input_stage": null,
+              "production_stage": "illustration_generation",
+              "validation_stages": [],
+              "validator": null,
+              "exporter": null,
+              "status": "active"
+            },
+            {
+              "artifact_id": "html_preview",
+              "aliases": [
+                "preview"
+              ],
+              "delivery_forms": [
+                "html_preview"
+              ],
+              "depends_on": [
+                "image_asset",
+                "asset_registry"
+              ],
+              "origin": "workflow_output",
+              "input_stage": null,
+              "production_stage": "html_export",
+              "validation_stages": [],
+              "validator": null,
+              "exporter": "illustration-export",
+              "status": "active"
+            }
+          ],
+          "stages": [
+            {
+              "stage_id": "illustration_init",
+              "aliases": [],
+              "depends_on": [],
+              "consumes_artifact_ids": [
+                "script"
+              ],
+              "produces_artifact_ids": [],
+              "validates_artifact_ids": [],
+              "confirmation_required": false,
+              "status": "active"
+            },
+            {
+              "stage_id": "asset_extraction",
+              "aliases": [],
+              "depends_on": [
+                "illustration_init"
+              ],
+              "consumes_artifact_ids": [
+                "script"
+              ],
+              "produces_artifact_ids": [
+                "asset_registry"
+              ],
+              "validates_artifact_ids": [],
+              "confirmation_required": false,
+              "status": "active"
+            },
+            {
+              "stage_id": "asset_confirmation",
+              "aliases": [],
+              "depends_on": [
+                "asset_extraction"
+              ],
+              "consumes_artifact_ids": [
+                "asset_registry"
+              ],
+              "produces_artifact_ids": [],
+              "validates_artifact_ids": [
+                "asset_registry"
+              ],
+              "confirmation_required": true,
+              "status": "active"
+            },
+            {
+              "stage_id": "asset_preproduction",
+              "aliases": [],
+              "depends_on": [
+                "asset_confirmation"
+              ],
+              "consumes_artifact_ids": [
+                "script",
+                "asset_registry"
+              ],
+              "produces_artifact_ids": [
+                "illustration_prompt_payload"
+              ],
+              "validates_artifact_ids": [],
+              "confirmation_required": false,
+              "status": "active"
+            },
+            {
+              "stage_id": "asset_final_confirmation",
+              "aliases": [],
+              "depends_on": [
+                "asset_preproduction"
+              ],
+              "consumes_artifact_ids": [
+                "illustration_prompt_payload"
+              ],
+              "produces_artifact_ids": [],
+              "validates_artifact_ids": [
+                "illustration_prompt_payload"
+              ],
+              "confirmation_required": true,
+              "status": "active"
+            },
+            {
+              "stage_id": "illustration_generation",
+              "aliases": [],
+              "depends_on": [
+                "asset_final_confirmation"
+              ],
+              "consumes_artifact_ids": [
+                "illustration_prompt_payload",
+                "asset_registry"
+              ],
+              "produces_artifact_ids": [
+                "image_asset"
+              ],
+              "validates_artifact_ids": [],
+              "confirmation_required": false,
+              "status": "active"
+            },
+            {
+              "stage_id": "html_export",
+              "aliases": [],
+              "depends_on": [
+                "illustration_generation"
+              ],
+              "consumes_artifact_ids": [
+                "image_asset",
+                "asset_registry"
+              ],
+              "produces_artifact_ids": [
+                "html_preview"
+              ],
+              "validates_artifact_ids": [],
+              "confirmation_required": false,
+              "status": "active"
+            },
+            {
+              "stage_id": "illustration_delivery",
+              "aliases": [],
+              "depends_on": [
+                "html_export"
+              ],
+              "consumes_artifact_ids": [
+                "image_asset",
+                "html_preview",
+                "asset_registry"
+              ],
+              "produces_artifact_ids": [],
+              "validates_artifact_ids": [],
+              "confirmation_required": false,
+              "status": "active"
+            }
+          ],
+          "required": false,
+          "blocks_core_completion": false
+        }
+      ]
     },
     {
       "medium_id": "film",
       "version": "film-v1",
-      "aliases": ["movie", "电影"],
-      "delivery_forms": ["screenplay"],
+      "aliases": [
+        "movie",
+        "电影"
+      ],
+      "delivery_forms": [
+        "screenplay"
+      ],
       "artifact_types": [],
       "stages": [],
       "workflow_policy": "film-v1",
@@ -246,13 +599,19 @@
       "exporters": [],
       "capabilities": [],
       "status": "planned",
-      "legacy_aliases": []
+      "legacy_aliases": [],
+      "optional_workflows": []
     },
     {
       "medium_id": "shortdrama",
       "version": "shortdrama-v1",
-      "aliases": ["short-drama", "短剧"],
-      "delivery_forms": ["episode_script"],
+      "aliases": [
+        "short-drama",
+        "短剧"
+      ],
+      "delivery_forms": [
+        "episode_script"
+      ],
       "artifact_types": [],
       "stages": [],
       "workflow_policy": "shortdrama-v1",
@@ -260,13 +619,19 @@
       "exporters": [],
       "capabilities": [],
       "status": "planned",
-      "legacy_aliases": []
+      "legacy_aliases": [],
+      "optional_workflows": []
     },
     {
       "medium_id": "tv_longform",
       "version": "tv_longform-v1",
-      "aliases": ["long-form-tv", "长篇连续剧"],
-      "delivery_forms": ["season_episode_script"],
+      "aliases": [
+        "long-form-tv",
+        "长篇连续剧"
+      ],
+      "delivery_forms": [
+        "season_episode_script"
+      ],
       "artifact_types": [],
       "stages": [],
       "workflow_policy": "tv_longform-v1",
@@ -274,7 +639,8 @@
       "exporters": [],
       "capabilities": [],
       "status": "planned",
-      "legacy_aliases": []
+      "legacy_aliases": [],
+      "optional_workflows": []
     }
   ]
 }

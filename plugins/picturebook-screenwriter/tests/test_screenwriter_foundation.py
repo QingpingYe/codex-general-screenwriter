@@ -31,6 +31,24 @@ class ScreenwriterFoundationIntegrationTests(unittest.TestCase):
             manifest, "confirmation_gate", "done", outcome=outcome
         )
 
+    def test_text_only_core_completes_without_optional_illustration_work(self):
+        pack = resolve_type_pack(load_type_registry(), "picturebook")
+        self.assertEqual(len(pack.optional_workflows), 1)
+        workflow = pack.optional_workflows[0]
+        self.assertFalse(workflow.required)
+        self.assertFalse(workflow.blocks_core_completion)
+        manifest = stage_dag._creation_template_manifest()
+        optional_ids = {stage.stage_id for stage in workflow.stages}
+        self.assertTrue(optional_ids.isdisjoint(stage["stage_id"] for stage in manifest["stages"]))
+        manifest = self._fast_forward(manifest, [
+            "session_init", "brief_gate", "knowledge_load", "creation_delegate",
+            "preflight", "collision_check", "qa", "qa_synthesis",
+        ])
+        manifest = self._complete_confirmation(manifest, "approved")
+        manifest = self._fast_forward(manifest, ["persistence", "knowledge_reminder"])
+        completed = stage_dag.finalize_run(manifest, "approved")
+        self.assertEqual((completed["status"], completed["outcome"]), ("completed", "approved"))
+
     def test_registry_context_dispatch_and_revision_compatibility(self):
         registry = load_type_registry(ROOT / "config" / "type-packs.json")
         film = resolve_type_pack(registry, "film")
