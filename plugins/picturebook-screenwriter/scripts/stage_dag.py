@@ -27,10 +27,21 @@ from screenwriter_context import (
 
 from type_registry import (
     ArtifactDescriptor, TypePackDescriptor, WorkflowContract, TypeRegistryError,
+    BLOCKING_POLICIES, QualityRuleDescriptor,
     default_type_registry, resolve_type_pack, resolve_artifact, resolve_workflow,
     resolve_workflow_artifact, resolve_stage, validate_type_contract,
     assert_core_artifact_target, assert_type_pack_executable, TypePackNotExecutableError,
 )
+
+
+def _compact_quality_rule(rule: QualityRuleDescriptor) -> dict:
+    return {
+        "check_id": rule.check_id,
+        "artifact_ids": list(rule.artifact_ids),
+        "stage_id": rule.stage_id,
+        "blocking_policy": rule.blocking_policy,
+        "validator": rule.validator,
+    }
 
 RUN_SCHEMA_V1 = "pb-stage-run-v1"
 RUN_SCHEMA = "pb-stage-run-v2"
@@ -107,6 +118,7 @@ def build_resolution_snapshot(
     artifact: ArtifactDescriptor | None = None,
     workflow: WorkflowContract | None = None,
     *, delivery_form: str | None = None,
+    quality_rule_ids: list[str] | None = None,
     workflow_inputs: list[dict] | None = None,
 ) -> dict:
     """Build metadata only; do not start workflows or mutate a registry."""
@@ -140,6 +152,19 @@ def build_resolution_snapshot(
             snapshot["artifact"] = {"artifact_id": artifact.artifact_id, "delivery_form": delivery_form}
         elif delivery_form is not None:
             raise TypeRegistryError("没有 artifact 时不得指定 delivery_form")
+        if quality_rule_ids is not None:
+            if artifact is None:
+                raise TypeRegistryError("quality_rules 必须与 artifact 一起选择")
+            rules = {rule.check_id: rule for rule in type_pack.quality_rules}
+            selected = []
+            for rule_id in quality_rule_ids:
+                rule = rules.get(rule_id)
+                if rule is None or artifact.artifact_id not in rule.artifact_ids:
+                    raise TypeRegistryError(
+                        f"quality rule {rule_id!r} 不适用于 artifact {artifact.artifact_id!r}"
+                    )
+                selected.append(_compact_quality_rule(rule))
+            snapshot["quality_rules"] = selected
         if workflow_inputs is not None:
             if workflow is None:
                 raise TypeRegistryError("workflow_inputs 必须与 workflow 一起提供")
@@ -153,7 +178,7 @@ def _validate_resolution_snapshot(snapshot, context, errors, artifact_type=None)
     if not isinstance(snapshot, dict) or any(not isinstance(k, str) for k in snapshot):
         errors.append("resolution_snapshot 必须是字符串键对象")
         return
-    unknown = set(snapshot) - {"type_pack", "knowledge", "skills", "artifact", "workflow", "workflow_inputs"}
+    unknown = set(snapshot) - {"type_pack", "knowledge", "skills", "artifact", "workflow", "workflow_inputs", "quality_rules"}
     if unknown:
         errors.append("resolution_snapshot 包含未知字段：" + ", ".join(sorted(unknown)))
     start_errors = len(errors)
@@ -205,6 +230,31 @@ def _validate_resolution_snapshot(snapshot, context, errors, artifact_type=None)
                     errors.append(f"{label} 用户提供脚本须有明确确认")
                 if "user_confirmation" in entry and type(entry["user_confirmation"]) is not bool:
                     errors.append(f"{label}.user_confirmation 必须是布尔值")
+    if "quality_rules" in snapshot:
+        rules = snapshot["quality_rules"]
+        if not isinstance(rules, list):
+            errors.append("resolution_snapshot.quality_rules 必须是数组")
+        else:
+            seen_rules = set()
+            for index, rule in enumerate(rules):
+                label = f"resolution_snapshot.quality_rules[{index}]"
+                fields = {"check_id", "artifact_ids", "stage_id", "blocking_policy", "validator"}
+                if not isinstance(rule, dict) or set(rule) != fields:
+                    errors.append(f"{label} 包含缺失或未知字段")
+                    continue
+                _require_nonempty_str(rule["check_id"], f"{label}.check_id", errors)
+                _require_nonempty_str(rule["stage_id"], f"{label}.stage_id", errors)
+                _require_nonempty_str(rule["blocking_policy"], f"{label}.blocking_policy", errors)
+                if rule["blocking_policy"] not in BLOCKING_POLICIES:
+                    errors.append(f"{label}.blocking_policy 无效")
+                ids = rule["artifact_ids"]
+                if not isinstance(ids, list) or not ids or any(not isinstance(item, str) or not item.strip() for item in ids):
+                    errors.append(f"{label}.artifact_ids 必须是非空字符串数组")
+                if rule["validator"] is not None:
+                    _require_nonempty_str(rule["validator"], f"{label}.validator", errors)
+                if rule["check_id"] in seen_rules:
+                    errors.append(f"{label}.check_id 重复")
+                seen_rules.add(rule["check_id"])
     if len(errors) != start_errors or context is None:
         return
     artifact_data = snapshot.get("artifact")
@@ -237,6 +287,13 @@ def _validate_resolution_snapshot(snapshot, context, errors, artifact_type=None)
                         if workflow is not None else resolve_artifact(pack, artifact_data["artifact_id"]))
             if artifact_data["delivery_form"] not in artifact.delivery_forms:
                 errors.append("snapshot delivery_form 不属于 artifact 契约")
+            expected_rules = [
+                _compact_quality_rule(rule)
+                for rule in pack.quality_rules
+                if artifact.artifact_id in rule.artifact_ids
+            ]
+            if "quality_rules" in snapshot and snapshot["quality_rules"] != expected_rules:
+                errors.append("resolution_snapshot.quality_rules 与当前同版本 type pack 不一致")
     except TypeRegistryError as error:
         errors.append(f"resolution_snapshot 引用无效：{error}")
 

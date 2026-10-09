@@ -52,6 +52,29 @@ class TypePackSnapshotTests(unittest.TestCase):
         self.assertEqual(optional["artifact"], dict(artifact_id="html_preview", delivery_form="html_preview"))
         self.assertNotIn("artifact", dag.build_resolution_snapshot(self.pack))
 
+    def test_snapshot_records_selected_quality_rules(self):
+        snapshot = dag.build_resolution_snapshot(
+            self.pack, self.script,
+            quality_rule_ids=("project_authority", "knowledge_collision", "craft_benchmark"),
+        )
+        self.assertEqual(
+            [(rule["check_id"], rule["stage_id"], rule["blocking_policy"])
+             for rule in snapshot["quality_rules"]],
+            [
+                ("project_authority", "preflight", "hard_block"),
+                ("knowledge_collision", "collision_check", "hard_block"),
+                ("craft_benchmark", "qa", "require_user_confirmation"),
+            ],
+        )
+        for rule in snapshot["quality_rules"]:
+            self.assertIn("script", rule["artifact_ids"])
+
+    def test_snapshot_rejects_unknown_quality_rules(self):
+        with self.assertRaises(dag.StageDagError):
+            dag.build_resolution_snapshot(
+                self.pack, self.script, quality_rule_ids=("unknown",)
+            )
+
     def test_builder_rejects_foreign_or_input_only_descriptors(self):
         shortdrama = resolve_type_pack(load_type_registry(), "shortdrama")
         for pack, artifact, workflow in ((shortdrama, self.script, None),
@@ -86,6 +109,23 @@ class TypePackSnapshotTests(unittest.TestCase):
         with self.assertRaises(dag.StageDagError):
             dag.attach_context(dag._creation_template_manifest(),
                                CreativeContext("picturebook", project_id="p1", delivery_form="outline"), base)
+
+    def test_manifest_rejects_malformed_current_version_quality_rules(self):
+        snapshot = dag.build_resolution_snapshot(
+            self.pack, self.script,
+            quality_rule_ids=("project_authority",),
+        )
+        mutations = [
+            lambda s: s["quality_rules"][0].update(check_id="unknown"),
+            lambda s: s["quality_rules"][0].update(stage_id="qa"),
+            lambda s: s["quality_rules"][0].update(blocking_policy="silent"),
+            lambda s: s["quality_rules"].clear(),
+        ]
+        for index, mutation in enumerate(mutations):
+            broken = copy.deepcopy(snapshot)
+            mutation(broken)
+            with self.subTest(index=index), self.assertRaises(dag.StageDagError):
+                self.manifest(broken)
 
     def test_optional_workflow_snapshot_uses_separate_illustration_run(self):
         html = resolve_workflow_artifact(self.workflow, "html_preview")

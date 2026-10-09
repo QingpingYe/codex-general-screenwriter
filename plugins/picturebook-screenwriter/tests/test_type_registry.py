@@ -52,6 +52,16 @@ def with_runtime_semantics(payload):
     return payload
 
 
+def quality_rule(**kwargs):
+    result = dict(
+        check_id="project_authority", artifact_ids=["script"],
+        stage_id="qa", blocking_policy="hard_block",
+        validator=None,
+    )
+    result.update(kwargs)
+    return result
+
+
 def valid_payload():
     return {"schema_version": 1, "packs": [dict(
         medium_id="demo", version="demo-v1", aliases=[], legacy_aliases=[],
@@ -240,6 +250,41 @@ class TypeRegistryTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(tr.TypeRegistryError):
                 tr.parse_type_registry(payload)
             target[field] = saved
+
+    def test_picturebook_declares_seed_quality_rules(self):
+        pack = tr.resolve_type_pack(tr.load_type_registry(), "picturebook")
+        self.assertEqual(
+            [(r.check_id, r.stage_id, r.blocking_policy) for r in pack.quality_rules],
+            [
+                ("project_authority", "preflight", "hard_block"),
+                ("knowledge_collision", "collision_check", "hard_block"),
+                ("craft_benchmark", "qa", "require_user_confirmation"),
+            ],
+        )
+
+    def test_quality_rules_validate_pack_references(self):
+        payload = valid_payload()
+        payload["packs"][0]["quality_rules"] = [quality_rule()]
+        tr.parse_type_registry(payload)
+        duplicate = valid_payload()
+        duplicate["packs"][0]["quality_rules"] = [
+            quality_rule(check_id="same"), quality_rule(check_id="same"),
+        ]
+        with self.assertRaises(tr.TypeRegistryError):
+            tr.parse_type_registry(duplicate)
+        mutations = [
+            lambda p: p["quality_rules"][0].update(artifact_ids=["unknown"]),
+            lambda p: p["quality_rules"][0].update(artifact_ids=["brief"]),
+            lambda p: p["quality_rules"][0].update(stage_id="draft"),
+            lambda p: p["quality_rules"][0].update(validator="unregistered"),
+            lambda p: p["quality_rules"][0].update(blocking_policy="silent"),
+        ]
+        for index, mutation in enumerate(mutations):
+            payload = valid_payload()
+            payload["packs"][0]["quality_rules"] = [quality_rule()]
+            mutation(payload["packs"][0])
+            with self.subTest(index=index), self.assertRaises(tr.TypeRegistryError):
+                tr.parse_type_registry(payload)
         for value in (None, [], "bad"):
             payload = valid_payload()
             payload["packs"][0]["status"] = value

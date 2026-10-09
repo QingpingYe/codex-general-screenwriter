@@ -77,6 +77,18 @@ class StageContract:
 
 
 @dataclass(frozen=True)
+class QualityRuleDescriptor:
+    check_id: str
+    artifact_ids: tuple[str, ...]
+    stage_id: str
+    blocking_policy: str
+    validator: str | None = None
+
+    def __post_init__(self):
+        _freeze_sequences(self, ("artifact_ids",))
+
+
+@dataclass(frozen=True)
 class WorkflowInputRequirement:
     artifact_id: str
     required_status: str
@@ -111,12 +123,14 @@ class TypePackDescriptor:
     exporters: tuple[str, ...] = ()
     capabilities: tuple[str, ...] = ()
     optional_workflows: tuple[WorkflowContract, ...] = ()
+    quality_rules: tuple[QualityRuleDescriptor, ...] = ()
     contract_schema: str = "type-pack-contract-v1"
 
     def __post_init__(self):
         _freeze_sequences(self, (
             "aliases", "delivery_forms", "artifact_types", "legacy_aliases",
-            "stages", "validators", "exporters", "capabilities", "optional_workflows",
+            "stages", "validators", "exporters", "capabilities",
+            "optional_workflows", "quality_rules",
         ))
 
     @property
@@ -135,11 +149,17 @@ class TypeRegistry:
 
 _REGISTRY_PATH = Path(__file__).resolve().parents[1] / "config" / "type-packs.json"
 _PACK_REQUIRED = {"medium_id", "aliases", "delivery_forms", "artifact_types", "workflow_policy", "status"}
-_PACK_OPTIONAL = {"legacy_aliases", "version", "stages", "validators", "exporters", "capabilities", "optional_workflows"}
+_PACK_OPTIONAL = {
+    "legacy_aliases", "version", "stages", "validators", "exporters",
+    "capabilities", "optional_workflows", "quality_rules",
+}
 _ARTIFACT_FIELDS = set(ArtifactDescriptor.__dataclass_fields__)
 _STAGE_FIELDS = set(StageContract.__dataclass_fields__)
 _STAGE_OPTIONAL = {"stage_type", "owner"}
 _WORKFLOW_FIELDS = set(WorkflowContract.__dataclass_fields__)
+BLOCKING_POLICIES = {
+    "hard_block", "require_user_confirmation", "advisory", "informational",
+}
 STAGE_TYPES = {
     "session_init", "brief_gate", "knowledge_load", "delegation", "creation",
     "validation", "synthesis", "confirmation", "persistence", "export",
@@ -258,6 +278,17 @@ def _parse_workflow(raw, label):
         stages=_objects(raw["stages"], f"{label}.stages", _parse_stage, StageContractError),
         required=_boolean(raw["required"], f"{label}.required", WorkflowContractError),
         blocks_core_completion=_boolean(raw["blocks_core_completion"], f"{label}.blocks_core_completion", WorkflowContractError),
+    )
+
+
+def _parse_quality_rule(raw, label):
+    _object(raw, set(QualityRuleDescriptor.__dataclass_fields__), set(), label, TypeRegistryError)
+    return QualityRuleDescriptor(
+        check_id=_text(raw["check_id"], f"{label}.check_id", TypeRegistryError),
+        artifact_ids=_strings(raw["artifact_ids"], f"{label}.artifact_ids", TypeRegistryError, empty=False),
+        stage_id=_text(raw["stage_id"], f"{label}.stage_id", TypeRegistryError),
+        blocking_policy=_text(raw["blocking_policy"], f"{label}.blocking_policy", TypeRegistryError),
+        validator=_nullable_text(raw["validator"], f"{label}.validator", TypeRegistryError),
     )
 
 
@@ -405,6 +436,40 @@ def validate_type_contract(pack: TypePackDescriptor) -> TypePackDescriptor:
         raise TypeRegistryError(f"type pack {pack.medium_id} 的 active v1 包必须有核心产物和阶段")
     for stage in pack.stages:
         _validate_stage_runtime(pack, stage)
+    amap = {artifact.artifact_id: artifact for artifact in pack.artifact_types}
+    smap = {stage.stage_id: stage for stage in pack.stages}
+    if len({rule.check_id for rule in pack.quality_rules}) != len(pack.quality_rules):
+        duplicate = next(
+            rule.check_id
+            for rule in pack.quality_rules
+            if [item.check_id for item in pack.quality_rules].count(rule.check_id) > 1
+        )
+        raise TypeRegistryError(f"type pack {pack.medium_id} quality rule 重复：{duplicate!r}")
+    for rule in pack.quality_rules:
+        if rule.blocking_policy not in BLOCKING_POLICIES:
+            raise TypeRegistryError(
+                f"type pack {pack.medium_id} quality rule {rule.check_id!r} blocking_policy 无效：{rule.blocking_policy!r}"
+            )
+        stage = smap.get(rule.stage_id)
+        if stage is None:
+            raise TypeRegistryError(
+                f"type pack {pack.medium_id} quality rule {rule.check_id!r} 引用未知 stage：{rule.stage_id!r}"
+            )
+        for artifact_id in rule.artifact_ids:
+            artifact = amap.get(artifact_id)
+            if artifact is None or artifact.origin != "workflow_output" or artifact.status != "active":
+                raise TypeRegistryError(
+                    f"type pack {pack.medium_id} quality rule {rule.check_id!r} 引用非核心输出 artifact：{artifact_id!r}"
+                )
+            if (artifact_id not in stage.validates_artifact_ids and
+                    artifact_id not in stage.consumes_artifact_ids):
+                raise TypeRegistryError(
+                    f"type pack {pack.medium_id} quality rule {rule.check_id!r} 的 stage {stage.stage_id!r} 不读取 artifact {artifact_id!r}"
+                )
+        if rule.validator is not None and rule.validator not in pack.validators:
+            raise TypeRegistryError(
+                f"type pack {pack.medium_id} quality rule {rule.check_id!r} validator 未注册：{rule.validator!r}"
+            )
     _validate_scope(pack, pack.artifact_types, pack.stages)
     if pack.status == "active" and any(stage.status != "active" for stage in pack.stages):
         raise StageContractError(f"type pack {pack.medium_id} 的必需核心阶段必须全部 active")
@@ -486,6 +551,7 @@ def parse_type_registry(payload: Any) -> TypeRegistry:
             exporters=_strings(raw.get("exporters", []), f"{label}.exporters"),
             capabilities=_strings(raw.get("capabilities", []), f"{label}.capabilities"),
             optional_workflows=_objects(raw.get("optional_workflows", []), f"{label}.workflows", _parse_workflow, WorkflowContractError),
+            quality_rules=_objects(raw.get("quality_rules", []), f"{label}.quality_rules", _parse_quality_rule, TypeRegistryError),
             contract_schema=schema,
         )
         packs.append(validate_type_contract(pack))

@@ -7,7 +7,7 @@ ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from type_registry import (
-    ArtifactDescriptor, StageContract, TypePackDescriptor,
+    ArtifactDescriptor, QualityRuleDescriptor, StageContract, TypePackDescriptor,
     WorkflowInputRequirement, WorkflowContract, parse_type_registry,
 )
 
@@ -92,6 +92,18 @@ class TypeContractModelTests(unittest.TestCase):
         capabilities.clear()
         self.assertEqual(pack.capabilities, ("illustration",))
         self.assertEqual(pack.optional_workflows, ())
+
+    def test_quality_rule_descriptors_are_immutable_and_isolated(self):
+        artifacts = ["script"]
+        rule = QualityRuleDescriptor(
+            check_id="project_authority", artifact_ids=artifacts,
+            stage_id="preflight", blocking_policy="hard_block",
+            validator="pre_output-baseline",
+        )
+        artifacts.append("outline")
+        self.assertEqual(rule.artifact_ids, ("script",))
+        with self.assertRaises(FrozenInstanceError):
+            rule.blocking_policy = "advisory"
 
 
 if __name__ == "__main__":
