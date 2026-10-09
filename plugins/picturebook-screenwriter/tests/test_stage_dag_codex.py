@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 import stage_dag
 import stage_dag_codex
+from screenwriter_context import CreativeContext
 
 
 class StageDagCodexAdapterTest(unittest.TestCase):
@@ -96,6 +97,31 @@ class StageDagCodexAdapterTest(unittest.TestCase):
             }],
         )
 
+    def test_dispatch_plan_exposes_validated_context(self):
+        manifest = stage_dag.attach_context(
+            stage_dag._creation_template_manifest(),
+            CreativeContext("film", ("mystery",), project_id="p1"),
+            {"type_pack": {"medium_id": "film", "version": "0.1.0"}},
+        )
+        plan = stage_dag_codex.build_dispatch_plan(manifest)
+        self.assertEqual(plan["context"]["medium_id"], "film")
+        self.assertEqual(
+            plan["resolution_snapshot"]["type_pack"]["medium_id"],
+            "film",
+        )
+
+    def test_task_envelope_deep_copies_context(self):
+        manifest = stage_dag.attach_context(
+            stage_dag._creation_template_manifest(),
+            CreativeContext("picturebook", project_id="p1"),
+            {"type_pack": {"medium_id": "picturebook", "version": "0.5.1"}},
+        )
+        task = stage_dag_codex.format_task_envelope(
+            manifest, manifest["stages"][1]
+        )
+        task["inputs"]["run_context"]["creative_context"]["medium_id"] = "film"
+        self.assertEqual(manifest["context"]["medium_id"], "picturebook")
+
     def test_format_task_envelope_validates(self):
         manifest = stage_dag._creation_template_manifest()
         stage = manifest["stages"][1]
@@ -114,6 +140,17 @@ class StageDagCodexAdapterTest(unittest.TestCase):
                 "iteration": manifest["iteration"],
                 "revision_feedback": manifest["revision_feedback"],
                 "source_artifact_ref": manifest["source_artifact_ref"],
+                "creative_context": {
+                    "medium_id": "picturebook",
+                    "genre_ids": [],
+                    "series_id": None,
+                    "project_id": None,
+                    "season_id": None,
+                    "episode_id": None,
+                    "scene_id": None,
+                    "delivery_form": None,
+                },
+                "resolution_snapshot": None,
             },
         )
 

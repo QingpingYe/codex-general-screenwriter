@@ -16,6 +16,14 @@ from argparse import ArgumentParser
 from dataclasses import dataclass
 from typing import Literal
 
+from screenwriter_context import (
+    ContextError,
+    CreativeContext,
+    context_from_dict,
+    context_to_dict,
+    validate_context,
+)
+
 
 RUN_SCHEMA_V1 = "pb-stage-run-v1"
 RUN_SCHEMA = "pb-stage-run-v2"
@@ -87,6 +95,84 @@ def _validate_optional_reason(stage, key, index, errors):
         errors.append(f"stages[{index}].{key} 必须为 null 或非空字符串")
 
 
+def _validate_resolution_snapshot(snapshot, context, errors):
+    if not isinstance(snapshot, dict):
+        errors.append("resolution_snapshot 必须是对象")
+        return
+    unknown = set(snapshot) - {"type_pack", "knowledge", "skills"}
+    if unknown:
+        errors.append(
+            "resolution_snapshot 包含未知字段：" + ", ".join(sorted(unknown))
+        )
+    type_pack = snapshot.get("type_pack")
+    if not isinstance(type_pack, dict):
+        errors.append("resolution_snapshot.type_pack 必须是对象")
+    else:
+        medium_id = type_pack.get("medium_id")
+        version = type_pack.get("version")
+        if not isinstance(medium_id, str) or not medium_id.strip():
+            errors.append(
+                "resolution_snapshot.type_pack.medium_id 必须是非空字符串"
+            )
+        elif context is not None and medium_id != context.medium_id:
+            errors.append(
+                "resolution_snapshot.type_pack.medium_id 必须与 context.medium_id 一致"
+            )
+        if not isinstance(version, str) or not version.strip():
+            errors.append(
+                "resolution_snapshot.type_pack.version 必须是非空字符串"
+            )
+    for key in ("knowledge", "skills"):
+        if key in snapshot and not isinstance(snapshot[key], (list, dict)):
+            errors.append(f"resolution_snapshot.{key} 必须是数组或对象")
+
+
+def _validate_optional_context(manifest, errors):
+    has_context = "context" in manifest
+    raw_context = manifest.get("context")
+    context = None
+    if has_context:
+        try:
+            context = context_from_dict(raw_context, require_project=True)
+        except ContextError as error:
+            errors.append(f"context 无效：{error}")
+    if "resolution_snapshot" in manifest:
+        if context is None:
+            errors.append("resolution_snapshot 必须与有效 context 一起提供")
+        _validate_resolution_snapshot(
+            manifest["resolution_snapshot"], context, errors
+        )
+    return context
+
+
+def extract_context(manifest) -> CreativeContext:
+    """Return stored context or infer the legacy picturebook context."""
+    if not isinstance(manifest, dict):
+        raise StageDagError("manifest 顶层必须是对象")
+    if "context" not in manifest:
+        return CreativeContext("picturebook")
+    raw_context = manifest["context"]
+    try:
+        return context_from_dict(raw_context, require_project=True)
+    except ContextError as error:
+        raise StageDagError(f"context 无效：{error}") from error
+
+
+def attach_context(manifest, context, resolution_snapshot=None):
+    """Return a validated deep copy enriched with creative context."""
+    try:
+        normalized = validate_context(context, require_project=True)
+    except ContextError as error:
+        raise StageDagError(f"context 无效：{error}") from error
+    enriched = copy.deepcopy(manifest)
+    enriched["context"] = context_to_dict(normalized)
+    if resolution_snapshot is not None:
+        enriched["resolution_snapshot"] = copy.deepcopy(resolution_snapshot)
+    else:
+        enriched.pop("resolution_snapshot", None)
+    return validate_manifest(enriched)
+
+
 def _validate_manifest_structure(manifest):
     if not isinstance(manifest, dict):
         return ["manifest 顶层必须是对象"]
@@ -102,6 +188,8 @@ def _validate_manifest_structure(manifest):
         "mode", "project_root",
     ):
         _require_nonempty_str(manifest.get(key), key, errors)
+
+    _validate_optional_context(manifest, errors)
 
     iteration = manifest.get("iteration")
     if (
@@ -1120,6 +1208,12 @@ def build_revision_manifest(parent_run, feedback, artifact_ref, run_id):
     manifest["project_root"] = parent["project_root"]
     manifest["revision_feedback"] = copy.deepcopy(feedback)
     manifest["source_artifact_ref"] = artifact_ref
+    if "context" in parent:
+        manifest["context"] = copy.deepcopy(parent["context"])
+    if "resolution_snapshot" in parent:
+        manifest["resolution_snapshot"] = copy.deepcopy(
+            parent["resolution_snapshot"]
+        )
     return validate_manifest(manifest)
 
 

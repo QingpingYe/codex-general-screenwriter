@@ -8,6 +8,11 @@ PLUGIN_JSON = ROOT / ".codex-plugin" / "plugin.json"
 
 
 class SkillContractTests(unittest.TestCase):
+    def test_entry_documents_context_resolution(self):
+        text = ENTRY_SKILL.read_text(encoding="utf-8")
+        self.assertIn("medium_id", text)
+        self.assertIn("series_id", text)
+        self.assertIn("legacy_default_medium", text)
     def test_entry_routes_sync_to_store(self):
         text = ENTRY_SKILL.read_text(encoding="utf-8")
         self.assertIn("feishu-knowledge-store", text)

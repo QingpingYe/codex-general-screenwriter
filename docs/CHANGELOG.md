@@ -11,6 +11,7 @@
 - Self-contained HTML preview and illustration asset registry.
 - Workspace-first Feishu config discovery, config status, and read-only authority CLI.
 - Portable Feishu config discovery for project subdirectories, user directories, and shared plugin distribution.
+- Typed creative context and a type-pack registry for picturebook-compatible screenwriting workflows.
 
 ### Changed
 
@@ -19,6 +20,7 @@
 - Stage workflows now represent approval and revision as exclusive outcomes.
 - Revision rounds create new runs and rerun preflight, collision, and QA checks.
 - v1 run manifests require explicit migration.
+- Dispatch plans and task envelopes carry validated creative context snapshots while legacy picturebook runs remain readable.
 
 ### Fixed
 

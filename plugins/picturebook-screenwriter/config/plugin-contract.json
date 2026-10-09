@@ -1,6 +1,29 @@
 {
   "schema_version": 1,
   "entry_skill": "picturebook-screenwriter",
+  "type_registry": "config/type-packs.json",
+  "creative_context": {
+    "schema_version": "screenwriter-context-v1",
+    "medium_ids": ["picturebook", "film", "shortdrama", "tv_longform"],
+    "scope_levels": [
+      "global",
+      "medium",
+      "genre",
+      "series",
+      "project",
+      "season",
+      "episode",
+      "scene",
+      "task"
+    ],
+    "legacy_default_medium": "picturebook"
+  },
+  "compatibility": {
+    "legacy_entry_skill": "picturebook-screenwriter",
+    "legacy_run_schema": "pb-stage-run-v2",
+    "legacy_task_schema": "pb-stage-task-v1",
+    "legacy_knowledge_key_shape": "series_id/project_id/page_type"
+  },
   "skills": [
     "picturebook-screenwriter",
     "text-craft",

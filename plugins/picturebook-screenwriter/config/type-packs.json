@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "packs": [
+    {
+      "medium_id": "picturebook",
+      "aliases": ["picture-book", "picture book", "绘本"],
+      "delivery_forms": ["page_script", "illustration_prompt_payload", "html_preview"],
+      "artifact_types": [
+        "positioning",
+        "topic_plan",
+        "worldview",
+        "characters",
+        "outline",
+        "script",
+        "illustration_prompt_payload",
+        "image_asset",
+        "asset_registry",
+        "html_preview"
+      ],
+      "workflow_policy": "picturebook-v1",
+      "status": "active",
+      "legacy_aliases": ["picturebook-screenwriter"]
+    },
+    {
+      "medium_id": "film",
+      "aliases": ["movie", "电影"],
+      "delivery_forms": ["screenplay"],
+      "artifact_types": [],
+      "workflow_policy": "film-v1",
+      "status": "planned",
+      "legacy_aliases": []
+    },
+    {
+      "medium_id": "shortdrama",
+      "aliases": ["short-drama", "短剧"],
+      "delivery_forms": ["episode_script"],
+      "artifact_types": [],
+      "workflow_policy": "shortdrama-v1",
+      "status": "planned",
+      "legacy_aliases": []
+    },
+    {
+      "medium_id": "tv_longform",
+      "aliases": ["long-form-tv", "长篇连续剧"],
+      "delivery_forms": ["season_episode_script"],
+      "artifact_types": [],
+      "workflow_policy": "tv_longform-v1",
+      "status": "planned",
+      "legacy_aliases": []
+    }
+  ]
+}

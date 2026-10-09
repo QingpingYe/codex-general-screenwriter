@@ -24,6 +24,18 @@ class PluginContractTests(unittest.TestCase):
         self.assertEqual(contract["schema_version"], 1)
         self.assertEqual(contract["entry_skill"], "picturebook-screenwriter")
 
+    def test_contract_declares_context_and_registry(self):
+        contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        self.assertEqual(
+            contract["creative_context"]["schema_version"],
+            "screenwriter-context-v1",
+        )
+        self.assertEqual(
+            set(contract["creative_context"]["medium_ids"]),
+            {"picturebook", "film", "shortdrama", "tv_longform"},
+        )
+        self.assertEqual(contract["type_registry"], "config/type-packs.json")
+
     def test_contract_matches_installed_skills(self):
         contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
         installed = {

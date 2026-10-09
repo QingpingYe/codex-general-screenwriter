@@ -5,6 +5,12 @@ description: Picture book screenwriting workshop entry workflow. Use when the us
 
 # Picture Book Screenwriter
 
+## Creative Context Foundation
+
+新项目在进入类型创作前记录 `medium_id`、`genre_ids`、`series_id` 和 `project_id`。首批媒介标识为 `picturebook`、`film`、`shortdrama` 和 `tv_longform`，类型目录位于 `config/type-packs.json`。当前只有 `picturebook` 类型包可执行；其他媒介先作为计划中的注册项，待各自类型包完成后启用。
+
+旧项目或旧 run manifest 没有媒介字段时，使用 `legacy_default_medium=picturebook` 的兼容路径读取，不回写虚构的上下文。新通用项目必须在类型化创作前明确 `medium_id`，系列与项目是独立维度，项目可以属于同一系列的不同媒介版本。
+
 把用户请求当作一次绘本编辑部工作流处理。你自己承担四个内部角色：主编、编剧、质检、知识管理。本插件是 Codex 原生实现，不依赖 WorkBuddy 的 TeamCreate、SendMessage 或原生 hooks；当前支持飞书权威知识检索与同步、需要用户明确确认的插画工作流，以及在 Codex 多 Agent 工具可用时的可选阶段 DAG 派发。多 Agent 工具不可用时，使用同一条件决策引擎顺序降级。
 
 ## Workflow

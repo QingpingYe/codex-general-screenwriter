@@ -70,7 +70,7 @@ def _plan_batches(manifest):
 
 
 def _empty_dispatch_plan(validated):
-    return {
+    plan = {
         "schema_version": PLAN_SCHEMA,
         "run_id": validated["run_id"],
         "iteration": validated["iteration"],
@@ -83,6 +83,13 @@ def _empty_dispatch_plan(validated):
         "blocked_reasons": [],
         "follow_up_action": None,
     }
+    if "context" in validated:
+        plan["context"] = copy.deepcopy(validated["context"])
+    if "resolution_snapshot" in validated:
+        plan["resolution_snapshot"] = copy.deepcopy(
+            validated["resolution_snapshot"]
+        )
+    return plan
 
 
 def build_dispatch_plan(manifest):
@@ -200,6 +207,12 @@ def format_task_envelope(manifest, stage):
                     validated["revision_feedback"]
                 ),
                 "source_artifact_ref": validated["source_artifact_ref"],
+                "creative_context": stage_dag.context_to_dict(
+                    stage_dag.extract_context(validated)
+                ),
+                "resolution_snapshot": copy.deepcopy(
+                    validated.get("resolution_snapshot")
+                ),
             },
         },
         "constraints": {
