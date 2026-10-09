@@ -4,7 +4,7 @@
 
 **Goal:** 在不破坏现有绘本工作流的前提下，加入通用创作上下文、类型注册和运行记录扩展，为后续知识库、用户技能和多类型能力包提供稳定基础。
 
-**Architecture:** 新增独立的上下文与类型注册模块，使用配置文件声明首批媒介类型。现有 `pb-stage-run-v2`、`pb-stage-task-v1` 和绘本入口继续兼容；通用上下文以可选扩展字段接入运行清单和任务信封，旧清单缺少这些字段时按绘本兼容路径读取。知识库 schema v2、技能注册中心和电影/短剧/长篇类型包留在后续专项计划。
+**Architecture:** 新增独立的上下文与类型注册模块，使用配置文件声明首批媒介类型。现有 `pb-stage-run-v2`、`pb-stage-task-v1` 和绘本入口继续兼容；通用上下文以可选扩展字段接入运行清单和任务信封，旧清单缺少这些字段时按绘本兼容路径读取。知识库 schema v2、技能注册中心和短剧/长篇类型包留在后续专项计划。
 
 **Tech Stack:** Python 3.10+ 标准库、`unittest`、JSON 配置、现有阶段 DAG 和 Codex dispatch adapter。
 
@@ -45,7 +45,7 @@
 - `context_to_dict(context) -> dict` 与 `context_from_dict(payload, require_project=False) -> CreativeContext`：负责可持久化的 JSON 形式。
 - `TypePackDescriptor(medium_id, aliases, delivery_forms, artifact_types, workflow_policy, status, legacy_aliases=())`：类型包注册描述；`status` 为 `active` 或 `planned`。
 - `load_type_registry(path) -> TypeRegistry`、`resolve_type_pack(registry, identifier) -> TypePackDescriptor`：从 JSON 加载并按 ID 或 alias 解析类型。
-- `config/type-packs.json` 首期注册 `picturebook`、`film`、`shortdrama`、`tv_longform`；其中只有 `picturebook` 声明现有入口和旧产物 alias，其他三类先声明最小交付形式和 `status: planned`。
+- `config/type-packs.json` 首期注册 `picturebook`、`shortdrama`、`tv_longform`；其中只有 `picturebook` 声明现有入口和旧产物 alias，其他两类先声明最小交付形式和 `status: planned`。
 
 - [ ] **Step 1: Write the failing context tests**
 
@@ -62,7 +62,7 @@ def test_rejects_unknown_medium_and_blank_genre():
     with self.assertRaises(ContextError):
         context_from_dict({"medium_id": "unknown"})
     with self.assertRaises(ContextError):
-        context_from_dict({"medium_id": "film", "genre_ids": [""]})
+        context_from_dict({"medium_id": "shortdrama", "genre_ids": [""]})
 
 def test_legacy_context_can_omit_project_id():
     context = context_from_dict({"medium_id": "picturebook"})
@@ -86,7 +86,7 @@ def test_loads_four_initial_mediums(self):
     registry = load_type_registry(CONFIG)
     self.assertEqual(
         {pack.medium_id for pack in registry.packs},
-        {"picturebook", "film", "shortdrama", "tv_longform"},
+        {"picturebook", "shortdrama", "tv_longform"},
     )
 
 def test_resolves_picturebook_alias(self):
@@ -98,8 +98,8 @@ def test_resolves_picturebook_alias(self):
 
 def test_rejects_duplicate_aliases(self):
     path = write_json({"schema_version": 1, "packs": [
-        {"medium_id": "film", "aliases": ["screen"]},
         {"medium_id": "shortdrama", "aliases": ["screen"]},
+        {"medium_id": "tv_longform", "aliases": ["screen"]},
     ]})
     with self.assertRaises(TypeRegistryError):
         load_type_registry(path)
@@ -153,14 +153,14 @@ def test_legacy_manifest_infers_picturebook_context(self):
 
 def test_attach_context_is_deep_copy_and_validates_snapshot(self):
     manifest = stage_dag._creation_template_manifest()
-    context = CreativeContext("film", ("mystery",), project_id="p1")
+    context = CreativeContext("shortdrama", ("mystery",), project_id="p1")
     enriched = stage_dag.attach_context(
         manifest,
         context,
-        {"type_pack": {"medium_id": "film", "version": "0.1.0"}},
+        {"type_pack": {"medium_id": "shortdrama", "version": "0.1.0"}},
     )
     self.assertNotIn("context", manifest)
-    self.assertEqual(enriched["context"]["medium_id"], "film")
+    self.assertEqual(enriched["context"]["medium_id"], "shortdrama")
     stage_dag.validate_manifest(enriched)
 
 def test_revision_copies_context_but_changes_lineage(self):
@@ -228,12 +228,12 @@ git commit -m "feat: add compatible creative context to stage runs"
 def test_dispatch_plan_exposes_validated_context(self):
     manifest = stage_dag.attach_context(
         stage_dag._creation_template_manifest(),
-        CreativeContext("film", ("mystery",), project_id="p1"),
-        {"type_pack": {"medium_id": "film", "version": "0.1.0"}},
+        CreativeContext("shortdrama", ("mystery",), project_id="p1"),
+        {"type_pack": {"medium_id": "shortdrama", "version": "0.1.0"}},
     )
     plan = stage_dag_codex.build_dispatch_plan(manifest)
-    self.assertEqual(plan["context"]["medium_id"], "film")
-    self.assertEqual(plan["resolution_snapshot"]["type_pack"]["medium_id"], "film")
+    self.assertEqual(plan["context"]["medium_id"], "shortdrama")
+    self.assertEqual(plan["resolution_snapshot"]["type_pack"]["medium_id"], "shortdrama")
 
 def test_task_envelope_deep_copies_context(self):
     manifest = stage_dag.attach_context(
@@ -242,7 +242,7 @@ def test_task_envelope_deep_copies_context(self):
         {"type_pack": {"medium_id": "picturebook", "version": "0.5.1"}},
     )
     task = stage_dag_codex.format_task_envelope(manifest, manifest["stages"][1])
-    task["inputs"]["run_context"]["creative_context"]["medium_id"] = "film"
+    task["inputs"]["run_context"]["creative_context"]["medium_id"] = "shortdrama"
     self.assertEqual(manifest["context"]["medium_id"], "picturebook")
 ```
 
@@ -296,7 +296,7 @@ def test_contract_declares_context_and_registry(self):
     self.assertEqual(contract["creative_context"]["schema_version"], "screenwriter-context-v1")
     self.assertEqual(
         set(contract["creative_context"]["medium_ids"]),
-        {"picturebook", "film", "shortdrama", "tv_longform"},
+        {"picturebook", "shortdrama", "tv_longform"},
     )
     self.assertEqual(contract["type_registry"], "config/type-packs.json")
 
@@ -319,7 +319,7 @@ Keep the current contract schema version and existing artifact, quality, illustr
 
 - [ ] **Step 4: Update the plugin README capability summary**
 
-Describe the new context/type foundation as an evolving capability while preserving the existing picturebook behavior description. Do not advertise film, shortdrama, or tv_longform as fully supported until their type packs land.
+Describe the new context/type foundation as an evolving capability while preserving the existing picturebook behavior description. Do not advertise shortdrama or tv_longform as fully supported until their type packs land.
 
 - [ ] **Step 5: Run plugin contract and package checks**
 
@@ -346,9 +346,9 @@ git commit -m "docs: declare screenwriter context foundation"
 
 - [ ] **Step 1: Write the end-to-end regression test**
 
-Exercise this sequence with a `film` context and a separate legacy picturebook manifest:
+Exercise this sequence with a `shortdrama` context and a separate legacy picturebook manifest:
 
-1. Resolve `film` from `type-packs.json`.
+1. Resolve `shortdrama` from `type-packs.json`.
 2. Attach the context and type-pack snapshot to a creation manifest.
 3. Validate the manifest and build both normal and sequential dispatch plans.
 4. Assert the task envelope contains the same context snapshot.
@@ -395,7 +395,7 @@ The approved domain design covers several independent subsystems. After this fou
 1. Knowledge schema v2, scope inheritance, and `AuthorityQuery`/`page_codec` migration.
 2. User skill registry, resolution precedence, conflict audit, and version locking.
 3. Type pack contracts and picturebook migration.
-4. Film, shortdrama, and tv_longform type packs.
+4. Shortdrama and tv_longform type packs.
 5. Type-specific quality benchmarks, continuity tracking, and export formats.
 
 ## Plan Self-Review

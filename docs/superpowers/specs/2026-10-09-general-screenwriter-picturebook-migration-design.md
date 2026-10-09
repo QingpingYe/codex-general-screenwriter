@@ -186,7 +186,6 @@ illustration
 | 旧 illustration run | 按插画 optional workflow 可读 |
 | 新 picturebook creation | 可从类型包解析核心产物 |
 | 新 picturebook revision | 可继承快照并重新质检 |
-| planned film | 不派发 |
 | planned shortdrama | 不派发 |
 | planned tv_longform | 不派发 |
 | 空 active picturebook | 加载失败 |

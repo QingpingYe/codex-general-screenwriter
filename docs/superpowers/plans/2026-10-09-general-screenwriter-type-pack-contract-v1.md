@@ -190,7 +190,7 @@
 
 - [ ] **Step 1: Add failing tests for planned dispatch rejection and legacy picturebook fallback**
 
-  `test_type_pack_execution_gate.py` 为 film、shortdrama、tv_longform 创建合法 project context manifest，断言 `build_dispatch_plan` 和 `format_task_envelope` 均在生成输出前抛出 `TypePackNotExecutableError`；同时覆盖无 context 的旧绘本模板和显式 picturebook manifest 可派发。
+  `test_type_pack_execution_gate.py` 为 shortdrama、tv_longform 创建合法 project context manifest，断言 `build_dispatch_plan` 和 `format_task_envelope` 均在生成输出前抛出 `TypePackNotExecutableError`；同时覆盖无 context 的旧绘本模板和显式 picturebook manifest 可派发。
 
 - [ ] **Step 2: Run the gate tests and observe planned packs are currently dispatched**
 
@@ -230,7 +230,7 @@
 
 - [ ] **Step 1: Add failing contract/doc assertions for core vs optional workflows and planned media**
 
-  在 `test_plugin_contract.py` 断言契约版本和唯一 active medium；在 `test_skill_contract.py` 断言 approved script 是 illustration workflow 输入，四个插画 artifact 不在 core 输出列表，film/shortdrama/tv_longform 标记 planned。
+  在 `test_plugin_contract.py` 断言契约版本和唯一 active medium；在 `test_skill_contract.py` 断言 approved script 是 illustration workflow 输入，四个插画 artifact 不在 core 输出列表，shortdrama/tv_longform 标记 planned。
 - [ ] **Step 2: Update metadata and Chinese operator guidance without claiming planned packs are executable**
 - [ ] **Step 3: Run focused plugin contract tests**
 

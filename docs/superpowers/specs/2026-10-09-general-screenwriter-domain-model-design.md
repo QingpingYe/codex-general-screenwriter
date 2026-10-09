@@ -6,7 +6,7 @@
 
 ## 1. 目标与范围
 
-本设计定义把现有绘本编剧插件演进为通用编剧创作工作台所需的基础领域模型、兼容边界和迁移规则。首批支持绘本、电影、短剧和长篇连续剧；题材与风格作为独立标签参与规则匹配。
+本设计定义把现有绘本编剧插件演进为通用编剧创作工作台所需的基础领域模型、兼容边界和迁移规则。首批支持绘本、短剧和长篇连续剧；题材与风格作为独立标签参与规则匹配。
 
 本阶段只确定概念、契约和迁移边界，不实现具体类型包、用户技能管理界面或新的剧本质量指标。后续实现计划必须以本设计中的标识、层级和兼容规则为前提。
 
@@ -40,14 +40,14 @@
 
 每次创作、修订、审查或导出都绑定一个 `CreativeContext`，包含：
 
-- `medium_id`：媒介/规格类型，例如 `picturebook`、`film`、`shortdrama`、`tv_longform`。
+- `medium_id`：媒介/规格类型，例如 `picturebook`、`shortdrama`、`tv_longform`。
 - `genre_ids`：题材与风格标签，可为多个，例如 `mystery`、`comedy`。
 - `series_id`：系列标识，可为空。
 - `project_id`：项目标识。
 - `season_id`、`episode_id`、`scene_id`：长篇项目或细粒度创作单元标识，可为空。
-- `delivery_form`：交付形式，例如 `screenplay`、`shooting_script`、`page_script`，由类型包声明。
+- `delivery_form`：交付形式，例如 `page_script`、`episode_script`、`season_episode_script`，由类型包声明。
 
-`medium_id` 与 `series_id` 是两个独立维度。同一系列可以拥有绘本项目、电影项目和短剧项目；项目通过自己的 `medium_id` 选择适用类型包。
+`medium_id` 与 `series_id` 是两个独立维度。同一系列可以拥有绘本项目、短剧项目和长篇连续剧项目；项目通过自己的 `medium_id` 选择适用类型包。
 
 ### 3.2 作用域
 
@@ -82,14 +82,14 @@ Series
     └── Artifact revisions
 ```
 
-绘本和电影可以只使用 `Project` 与 `Artifact`；短剧至少需要 `Project`、`Episode` 和 `Scene`；长篇连续剧完整使用系列、季、集和场层级。
+绘本可以只使用 `Project` 与 `Artifact`；短剧至少需要 `Project`、`Episode` 和 `Scene`；长篇连续剧完整使用系列、季、集和场层级。
 
 ### 3.4 产物
 
 产物统一包含 `artifact_type`、`medium_id`、`project_id`、版本、状态、来源依赖和父产物引用。产物分为三类：
 
 1. **通用创作产物**：定位、前提、世界观、角色、大纲、结构和正文。
-2. **类型产物**：绘本逐页脚本、电影 treatment、短剧集纲、长篇 season arc 等。
+2. **类型产物**：绘本逐页脚本、短剧集纲、长篇 season arc 等。
 3. **生产与评估产物**：场次表、分镜、质量报告、连续性报告、导出文件和资产登记。
 
 现有 `positioning`、`topic_plan`、`worldview`、`characters`、`outline`、`script` 保留为兼容别名。新类型包可以提供更精确的类型产物，但不能改变旧产物的读取含义。
@@ -117,7 +117,7 @@ Series
 - 类型专属导出器和可选能力模块。
 - 与旧绘本入口或旧产物的兼容别名（仅绘本包需要）。
 
-绘本包承接现有 `text-craft`、`craft-benchmark-check`、`staging-planner`、插画提示词和图片导出能力。电影、短剧和长篇连续剧在后续专项中分别定义自己的产物和检查规则。
+绘本包承接现有 `text-craft`、`craft-benchmark-check`、`staging-planner`、插画提示词和图片导出能力。短剧和长篇连续剧在后续专项中分别定义自己的产物和检查规则。
 
 ## 6. 知识库模型与兼容策略
 
@@ -218,7 +218,7 @@ Series
 3. 用户技能注册、解析和治理设计。
 4. 通用创作 DAG 与类型工作流策略设计。
 5. 绘本类型包迁移设计。
-6. 电影、短剧和长篇连续剧类型包设计。
+6. 短剧和长篇连续剧类型包设计。
 7. 质量评测、迁移工具和输出生态设计。
 
 本设计稿完成后需要先经过用户评审。用户确认后再编写对应的实施计划；确认前不进入类型包或运行内核的代码改造。

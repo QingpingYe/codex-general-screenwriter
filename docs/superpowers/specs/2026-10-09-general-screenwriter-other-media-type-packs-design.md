@@ -1,4 +1,4 @@
-# 通用编剧创作插件：电影、短剧与长篇连续剧类型包设计
+# 通用编剧创作插件：短剧与长篇连续剧类型包设计
 
 **状态：** 设计草案  
 **日期：** 2026-10-09  
@@ -11,9 +11,9 @@
 
 ## 1. 目标
 
-为电影、短剧和长篇连续剧定义可执行的类型包边界、核心产物、阶段结构、质量规则和交付形态，使它们最终通过统一入口进入创作。
+为短剧和长篇连续剧定义可执行的类型包边界、核心产物、阶段结构、质量规则和交付形态，使它们最终通过统一入口进入创作。
 
-当前三个媒介仍为 `planned`，本设计只描述目标契约和最小可用版本，不承诺立即可用。
+当前两个媒介仍为 `planned`，本设计只描述目标契约和最小可用版本，不承诺立即可用。
 
 ## 2. 通用原则
 
@@ -23,78 +23,9 @@
 4. **质量同交付。** 新类型启用时必须同时交付产物 schema、质量规则和代表性样例。
 5. **复用通用 DAG。** 只添加类型专属阶段，不复制一套运行内核。
 
-## 3. 电影类型包
+## 3. 短剧类型包
 
 ### 3.1 目标 medium
-
-```text
-medium_id: film
-version: film-v1
-status: planned
-delivery_forms:
-  - screenplay
-  - shooting_script
-```
-
-最小可用交付形式建议先只做 `screenplay`。
-
-### 3.2 核心产物
-
-| artifact | 说明 |
-| --- | --- |
-| `positioning` | 用户简报与创作定位 |
-| `story_synopsis` | 故事梗概 |
-| `character_sheet` | 人物表 |
-| `beat_sheet` | 节拍表 |
-| `scene_table` | 场次表 |
-| `screenplay` | 标准剧本 |
-
-第一批不需要全部立即实现，但类型包必须先声明目标集合。
-
-### 3.3 核心阶段
-
-```text
-session_init
-brief_gate
-knowledge_load
-story_synthesis
-character_design
-beat_design
-scene_design
-screenplay_delegate
-scene_check
-dialogue_check
-rhythm_check
-quality_gate
-confirmation_gate
-persistence
-```
-
-最小可用路径：
-
-1. `positioning`；
-2. `story_synopsis`；
-3. `beat_sheet`；
-4. `screenplay`；
-5. `quality_gate`；
-6. `confirmation_gate`。
-
-### 3.4 质量检查
-
-| 检查 | 说明 |
-| --- | --- |
-| 场次结构 | 场景有明确地点、时间、目标、冲突 |
-| 节拍推进 | 主动作链完整，无效场景可识别 |
-| 人物动机 | 人物目标、阻碍、变化一致 |
-| 对白功能 | 对白不冗余，承载信息或冲突 |
-| 动作可拍性 | 场景描写清楚，动作可执行 |
-| 节奏 | 前段、中段、后段节奏平衡 |
-| 格式 | 符合标准剧本格式 |
-| 事实一致性 | 与权威知识不冲突 |
-
-## 4. 短剧类型包
-
-### 4.1 目标 medium
 
 ```text
 medium_id: shortdrama
@@ -106,7 +37,7 @@ delivery_forms:
 
 最小可用范围建议从单集结构开始。
 
-### 4.2 核心产物
+### 3.2 核心产物
 
 | artifact | 说明 |
 | --- | --- |
@@ -117,7 +48,7 @@ delivery_forms:
 | `scene_table` | 场次表 |
 | `episode_script` | 集稿 |
 
-### 4.3 核心阶段
+### 3.3 核心阶段
 
 ```text
 session_init
@@ -136,7 +67,7 @@ confirmation_gate
 persistence
 ```
 
-### 4.4 质量检查
+### 3.4 质量检查
 
 | 检查 | 说明 |
 | --- | --- |
@@ -149,9 +80,9 @@ persistence
 | 格式 | 集稿格式统一 |
 | 时长适配 | 符合短剧平台时长预期 |
 
-## 5. 长篇连续剧类型包
+## 4. 长篇连续剧类型包
 
-### 5.1 目标 medium
+### 4.1 目标 medium
 
 ```text
 medium_id: tv_longform
@@ -163,7 +94,7 @@ delivery_forms:
 
 最小可用范围建议先支持单季单集，再扩展到跨季连续性。
 
-### 5.2 层级模型
+### 4.2 层级模型
 
 ```text
 series
@@ -182,7 +113,7 @@ series
 - 集稿；
 - 跨集连续性台账。
 
-### 5.3 核心产物
+### 4.3 核心产物
 
 | artifact | 作用域 |
 | --- | --- |
@@ -196,7 +127,7 @@ series
 | `episode_script` | episode |
 | `continuity_ledger` | episode / season |
 
-### 5.4 核心阶段
+### 4.4 核心阶段
 
 ```text
 session_init
@@ -223,7 +154,7 @@ persistence
 5. `continuity_check`；
 6. `confirmation_gate`。
 
-### 5.5 质量检查
+### 4.5 质量检查
 
 | 检查 | 说明 |
 | --- | --- |
@@ -237,7 +168,7 @@ persistence
 | 系列约束 | 符合系列圣经 |
 | 跨集连续性 | 人物、地点、物件、知识状态一致 |
 
-## 6. 类型包结构
+## 5. 类型包结构
 
 每个类型包都应包含：
 
@@ -265,7 +196,7 @@ TypePackDescriptor
 5. 至少一个代表性样例；
 6. 旧 run 不受影响。
 
-## 7. 通用与类型专属阶段
+## 6. 通用与类型专属阶段
 
 通用阶段：
 
@@ -282,13 +213,12 @@ persistence
 
 | 媒介 | 专属阶段示例 |
 | --- | --- |
-| 电影 | story_synthesis, beat_design, scene_design |
 | 短剧 | hook_design, pacing_check |
 | 长篇连续剧 | season_design, episode_design, continuity_check |
 
 阶段 ID 在同一类型包内唯一；不同类型包可以重名，但快照必须记录所属类型包。
 
-## 8. 跨类型知识
+## 7. 跨类型知识
 
 知识查询必须区分：
 
@@ -299,9 +229,9 @@ persistence
 5. 项目事实；
 6. 季/集/场事实。
 
-电影、短剧和长篇连续剧不得默认读取绘本专属知识页。
+短剧和长篇连续剧不得默认读取绘本专属知识页。
 
-## 9. 迁移与启用
+## 8. 迁移与启用
 
 建议顺序：
 
@@ -312,11 +242,11 @@ persistence
 5. **质量扩展。** 加入格式、节奏、连续性等检查。
 6. **跨类型回归。** 确认旧绘本和其他类型互不干扰。
 
-## 10. 验收标准
+## 9. 验收标准
 
 阶段通过条件：
 
-- 三种类型各自能声明核心产物与阶段；
+- 两种类型各自能声明核心产物与阶段；
 - planned 状态继续阻止派发；
 - 任一类型激活后不会影响绘本；
 - 类型包内不存在阶段环或 artifact 引用错误；

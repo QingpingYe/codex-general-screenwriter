@@ -51,7 +51,6 @@ unit checks
 | 类型 | 最小样例 |
 | --- | --- |
 | picturebook | 简报 → 六类产物中的目标产物 → QA → 确认 |
-| film | 简报 → synopsis → beat sheet → screenplay → QA → 确认 |
 | shortdrama | 简报 → episode outline → hook sheet → episode script → QA → 确认 |
 | tv_longform | series bible → season arc → episode script → continuity check → 确认 |
 
@@ -126,7 +125,7 @@ unknown
 | --- | --- |
 | Markdown | 通用中间产物 |
 | JSON | 结构化产物、报告、审计记录 |
-| Fountain / screenplay text | 电影、短剧、长篇连续剧 |
+| Fountain / screenplay text | 短剧、长篇连续剧 |
 | Page script | 绘本 |
 | HTML preview | 绘本插画和展示型预览 |
 | Asset registry | 插画资产 |
@@ -163,7 +162,6 @@ Exporter
 | 旧 illustration run 可读 | 不因新 workflow 分层失败 |
 | 旧知识 key 可读 | 三段 key 继续解析 |
 | 新 picturebook run 可执行 | 类型包解析成功 |
-| planned film 不派发 | 执行门阻断 |
 | planned shortdrama 不派发 | 执行门阻断 |
 | planned tv_longform 不派发 | 执行门阻断 |
 | snapshot 隔离 | revision、plan、task 不共享可变对象 |

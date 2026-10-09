@@ -91,7 +91,6 @@ session_init
 
 不同类型可以在这些节点之间增加专属阶段，例如：
 
-- 电影增加 treatment、beat sheet、scene table；
 - 短剧增加 episode hook、episode pacing；
 - 长篇连续剧增加 season arc、episode list、continuity ledger。
 
@@ -178,7 +177,7 @@ QualityGate
 | 工艺 | 字数、句长、节奏、钩子 |
 | 风险 | 敏感内容、重复、逻辑漏洞 |
 | 连续性 | 跨页、跨场、跨集、跨季 |
-| 可拍性 | 场景可执行、资源清楚、动作可理解 |
+| 可制作性 | 场景可执行、资源清楚、动作可理解 |
 
 阻断策略：
 
