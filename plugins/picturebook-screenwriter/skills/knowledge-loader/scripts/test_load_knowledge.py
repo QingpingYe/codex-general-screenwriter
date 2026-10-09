@@ -62,6 +62,23 @@ class FakeCli:
         }}}
 
 
+class ScopedWorldCli(FakeCli):
+    def __init__(self, scope_body: str) -> None:
+        self.scope_body = scope_body
+
+    def fetch_doc(self, token):
+        if token != "doc-world":
+            return super().fetch_doc(token)
+        body = f"# 世界观\n\n小老鼠迈尔斯住在森林里。\n\n{self.scope_body}"
+        return {"data": {"document": {
+            "revision_id": 44,
+            "content": remote_page(
+                "海外绘本/小老鼠迈尔斯/worldview", "worldview", body,
+                last_ai_revision_id=44,
+            ),
+        }}}
+
+
 class KnowledgeLoaderTests(unittest.TestCase):
     def test_loader_reads_remote_page_and_strips_metadata(self):
         loader = KnowledgeLoader(FakePlane(), FakeCli())
@@ -169,23 +186,65 @@ class KnowledgeLoaderTests(unittest.TestCase):
         self.assertIsNone(bundle.items[0].scope)
         self.assertEqual(bundle.conflicts, ())
 
-    def test_loader_excludes_page_outside_scope_chain(self):
+    def test_loader_reads_v2_page_inside_scope_chain(self):
         body = """## knowledge-scope
 ```json
-{"schema_version":2,"scope_type":"project","scope_id":"other-project","authority":"project"}
+{"schema_version":2,"scope_type":"project","scope_id":"小老鼠迈尔斯","authority":"project","genre_ids":[],"depends_on":[],"source_refs":[]}
 ```
 """
-        cli = FakeCli()
-        original_fetch = cli.fetch_doc
-        cli.fetch_doc = lambda token: original_fetch(token)
-        loader = KnowledgeLoader(FakePlane(), cli)
+        loader = KnowledgeLoader(FakePlane(), ScopedWorldCli(body))
         bundle = loader.load(
             KnowledgeQuery(
                 project_id="小老鼠迈尔斯",
+                terms=("森林",),
                 scope_ref=ScopeRef(project_id="小老鼠迈尔斯"),
             )
         )
-        self.assertNotIn("other-project", bundle.warnings[0])
+        self.assertEqual(len(bundle.items), 1)
+        self.assertEqual(bundle.items[0].key, "海外绘本/小老鼠迈尔斯/worldview")
+        self.assertIsNotNone(bundle.items[0].scope)
+        self.assertEqual(bundle.items[0].scope.scope_id, "小老鼠迈尔斯")
+        self.assertTrue(bundle.items[0].scope_chain)
+
+    def test_loader_excludes_v2_page_outside_scope_chain(self):
+        body = """## knowledge-scope
+```json
+{"schema_version":2,"scope_type":"project","scope_id":"other-project","authority":"project","genre_ids":[],"depends_on":[],"source_refs":[]}
+```
+"""
+        loader = KnowledgeLoader(FakePlane(), ScopedWorldCli(body))
+        bundle = loader.load(
+            KnowledgeQuery(
+                project_id="小老鼠迈尔斯",
+                terms=("森林",),
+                scope_ref=ScopeRef(project_id="小老鼠迈尔斯"),
+            )
+        )
+        self.assertEqual(bundle.items, ())
+        self.assertTrue(any(
+            "worldview" in warning and "不在当前 scope chain 内" in warning
+            for warning in bundle.warnings
+        ))
+
+    def test_loader_skips_malformed_scope_page_without_blocking_bundle(self):
+        body = """## knowledge-scope
+```json
+not-json
+```
+"""
+        loader = KnowledgeLoader(FakePlane(), ScopedWorldCli(body))
+        bundle = loader.load(
+            KnowledgeQuery(
+                project_id="小老鼠迈尔斯",
+                terms=("森林",),
+                scope_ref=ScopeRef(project_id="小老鼠迈尔斯"),
+            )
+        )
+        self.assertEqual(bundle.items, ())
+        self.assertTrue(any(
+            "worldview" in warning and "scope 元数据无效" in warning
+            for warning in bundle.warnings
+        ))
 
 
 if __name__ == "__main__":

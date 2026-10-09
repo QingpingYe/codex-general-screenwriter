@@ -12,8 +12,8 @@ if str(STORE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(STORE_SCRIPTS))
 
 from page_codec import parse_remote_page, PageCodecError
+from scope_pages import ScopeEnvelopeError, parse_scope_envelope
 from scope_model import ScopeChainNode, ScopeRef, expand_scope_chain, scope_matches
-from scope_pages import ScopeEnvelope, ScopeEnvelopeError, parse_scope_envelope
 
 
 @dataclass(frozen=True)
@@ -92,6 +92,7 @@ class KnowledgeLoader:
                 continue
             candidates.append(entry)
 
+        scope_chain = expand_scope_chain(query.scope_ref) if query.scope_ref is not None else ()
         items = []
         warnings = []
         for entry in candidates:
@@ -131,9 +132,10 @@ class KnowledgeLoader:
                     warnings.append(f"{entry.key} 同步未完成，待下一轮复核")
             except PageCodecError:
                 warnings.append(f"{entry.key} 的系统元数据无效")
+            except ScopeEnvelopeError:
+                warnings.append(f"{entry.key} 的 scope 元数据无效，已跳过")
 
         items.sort(key=lambda value: (-value[0], value[1].key))
-        scope_chain = expand_scope_chain(query.scope_ref) if query.scope_ref is not None else ()
         if query.scope_ref is not None:
             conflicts = _detect_conflicts(items)
         else:
