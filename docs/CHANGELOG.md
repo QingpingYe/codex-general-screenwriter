@@ -15,6 +15,7 @@
 
 - Type-pack contract v1 separates core picturebook artifacts/stages from an optional illustration workflow; planned media are read-only and cannot dispatch.
 - New optional run snapshots record type-pack, target artifact, delivery form, and workflow selection while retaining old manifest/revision compatibility.
+- Knowledge loading now supports optional scope metadata and a task-to-global scope chain while keeping schema v1 pages readable.
 
 ### Changed
 
