@@ -25,6 +25,13 @@ from screenwriter_context import (
 )
 
 
+from type_registry import (
+    ArtifactDescriptor, TypePackDescriptor, WorkflowContract, TypeRegistryError,
+    default_type_registry, resolve_type_pack, resolve_artifact, resolve_workflow,
+    resolve_workflow_artifact, resolve_stage, validate_type_contract,
+    assert_core_artifact_target,
+)
+
 RUN_SCHEMA_V1 = "pb-stage-run-v1"
 RUN_SCHEMA = "pb-stage-run-v2"
 TASK_SCHEMA = "pb-stage-task-v1"
@@ -95,36 +102,116 @@ def _validate_optional_reason(stage, key, index, errors):
         errors.append(f"stages[{index}].{key} 必须为 null 或非空字符串")
 
 
-def _validate_resolution_snapshot(snapshot, context, errors):
-    if not isinstance(snapshot, dict):
-        errors.append("resolution_snapshot 必须是对象")
+def build_resolution_snapshot(
+    type_pack: TypePackDescriptor,
+    artifact: ArtifactDescriptor | None = None,
+    workflow: WorkflowContract | None = None,
+    *, delivery_form: str | None = None,
+) -> dict:
+    """Build metadata only; do not start workflows or mutate a registry."""
+    try:
+        validate_type_contract(type_pack)
+        snapshot = {"type_pack": {
+            "medium_id": type_pack.medium_id, "version": type_pack.version,
+            "workflow_policy": type_pack.workflow_policy,
+        }}
+        if workflow is not None:
+            if resolve_workflow(type_pack, workflow.workflow_id) != workflow:
+                raise TypeRegistryError("workflow 不属于该 type pack 快照")
+            snapshot["workflow"] = {
+                "workflow_id": workflow.workflow_id, "trigger_intent": workflow.trigger_intent,
+            }
+        if artifact is not None:
+            canonical = (resolve_workflow_artifact(workflow, artifact.artifact_id)
+                         if workflow is not None else assert_core_artifact_target(type_pack, artifact.artifact_id))
+            if canonical != artifact:
+                raise TypeRegistryError("artifact descriptor 与 type pack 中的契约不一致")
+            scope = workflow if workflow is not None else type_pack
+            if (artifact.origin != "workflow_output" or artifact.status != "active" or
+                    resolve_stage(scope, artifact.production_stage).status != "active"):
+                raise TypeRegistryError("artifact 缺少 active production stage")
+            if delivery_form is None:
+                if len(artifact.delivery_forms) != 1:
+                    raise TypeRegistryError("多交付形式必须显式指定 delivery_form")
+                delivery_form = artifact.delivery_forms[0]
+            if delivery_form not in artifact.delivery_forms:
+                raise TypeRegistryError("delivery_form 不属于目标 artifact")
+            snapshot["artifact"] = {"artifact_id": artifact.artifact_id, "delivery_form": delivery_form}
+        elif delivery_form is not None:
+            raise TypeRegistryError("没有 artifact 时不得指定 delivery_form")
+        return snapshot
+    except (TypeRegistryError, TypeError, AttributeError) as error:
+        raise StageDagError(f"resolution snapshot 无效：{error}") from error
+
+
+def _validate_resolution_snapshot(snapshot, context, errors, artifact_type=None):
+    if not isinstance(snapshot, dict) or any(not isinstance(k, str) for k in snapshot):
+        errors.append("resolution_snapshot 必须是字符串键对象")
         return
-    unknown = set(snapshot) - {"type_pack", "knowledge", "skills"}
+    unknown = set(snapshot) - {"type_pack", "knowledge", "skills", "artifact", "workflow"}
     if unknown:
-        errors.append(
-            "resolution_snapshot 包含未知字段：" + ", ".join(sorted(unknown))
-        )
-    type_pack = snapshot.get("type_pack")
-    if not isinstance(type_pack, dict):
+        errors.append("resolution_snapshot 包含未知字段：" + ", ".join(sorted(unknown)))
+    start_errors = len(errors)
+    pack_data = snapshot.get("type_pack")
+    if not isinstance(pack_data, dict):
         errors.append("resolution_snapshot.type_pack 必须是对象")
     else:
-        medium_id = type_pack.get("medium_id")
-        version = type_pack.get("version")
-        if not isinstance(medium_id, str) or not medium_id.strip():
-            errors.append(
-                "resolution_snapshot.type_pack.medium_id 必须是非空字符串"
-            )
-        elif context is not None and medium_id != context.medium_id:
-            errors.append(
-                "resolution_snapshot.type_pack.medium_id 必须与 context.medium_id 一致"
-            )
-        if not isinstance(version, str) or not version.strip():
-            errors.append(
-                "resolution_snapshot.type_pack.version 必须是非空字符串"
-            )
+        if set(pack_data) - {"medium_id", "version", "workflow_policy"}:
+            errors.append("resolution_snapshot.type_pack 包含未知字段")
+        for key in ("medium_id", "version"):
+            _require_nonempty_str(pack_data.get(key), f"resolution_snapshot.type_pack.{key}", errors)
+        if context is not None and pack_data.get("medium_id") != context.medium_id:
+            errors.append("resolution_snapshot.type_pack.medium_id 必须与 context.medium_id 一致")
+        if "workflow_policy" in pack_data:
+            _require_nonempty_str(pack_data["workflow_policy"], "resolution_snapshot.type_pack.workflow_policy", errors)
+        if ("artifact" in snapshot or "workflow" in snapshot) and "workflow_policy" not in pack_data:
+            errors.append("新 artifact/workflow 快照必须记录 type_pack.workflow_policy")
     for key in ("knowledge", "skills"):
         if key in snapshot and not isinstance(snapshot[key], (list, dict)):
             errors.append(f"resolution_snapshot.{key} 必须是数组或对象")
+    for key, fields in (("artifact", {"artifact_id", "delivery_form"}), ("workflow", {"workflow_id", "trigger_intent"})):
+        if key not in snapshot:
+            continue
+        value = snapshot[key]
+        if not isinstance(value, dict) or set(value) != fields:
+            errors.append(f"resolution_snapshot.{key} 包含缺失或未知字段")
+            continue
+        for field in fields:
+            _require_nonempty_str(value[field], f"resolution_snapshot.{key}.{field}", errors)
+    if len(errors) != start_errors or context is None:
+        return
+    artifact_data = snapshot.get("artifact")
+    workflow_data = snapshot.get("workflow")
+    if artifact_data is not None:
+        target = artifact_data["artifact_id"]
+        allowed = {target}
+        if workflow_data is not None:
+            allowed.add(workflow_data["workflow_id"])
+        if artifact_type is not None and artifact_type not in allowed:
+            errors.append("snapshot artifact 与 manifest.artifact_type 不一致")
+        if context.delivery_form is not None and context.delivery_form != artifact_data["delivery_form"]:
+            errors.append("snapshot delivery_form 与 context.delivery_form 不一致")
+    elif workflow_data is not None and artifact_type is not None and artifact_type != workflow_data["workflow_id"]:
+        errors.append("snapshot workflow 与 manifest.artifact_type 不一致")
+    try:
+        pack = resolve_type_pack(default_type_registry(), context.medium_id)
+        # Archived metadata is readable; execution checks the current version lock separately.
+        if pack_data["version"] != pack.version:
+            return
+        if "workflow_policy" in pack_data and pack_data["workflow_policy"] != pack.workflow_policy:
+            errors.append("snapshot workflow_policy 与当前同版本 type pack 不一致")
+        workflow = None
+        if workflow_data is not None:
+            workflow = resolve_workflow(pack, workflow_data["workflow_id"])
+            if workflow_data["trigger_intent"] != workflow.trigger_intent:
+                errors.append("snapshot workflow trigger_intent 不一致")
+        if artifact_data is not None:
+            artifact = (resolve_workflow_artifact(workflow, artifact_data["artifact_id"])
+                        if workflow is not None else resolve_artifact(pack, artifact_data["artifact_id"]))
+            if artifact_data["delivery_form"] not in artifact.delivery_forms:
+                errors.append("snapshot delivery_form 不属于 artifact 契约")
+    except TypeRegistryError as error:
+        errors.append(f"resolution_snapshot 引用无效：{error}")
 
 
 def _validate_optional_context(manifest, errors):
@@ -140,7 +227,7 @@ def _validate_optional_context(manifest, errors):
         if context is None:
             errors.append("resolution_snapshot 必须与有效 context 一起提供")
         _validate_resolution_snapshot(
-            manifest["resolution_snapshot"], context, errors
+            manifest["resolution_snapshot"], context, errors, manifest.get("artifact_type")
         )
     return context
 
