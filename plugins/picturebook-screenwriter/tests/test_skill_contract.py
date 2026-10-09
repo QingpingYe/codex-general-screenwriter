@@ -88,6 +88,12 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("不阻塞文字 run", text)
         self.assertIn("planned", text)
 
+    def test_stage_skill_documents_explicit_workflow_input_evidence(self):
+        text = (ROOT / "skills" / "stage-orchestration" / "SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("workflow_inputs", text)
+        self.assertIn("user_confirmation", text)
+        self.assertIn("历史快照只读", text)
+
     def test_skills_document_conditional_revision_workflow(self):
         stage_skill = (
             ROOT / "skills" / "stage-orchestration" / "SKILL.md"

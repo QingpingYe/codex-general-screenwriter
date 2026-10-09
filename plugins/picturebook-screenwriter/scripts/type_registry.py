@@ -295,6 +295,17 @@ def _upstream(stages, stage_id):
 def _validate_scope(pack, artifacts, stages, external=()):
     amap = _index(artifacts, "artifact_id", f"artifact/{pack.medium_id}", ArtifactContractError)
     smap = _index(stages, "stage_id", f"stage/{pack.medium_id}", StageContractError)
+    artifact_names = {
+        _normalized_name(name)
+        for artifact in artifacts for name in (artifact.artifact_id, *artifact.aliases)
+    }
+    stage_names = {
+        _normalized_name(name)
+        for stage in stages for name in (stage.stage_id, *stage.aliases)
+    }
+    overlap = artifact_names & stage_names
+    if overlap:
+        raise TypeRegistryError(f"artifact/stage 标识或别名冲突：{sorted(overlap)}")
     allowed = set(amap) | set(external)
     stage_graph = {}
     for sid, stage in smap.items():

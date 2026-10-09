@@ -277,3 +277,7 @@
 - **Type consistency:** ArtifactDescriptor/StageContract/WorkflowContract names and resolver signatures are stable across tasks.
 - **Compatibility:** old string registries and old run manifests remain explicit test cases; prior commits are preserved.
 - **Scope:** no unrelated files, remote writes, other media workflows, or feature work beyond this contract.
+
+## 整分支复核修复轮（2026-10-09）
+
+独立审查发现五项 Important：公开 DAG 调度绕过 planned gate；历史快照仍可执行；显式 context 可派发输入-only 或错误 workflow；插画未声明脚本来源也可派发；artifact 与 stage alias 跨类别冲突。统一增加先失败后通过的回归测试 `test_type_pack_review_regression.py`，将执行门扩展到公开调度/状态迁移，并在独立插画快照中要求 `workflow_inputs` 来源声明。旧 manifest 仍保持只读兼容；当前版本重新解析后方可执行。详情见本计划的执行 ledger；这次修复未改动其他媒介工作流和远端知识库。

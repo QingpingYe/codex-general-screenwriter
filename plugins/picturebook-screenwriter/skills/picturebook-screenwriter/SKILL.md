@@ -23,6 +23,8 @@ positioning 是简报输入，由 `brief_gate` 读取，不是该阶段生产的
 
 后续专项为知识库 schema v2、作用域继承与 AuthorityQuery/page_codec 迁移，不把 planned 媒介描述为已实现的完整流程。
 
+显式 context 派发使用当前类型包版本；历史快照只读，需新 run 重新解析后才能继续执行。插画运行须先由主编核实脚本来源，并在 `resolution_snapshot.workflow_inputs` 声明已批准脚本的引用；对用户明确提供的脚本则标记 `user_supplied` 和 `user_confirmation=true`。该声明不能代替对话中的真实用户确认。
+
 ## Workflow
 
 1. **Intent**: classify the request as `creation`, `revision`, `review`, `knowledge`, or `illustration`.

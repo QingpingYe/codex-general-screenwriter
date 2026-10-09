@@ -70,6 +70,14 @@ class ScreenwriterFoundationIntegrationTests(unittest.TestCase):
         with self.assertRaises(TypePackNotExecutableError):
             stage_dag_codex.format_task_envelope(manifest, manifest["stages"][1])
 
+        # The old planned-medium manifest remains readable, but cannot advance.
+        # Exercise revision lineage with a current, executable picturebook run.
+        manifest = stage_dag.attach_context(
+            stage_dag._creation_template_manifest(),
+            CreativeContext("picturebook", project_id="picturebook-one"),
+            {"type_pack": {"medium_id": "picturebook", "version": "picturebook-v1"}},
+        )
+        manifest["project_root"] = str(REPO_ROOT)
         parent = self._fast_forward(manifest, [
             "session_init", "brief_gate", "knowledge_load", "creation_delegate",
             "preflight", "collision_check", "qa", "qa_synthesis",

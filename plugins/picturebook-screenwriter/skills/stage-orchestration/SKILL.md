@@ -30,6 +30,18 @@ python plugins/picturebook-screenwriter/scripts/stage_dag_codex.py --manifest <p
 python plugins/picturebook-screenwriter/scripts/stage_dag_codex.py --manifest <path> --action fallback
 ```
 
+## 类型包执行前检查
+
+`validate_manifest()` 只负责**读取和结构校验**；它允许旧版本的类型快照。`ready_stages()`、`next_batches()`、`parallel_batches()`、`transition_stage()` 和 Codex 的 plan/fallback/task envelope 在显式 context 下才检查当前 active 类型、核心目标及其独立 DAG。历史快照只读：若 `resolution_snapshot.type_pack.version` 不等于当前类型包版本，先创建新 run、重新解析，不得沿用旧快照派发。没有 context 的旧绘本 manifest 继续兼容。
+
+显式 context 的独立插画 run 须先经主编核实获批脚本，或核实用户明确提供脚本并要求插画。记录 `resolution_snapshot.workflow_inputs`，例如：
+
+```json
+[{"artifact_id":"script","status":"approved","ref":"picturebook/script_v1.md"}]
+```
+
+用户明确提供时使用 `{"artifact_id":"script","status":"user_supplied","ref":"picturebook/user_script.md","user_confirmation":true}`。`ref` 是非空来源引用；这份结构化声明不等同于自动证明用户批准，主编仍须在对话中核实。未记录输入来源时不能派发 `illustration_init`。`build_resolution_snapshot(type_pack, artifact, workflow, workflow_inputs=[...])` 可构造并深拷贝该快照。插画的资产确认与最终确认门仍独立由主编处理，绝不与文字核心阶段混合。
+
 ## Codex 派发流程
 
 creation、revision 和 illustration 模板均使用 `pb-stage-run-v2`。creation 模板

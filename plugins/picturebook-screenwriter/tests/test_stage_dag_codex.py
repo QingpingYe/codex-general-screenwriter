@@ -101,7 +101,7 @@ class StageDagCodexAdapterTest(unittest.TestCase):
         manifest = stage_dag.attach_context(
             stage_dag._creation_template_manifest(),
             CreativeContext("picturebook", ("mystery",), project_id="p1"),
-            {"type_pack": {"medium_id": "picturebook", "version": "0.5.1"}},
+            {"type_pack": {"medium_id": "picturebook", "version": "picturebook-v1"}},
         )
         plan = stage_dag_codex.build_dispatch_plan(manifest)
         self.assertEqual(plan["context"]["medium_id"], "picturebook")
@@ -114,7 +114,7 @@ class StageDagCodexAdapterTest(unittest.TestCase):
         manifest = stage_dag.attach_context(
             stage_dag._creation_template_manifest(),
             CreativeContext("picturebook", project_id="p1"),
-            {"type_pack": {"medium_id": "picturebook", "version": "0.5.1"}},
+            {"type_pack": {"medium_id": "picturebook", "version": "picturebook-v1"}},
         )
         task = stage_dag_codex.format_task_envelope(
             manifest, manifest["stages"][1]

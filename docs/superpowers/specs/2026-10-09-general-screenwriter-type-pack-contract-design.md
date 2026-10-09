@@ -183,3 +183,9 @@ snapshot 由 revision 深拷贝继承；dispatch plan/task envelope 只携带已
 - planned 类型不派发；resolution snapshot 精确并由 revision/dispatch 隔离继承。
 - 旧入口、artifact alias、manifest、确认门和 revision 兼容。
 - 全量离线测试通过；文档说明后续专项为知识库 schema v2。
+
+## 11. 实现复核补充（2026-10-09）
+
+实施后独立代码复核确认：旧类型包快照虽然要可读，但显式 context 的执行/派发必须匹配当前 type-pack version；planned 类型不能从任一公开 DAG 调度或状态迁移入口取得可执行批次。`artifact_type` 在核心 run 必须是 active 核心输出，不能是简报输入或插画产物；插画必须使用自己的八阶段 DAG。
+
+对于显式 context 的插画 run，`resolution_snapshot.workflow_inputs` 记录 `script` 的来源证据：`status=approved` 且有非空 `ref`；或用户明确提供时 `status=user_supplied`、非空 `ref`、`user_confirmation=true`。这只是运行时来源声明的结构校验，不替代主编核实用户确认或证明引用文件确实已批准。无该声明不派发插画；旧 manifest 的读取不补写此字段。artifact/stage ID 与 alias 在同一类型包的解析作用域内不能交叉冲突。

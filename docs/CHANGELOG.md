@@ -30,5 +30,8 @@
 
 ### Fixed
 
+- Dispatch and public DAG scheduling reject planned media, stale type-pack snapshots, input-only targets, and core/illustration stage mixing; optional illustration requires explicit script-source evidence.
+- Artifact/stage alias collisions are rejected across contract categories.
+
 - Knowledge loading now rejects page revisions behind the remote index, marks page-ahead evidence as `index_synced=false`, and prevents unsynced reads from replacing the last confirmed cache.
 - Terminal stage-run validation now evaluates run-level status and outcome without shadowing by stage fields.

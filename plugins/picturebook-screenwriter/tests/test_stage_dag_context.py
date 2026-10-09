@@ -99,7 +99,7 @@ class StageDagContextTests(unittest.TestCase):
         manifest = stage_dag.attach_context(
             manifest,
             CreativeContext("picturebook", project_id="p1"),
-            {"type_pack": {"medium_id": "picturebook", "version": "0.5.1"}},
+            {"type_pack": {"medium_id": "picturebook", "version": "picturebook-v1"}},
         )
         manifest = self._fast_forward(manifest, [
             "session_init", "brief_gate", "knowledge_load", "creation_delegate",

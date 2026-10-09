@@ -107,6 +107,7 @@ def build_resolution_snapshot(
     artifact: ArtifactDescriptor | None = None,
     workflow: WorkflowContract | None = None,
     *, delivery_form: str | None = None,
+    workflow_inputs: list[dict] | None = None,
 ) -> dict:
     """Build metadata only; do not start workflows or mutate a registry."""
     try:
@@ -139,6 +140,10 @@ def build_resolution_snapshot(
             snapshot["artifact"] = {"artifact_id": artifact.artifact_id, "delivery_form": delivery_form}
         elif delivery_form is not None:
             raise TypeRegistryError("没有 artifact 时不得指定 delivery_form")
+        if workflow_inputs is not None:
+            if workflow is None:
+                raise TypeRegistryError("workflow_inputs 必须与 workflow 一起提供")
+            snapshot["workflow_inputs"] = copy.deepcopy(workflow_inputs)
         return snapshot
     except (TypeRegistryError, TypeError, AttributeError) as error:
         raise StageDagError(f"resolution snapshot 无效：{error}") from error
@@ -148,7 +153,7 @@ def _validate_resolution_snapshot(snapshot, context, errors, artifact_type=None)
     if not isinstance(snapshot, dict) or any(not isinstance(k, str) for k in snapshot):
         errors.append("resolution_snapshot 必须是字符串键对象")
         return
-    unknown = set(snapshot) - {"type_pack", "knowledge", "skills", "artifact", "workflow"}
+    unknown = set(snapshot) - {"type_pack", "knowledge", "skills", "artifact", "workflow", "workflow_inputs"}
     if unknown:
         errors.append("resolution_snapshot 包含未知字段：" + ", ".join(sorted(unknown)))
     start_errors = len(errors)
@@ -178,6 +183,28 @@ def _validate_resolution_snapshot(snapshot, context, errors, artifact_type=None)
             continue
         for field in fields:
             _require_nonempty_str(value[field], f"resolution_snapshot.{key}.{field}", errors)
+    if "workflow_inputs" in snapshot:
+        inputs = snapshot["workflow_inputs"]
+        if "workflow" not in snapshot or not isinstance(inputs, list):
+            errors.append("resolution_snapshot.workflow_inputs 必须是 workflow 的数组")
+        else:
+            seen = set()
+            for index, entry in enumerate(inputs):
+                label = f"resolution_snapshot.workflow_inputs[{index}]"
+                if not isinstance(entry, dict) or not {"artifact_id", "status", "ref"} <= set(entry) or set(entry) - {"artifact_id", "status", "ref", "user_confirmation"}:
+                    errors.append(f"{label} 包含缺失或未知字段")
+                    continue
+                for field in ("artifact_id", "status", "ref"):
+                    _require_nonempty_str(entry[field], f"{label}.{field}", errors)
+                if entry["artifact_id"] in seen:
+                    errors.append(f"{label}.artifact_id 重复")
+                seen.add(entry["artifact_id"])
+                if entry["status"] not in {"approved", "user_supplied"}:
+                    errors.append(f"{label}.status 必须为 approved 或 user_supplied")
+                if entry["status"] == "user_supplied" and entry.get("user_confirmation") is not True:
+                    errors.append(f"{label} 用户提供脚本须有明确确认")
+                if "user_confirmation" in entry and type(entry["user_confirmation"]) is not bool:
+                    errors.append(f"{label}.user_confirmation 必须是布尔值")
     if len(errors) != start_errors or context is None:
         return
     artifact_data = snapshot.get("artifact")
@@ -233,22 +260,53 @@ def _validate_optional_context(manifest, errors):
 
 
 def assert_manifest_type_executable(manifest):
-    """Gate execution only for explicit contexts; preserve legacy picturebook reads."""
+    """Enforce current contract only when dispatching an explicit-context run."""
     if not isinstance(manifest, dict) or "context" not in manifest:
         return None
     try:
         context = context_from_dict(manifest["context"], require_project=True)
         pack = resolve_type_pack(default_type_registry(), context.medium_id)
         assert_type_pack_executable(pack)
-        snapshot = manifest.get("resolution_snapshot")
-        if snapshot and snapshot.get("type_pack", {}).get("version") == pack.version:
-            policy = snapshot.get("type_pack", {}).get("workflow_policy")
-            if policy is not None and policy != pack.workflow_policy:
+        snapshot = manifest.get("resolution_snapshot") or {}
+        locked = snapshot.get("type_pack")
+        if locked:
+            if locked["version"] != pack.version:
+                raise TypeRegistryError("历史 type pack 快照只读，执行前须重新解析当前版本")
+            if locked.get("workflow_policy") is not None and locked["workflow_policy"] != pack.workflow_policy:
                 raise TypeRegistryError("resolution_snapshot workflow_policy 与当前 type pack 不一致")
+        stage_ids = {stage["stage_id"] for stage in manifest["stages"]}
+        workflow_data = snapshot.get("workflow")
+        if workflow_data is None:
+            target = assert_core_artifact_target(pack, manifest["artifact_type"])
+            if context.delivery_form and context.delivery_form not in target.delivery_forms:
+                raise TypeRegistryError("context.delivery_form 不属于核心目标")
+            core_ids = {stage.stage_id for stage in pack.stages}
+            if manifest.get("intent") == "revision":
+                core_ids.update({"revision_init", "revision_delegate"})
+            if stage_ids - core_ids:
+                raise TypeRegistryError("核心 run 混入非核心 workflow 阶段")
+        else:
+            workflow = resolve_workflow(pack, workflow_data["workflow_id"])
+            if workflow.trigger_intent != workflow_data["trigger_intent"]:
+                raise TypeRegistryError("workflow trigger_intent 不一致")
+            if manifest["artifact_type"] not in {workflow.workflow_id, *(a.artifact_id for a in workflow.artifact_types)}:
+                raise TypeRegistryError("目标不是选中的可选 workflow")
+            if stage_ids != {stage.stage_id for stage in workflow.stages}:
+                raise TypeRegistryError("可选 workflow run 的阶段必须与独立 DAG 一致")
+            evidence = snapshot.get("workflow_inputs", [])
+            for requirement in workflow.inputs:
+                matches = [item for item in evidence if item["artifact_id"] == requirement.artifact_id]
+                if len(matches) != 1 or not matches[0]["ref"].strip():
+                    raise TypeRegistryError(f"workflow 缺少 {requirement.artifact_id} 输入来源声明")
+                item = matches[0]
+                if item["status"] != requirement.required_status and not (
+                    item["status"] == "user_supplied" and item.get("user_confirmation") is True
+                ):
+                    raise TypeRegistryError(f"workflow 输入 {requirement.artifact_id} 未获准使用")
         return pack
     except TypePackNotExecutableError:
         raise
-    except (ContextError, TypeRegistryError) as error:
+    except (ContextError, TypeRegistryError, KeyError, TypeError) as error:
         raise StageDagError(f"type pack 不可执行：{error}") from error
 
 
@@ -811,6 +869,7 @@ def ready_stages(manifest):
 def resolve_stage_decisions(manifest):
     """按依赖状态和条件返回 pending/ready 阶段的调度决策。"""
     validated = validate_manifest(manifest)
+    assert_manifest_type_executable(validated)
     if validated["status"] in RUN_TERMINAL_STATUSES:
         return []
     stages = {
@@ -885,6 +944,7 @@ def resolve_stage_decisions(manifest):
 def next_batches(manifest):
     """返回下一批可执行阶段，并正确处理条件阶段。"""
     validated = validate_manifest(manifest)
+    assert_manifest_type_executable(validated)
     if validated["status"] in RUN_TERMINAL_STATUSES:
         return []
     ready = [
@@ -960,6 +1020,7 @@ def finalize_run(manifest, outcome):
 def parallel_batches(manifest):
     """把 DAG 展开成按波次执行的并行批次。"""
     validated = validate_manifest(manifest)
+    assert_manifest_type_executable(validated)
     if validated["status"] in RUN_TERMINAL_STATUSES:
         return []
     if any(stage.get("when") is not None for stage in validated["stages"]):
@@ -995,6 +1056,7 @@ def transition_stage(manifest, stage_id, status, **fields):
     if status not in STAGE_STATUSES:
         raise StageDagError(f"非法阶段状态：{status!r}")
     validated = validate_manifest(manifest)
+    assert_manifest_type_executable(validated)
     index = next(
         (i for i, stage in enumerate(validated["stages"])
          if stage["stage_id"] == stage_id),
@@ -1452,9 +1514,10 @@ def run_cli(argv=None):
         elif args.action == "batches":
             print(json.dumps(next_batches(manifest), ensure_ascii=False, indent=2))
         return 0
-    except StageDagError as exc:
+    except (StageDagError, TypeRegistryError) as exc:
         print("[stage_dag] 清单或调度失败：", file=sys.stderr)
-        for error in exc.errors:
+        errors = exc.errors if isinstance(exc, StageDagError) else [str(exc)]
+        for error in errors:
             print(f"- {error}", file=sys.stderr)
         return 2
 
