@@ -100,14 +100,14 @@ class StageDagCodexAdapterTest(unittest.TestCase):
     def test_dispatch_plan_exposes_validated_context(self):
         manifest = stage_dag.attach_context(
             stage_dag._creation_template_manifest(),
-            CreativeContext("film", ("mystery",), project_id="p1"),
-            {"type_pack": {"medium_id": "film", "version": "0.1.0"}},
+            CreativeContext("picturebook", ("mystery",), project_id="p1"),
+            {"type_pack": {"medium_id": "picturebook", "version": "0.5.1"}},
         )
         plan = stage_dag_codex.build_dispatch_plan(manifest)
-        self.assertEqual(plan["context"]["medium_id"], "film")
+        self.assertEqual(plan["context"]["medium_id"], "picturebook")
         self.assertEqual(
             plan["resolution_snapshot"]["type_pack"]["medium_id"],
-            "film",
+            "picturebook",
         )
 
     def test_task_envelope_deep_copies_context(self):

@@ -95,6 +95,7 @@ def _empty_dispatch_plan(validated):
 def build_dispatch_plan(manifest):
     """构造可直接交给 Codex multi_agent_v1 的结构化派发计划。"""
     validated = stage_dag.validate_manifest(manifest)
+    stage_dag.assert_manifest_type_executable(validated)
     stages = _stage_map(validated)
     plan = _empty_dispatch_plan(validated)
 
@@ -182,6 +183,7 @@ def build_dispatch_plan(manifest):
 def format_task_envelope(manifest, stage):
     """生成并通过 pb-stage-task-v1 校验的单个阶段任务信封。"""
     validated = stage_dag.validate_manifest(manifest)
+    stage_dag.assert_manifest_type_executable(validated)
     stage_id = stage["stage_id"]
     target = next(
         (item for item in validated["stages"] if item["stage_id"] == stage_id),
@@ -229,6 +231,7 @@ def format_task_envelope(manifest, stage):
 def build_sequential_fallback(manifest):
     """构造无多 Agent 工具时的顺序降级计划。"""
     validated = stage_dag.validate_manifest(manifest)
+    stage_dag.assert_manifest_type_executable(validated)
     plan = build_dispatch_plan(validated)
     plan["mode"] = "sequential"
     return plan

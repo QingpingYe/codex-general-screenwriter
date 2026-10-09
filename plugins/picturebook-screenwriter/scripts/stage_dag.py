@@ -29,7 +29,7 @@ from type_registry import (
     ArtifactDescriptor, TypePackDescriptor, WorkflowContract, TypeRegistryError,
     default_type_registry, resolve_type_pack, resolve_artifact, resolve_workflow,
     resolve_workflow_artifact, resolve_stage, validate_type_contract,
-    assert_core_artifact_target,
+    assert_core_artifact_target, assert_type_pack_executable, TypePackNotExecutableError,
 )
 
 RUN_SCHEMA_V1 = "pb-stage-run-v1"
@@ -230,6 +230,26 @@ def _validate_optional_context(manifest, errors):
             manifest["resolution_snapshot"], context, errors, manifest.get("artifact_type")
         )
     return context
+
+
+def assert_manifest_type_executable(manifest):
+    """Gate execution only for explicit contexts; preserve legacy picturebook reads."""
+    if not isinstance(manifest, dict) or "context" not in manifest:
+        return None
+    try:
+        context = context_from_dict(manifest["context"], require_project=True)
+        pack = resolve_type_pack(default_type_registry(), context.medium_id)
+        assert_type_pack_executable(pack)
+        snapshot = manifest.get("resolution_snapshot")
+        if snapshot and snapshot.get("type_pack", {}).get("version") == pack.version:
+            policy = snapshot.get("type_pack", {}).get("workflow_policy")
+            if policy is not None and policy != pack.workflow_policy:
+                raise TypeRegistryError("resolution_snapshot workflow_policy 与当前 type pack 不一致")
+        return pack
+    except TypePackNotExecutableError:
+        raise
+    except (ContextError, TypeRegistryError) as error:
+        raise StageDagError(f"type pack 不可执行：{error}") from error
 
 
 def extract_context(manifest) -> CreativeContext:

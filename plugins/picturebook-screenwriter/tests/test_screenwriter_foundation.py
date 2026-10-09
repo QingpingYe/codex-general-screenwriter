@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import stage_dag
 import stage_dag_codex
 from screenwriter_context import CreativeContext
-from type_registry import load_type_registry, resolve_type_pack
+from type_registry import load_type_registry, resolve_type_pack, TypePackNotExecutableError
 
 
 class ScreenwriterFoundationIntegrationTests(unittest.TestCase):
@@ -63,15 +63,12 @@ class ScreenwriterFoundationIntegrationTests(unittest.TestCase):
             {"type_pack": {"medium_id": "film", "version": "0.1.0"}},
         )
         stage_dag.validate_manifest(manifest)
-        plan = stage_dag_codex.build_dispatch_plan(manifest)
-        fallback = stage_dag_codex.build_sequential_fallback(manifest)
-        self.assertEqual(plan["context"]["medium_id"], "film")
-        self.assertEqual(fallback["context"]["medium_id"], "film")
-        task = stage_dag_codex.format_task_envelope(manifest, manifest["stages"][1])
-        self.assertEqual(
-            task["inputs"]["run_context"]["creative_context"]["medium_id"],
-            "film",
-        )
+        with self.assertRaises(TypePackNotExecutableError):
+            stage_dag_codex.build_dispatch_plan(manifest)
+        with self.assertRaises(TypePackNotExecutableError):
+            stage_dag_codex.build_sequential_fallback(manifest)
+        with self.assertRaises(TypePackNotExecutableError):
+            stage_dag_codex.format_task_envelope(manifest, manifest["stages"][1])
 
         parent = self._fast_forward(manifest, [
             "session_init", "brief_gate", "knowledge_load", "creation_delegate",
