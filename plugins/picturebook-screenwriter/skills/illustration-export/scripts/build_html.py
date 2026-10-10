@@ -2,8 +2,15 @@
 
 import html
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+PLUGIN_SCRIPTS = Path(__file__).resolve().parents[3] / "scripts"
+if str(PLUGIN_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_SCRIPTS))
+
+from exporter_contract import ExporterContractError, check_export_destination
 
 
 REQUIRED_METADATA = (
@@ -74,7 +81,8 @@ def _render_cards(cards: list[dict], title_field: str) -> str:
     )
 
 
-def build_html(payload: dict, output_dir: Path) -> ExportResult:
+def build_html(payload: dict, output_dir: Path, *, output_name: str | None = None,
+               overwrite_allowed: bool = False) -> ExportResult:
     _require(payload, "project_metadata")
     _require(payload, "pages")
     metadata = payload["project_metadata"]
@@ -173,11 +181,19 @@ def build_html(payload: dict, output_dir: Path) -> ExportResult:
         optional_sections.append(
             f'<section aria-label="themes">{_render_cards(themes, "title")}</section>'
         )
-    output_path = Path(output_dir).resolve() / (
+    filename = output_name or (
         f"{metadata['project_id']}_ep{metadata['episode']}_storyboard.html"
     )
+    output_path = Path(output_dir).resolve() / filename
+    try:
+        check_export_destination(output_path, overwrite_allowed=overwrite_allowed)
+    except ExporterContractError:
+        raise
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
+    temp_path = output_path.with_name(output_path.name + ".partial")
+    if temp_path.exists():
+        temp_path.unlink()
+    temp_path.write_text(
         f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -210,6 +226,7 @@ def build_html(payload: dict, output_dir: Path) -> ExportResult:
 """,
         encoding="utf-8",
     )
+    temp_path.replace(output_path)
 
     return ExportResult(
         html_path=str(output_path),

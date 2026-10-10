@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "exporters": [
+    {
+      "exporter_id": "html_preview",
+      "supported_types": ["script"],
+      "required_inputs": ["script"],
+      "output_format": "html_preview",
+      "required_user_params": ["output_directory", "size", "quality"],
+      "confirmation_policy": "explicit_params_only",
+      "validation_policy": "fail_closed",
+      "model_calls": "forbidden"
+    }
+  ]
+}
