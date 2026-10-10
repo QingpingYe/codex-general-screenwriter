@@ -12,7 +12,7 @@ if str(STORE_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(STORE_SCRIPTS))
 
 from page_codec import parse_remote_page, PageCodecError
-from scope_pages import ScopeEnvelopeError, parse_scope_envelope
+from scope_pages import ScopeEnvelope, ScopeEnvelopeError, parse_scope_envelope
 from scope_model import ScopeChainNode, ScopeRef, expand_scope_chain, scope_matches
 
 
