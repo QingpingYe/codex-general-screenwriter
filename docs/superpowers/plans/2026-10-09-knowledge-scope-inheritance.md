@@ -1,6 +1,6 @@
 # Knowledge Scope Inheritance Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add read-only knowledge scope-chain resolution and schema v2 metadata compatibility without changing v1 writes.
 
@@ -43,7 +43,7 @@
   - `expand_scope_chain(scope_ref: ScopeRef) -> tuple[ScopeChainNode, ...]`
   - `scope_matches(chain, node) -> bool`
 
-- [ ] **Step 1: Add failing model tests**
+- [x] **Step 1: Add failing model tests**
 
 Cover:
   - task-to-global expansion order;
@@ -51,23 +51,23 @@ Cover:
   - medium/genre/project/series matching;
   - rejecting empty or invalid scope types.
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `python plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_scope_model.py`
 
 Expected: FAIL because `scope_model` does not exist.
 
-- [ ] **Step 3: Implement minimal scope model**
+- [x] **Step 3: Implement minimal scope model**
 
 Implement immutable dataclasses and deterministic expansion.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `python plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_scope_model.py`
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/scope_model.py plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_scope_model.py
@@ -85,7 +85,7 @@ git commit -m "feat: add knowledge scope chain model"
   - `ScopeEnvelope`
   - `parse_scope_envelope(body: str) -> ScopeEnvelope | None`
 
-- [ ] **Step 1: Add failing parser tests**
+- [x] **Step 1: Add failing parser tests**
 
 Cover:
   - valid `## knowledge-scope` JSON envelope;
@@ -94,23 +94,23 @@ Cover:
   - unknown or invalid fields raise `ScopeEnvelopeError`;
   - authority and scope_type are validated.
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `python plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_scope_pages.py`
 
 Expected: FAIL because `scope_pages` does not exist.
 
-- [ ] **Step 3: Implement minimal parser**
+- [x] **Step 3: Implement minimal parser**
 
 Parse exactly one optional `## knowledge-scope` JSON block. Do not modify the page body.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `python plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_scope_pages.py`
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/scope_pages.py plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_scope_pages.py
@@ -131,7 +131,7 @@ git commit -m "feat: add knowledge scope metadata parser"
   - `KnowledgeEvidence.scope_chain: tuple[ScopeChainNode, ...]`
   - `KnowledgeEvidenceBundle.conflicts: tuple[ConflictReport, ...]`
 
-- [ ] **Step 1: Add failing loader tests**
+- [x] **Step 1: Add failing loader tests**
 
 Cover:
   - legacy v1 behavior unchanged when `scope_ref=None`;
@@ -140,23 +140,23 @@ Cover:
   - conflict pages produce conflict reports instead of merging;
   - malformed scope page yields warning and is skipped.
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `python plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_load_knowledge.py`
 
 Expected: FAIL on missing fields and behavior.
 
-- [ ] **Step 3: Implement optional scope-aware loading**
+- [x] **Step 3: Implement optional scope-aware loading**
 
 Keep existing key filtering as the base path. Apply scope filtering only when `scope_ref` is present. Treat pages without scope metadata as v1-compatible.
 
-- [ ] **Step 4: Run loader tests**
+- [x] **Step 4: Run loader tests**
 
 Run: `python plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_load_knowledge.py`
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/load_knowledge.py plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_load_knowledge.py
@@ -175,30 +175,30 @@ git commit -m "feat: add scope-aware knowledge loading"
   - `DependencyRecord.scope_chain: tuple[Mapping[str, Any], ...]`
   - `DependencyRecord.knowledge_schema: str`
 
-- [ ] **Step 1: Add failing dependency tests**
+- [x] **Step 1: Add failing dependency tests**
 
 Cover:
   - old record without scope fields still parses;
   - new record with scope fields parses;
   - dependency record preserves v1 fields.
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `python plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_dependencies.py`
 
 Expected: FAIL because new fields do not exist.
 
-- [ ] **Step 3: Implement additive dependency fields**
+- [x] **Step 3: Implement additive dependency fields**
 
 Keep `built_against` shape backward-compatible by making the two new fields optional.
 
-- [ ] **Step 4: Run dependency tests**
+- [x] **Step 4: Run dependency tests**
 
 Run: `python plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_dependencies.py`
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/dependencies.py plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_dependencies.py
@@ -210,25 +210,25 @@ git commit -m "feat: record knowledge scope dependencies"
 **Files:**
 - No source changes.
 
-- [ ] **Step 1: Run knowledge-loader tests**
+- [x] **Step 1: Run knowledge-loader tests**
 
 Run: `python plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_load_knowledge.py`
 
 Expected: PASS
 
-- [ ] **Step 2: Run dependency tests**
+- [x] **Step 2: Run dependency tests**
 
 Run: `python plugins/picturebook-screenwriter/skills/knowledge-loader/scripts/test_dependencies.py`
 
 Expected: PASS
 
-- [ ] **Step 3: Run full offline regression**
+- [x] **Step 3: Run full offline regression**
 
 Run: `python scripts/run_plugin_tests.py`
 
 Expected: exit 0
 
-- [ ] **Step 4: Commit any test or doc fixes**
+- [x] **Step 4: Commit any test or doc fixes**
 
 ```bash
 git add docs/CHANGELOG.md

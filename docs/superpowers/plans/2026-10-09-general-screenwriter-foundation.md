@@ -1,6 +1,6 @@
 # 通用编剧基础契约与绘本兼容适配实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 在不破坏现有绘本工作流的前提下，加入通用创作上下文、类型注册和运行记录扩展，为后续知识库、用户技能和多类型能力包提供稳定基础。
 
@@ -47,7 +47,7 @@
 - `load_type_registry(path) -> TypeRegistry`、`resolve_type_pack(registry, identifier) -> TypePackDescriptor`：从 JSON 加载并按 ID 或 alias 解析类型。
 - `config/type-packs.json` 首期注册 `picturebook`、`shortdrama`、`tv_longform`；其中只有 `picturebook` 声明现有入口和旧产物 alias，其他两类先声明最小交付形式和 `status: planned`。
 
-- [ ] **Step 1: Write the failing context tests**
+- [x] **Step 1: Write the failing context tests**
 
 ```python
 def test_normalizes_and_deduplicates_genres():
@@ -69,17 +69,17 @@ def test_legacy_context_can_omit_project_id():
     self.assertIsNone(context.project_id)
 ```
 
-- [ ] **Step 2: Run the context tests to verify they fail**
+- [x] **Step 2: Run the context tests to verify they fail**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_screenwriter_context.py -v`
 
 Expected: FAIL because the context module and parser do not exist.
 
-- [ ] **Step 3: Implement the context module**
+- [x] **Step 3: Implement the context module**
 
 Define the canonical IDs and aliases in one place. Normalize `picture-book` and `picture book` to `picturebook`; preserve the input order of first-seen `genre_ids` while removing duplicates; reject non-string or blank identifiers. `require_project=True` must require a non-empty `project_id` for new generic creation paths.
 
-- [ ] **Step 4: Write the failing registry tests**
+- [x] **Step 4: Write the failing registry tests**
 
 ```python
 def test_loads_four_initial_mediums(self):
@@ -105,23 +105,23 @@ def test_rejects_duplicate_aliases(self):
         load_type_registry(path)
 ```
 
-- [ ] **Step 5: Run registry tests to verify they fail**
+- [x] **Step 5: Run registry tests to verify they fail**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_type_registry.py -v`
 
 Expected: FAIL because the registry loader and configuration do not exist.
 
-- [ ] **Step 6: Implement the registry and initial configuration**
+- [x] **Step 6: Implement the registry and initial configuration**
 
 Validate schema version, unique `medium_id`, unique aliases, non-empty delivery forms, a valid `status`, and one workflow policy per pack. Keep planned packs loadable for registration tests; the entry workflow must route only `status=active` packs in this foundation slice, leaving planned pack execution to later type-pack plans.
 
-- [ ] **Step 7: Run both contract test files**
+- [x] **Step 7: Run both contract test files**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_screenwriter_context.py -v; python plugins/picturebook-screenwriter/tests/test_type_registry.py -v`
 
 Expected: all context and registry tests pass.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```powershell
 git add plugins/picturebook-screenwriter/scripts/screenwriter_context.py plugins/picturebook-screenwriter/scripts/type_registry.py plugins/picturebook-screenwriter/config/type-packs.json plugins/picturebook-screenwriter/tests/test_screenwriter_context.py plugins/picturebook-screenwriter/tests/test_type_registry.py
@@ -141,7 +141,7 @@ git commit -m "feat: add screenwriter context and type registry"
 - `validate_manifest(manifest)`：继续接受无上下文的 `pb-stage-run-v2`；出现上下文时校验其结构和类型包引用。
 - `build_revision_manifest(...)`：复制父 run 的 context 和 resolution snapshot，同时保持新的 `run_id`、`iteration` 和 `revision_of_run_id` 规则。
 
-- [ ] **Step 1: Write failing manifest context tests**
+- [x] **Step 1: Write failing manifest context tests**
 
 ```python
 def test_legacy_manifest_infers_picturebook_context(self):
@@ -180,31 +180,31 @@ def test_revision_copies_context_but_changes_lineage(self):
     self.assertEqual(revision["revision_of_run_id"], parent["run_id"])
 ```
 
-- [ ] **Step 2: Run the focused tests to verify they fail**
+- [x] **Step 2: Run the focused tests to verify they fail**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_stage_dag_context.py -v`
 
 Expected: FAIL because manifest context helpers and validation do not exist.
 
-- [ ] **Step 3: Add optional context validation to `stage_dag.py`**
+- [x] **Step 3: Add optional context validation to `stage_dag.py`**
 
 Keep `RUN_SCHEMA` as `pb-stage-run-v2` for this compatibility slice. Validate `context` only when present; preserve all existing stage, outcome, confirmation, migration, and path checks. Validate `resolution_snapshot` as an object containing `type_pack` and optional `knowledge` and `skills` arrays or objects; do not resolve knowledge or skills in this task.
 
-- [ ] **Step 4: Add `attach_context` and `extract_context`**
+- [x] **Step 4: Add `attach_context` and `extract_context`**
 
 Use `copy.deepcopy` before enriching manifests. The legacy fallback must not write a synthetic context back into an old manifest unless the caller explicitly invokes `attach_context`.
 
-- [ ] **Step 5: Propagate optional fields through revision creation**
+- [x] **Step 5: Propagate optional fields through revision creation**
 
 Update `build_revision_manifest` to copy context and resolution snapshot after constructing the revision template. Keep old manifests without these fields valid and leave their revision behavior unchanged.
 
-- [ ] **Step 6: Run the existing stage DAG suite and focused tests**
+- [x] **Step 6: Run the existing stage DAG suite and focused tests**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_stage_dag_context.py -v; python plugins/picturebook-screenwriter/tests/test_stage_dag.py -v`
 
 Expected: focused context tests and all existing stage DAG tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add plugins/picturebook-screenwriter/scripts/stage_dag.py plugins/picturebook-screenwriter/tests/test_stage_dag.py plugins/picturebook-screenwriter/tests/test_stage_dag_context.py
@@ -222,7 +222,7 @@ git commit -m "feat: add compatible creative context to stage runs"
 - `format_task_envelope(manifest, stage)`：在现有 `inputs.run_context` 中加入深拷贝的 `creative_context` 和 `resolution_snapshot`。
 - `build_sequential_fallback(manifest)`：复用同一字段和校验逻辑，不创建第二套上下文解析路径。
 
-- [ ] **Step 1: Write failing dispatch tests**
+- [x] **Step 1: Write failing dispatch tests**
 
 ```python
 def test_dispatch_plan_exposes_validated_context(self):
@@ -246,27 +246,27 @@ def test_task_envelope_deep_copies_context(self):
     self.assertEqual(manifest["context"]["medium_id"], "picturebook")
 ```
 
-- [ ] **Step 2: Run the adapter tests to verify they fail**
+- [x] **Step 2: Run the adapter tests to verify they fail**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_stage_dag_codex.py -v`
 
 Expected: FAIL because the plan and envelope omit the new fields.
 
-- [ ] **Step 3: Add context propagation to the adapter**
+- [x] **Step 3: Add context propagation to the adapter**
 
 Call `stage_dag.extract_context` only after `validate_manifest`. Use JSON-compatible dictionaries produced by `context_to_dict`; never pass mutable manifest references into task envelopes. Preserve existing lead-owned confirmation behavior and current plan schema.
 
-- [ ] **Step 4: Update the existing envelope assertions**
+- [x] **Step 4: Update the existing envelope assertions**
 
 Keep the current `run_context` fields unchanged and assert the new fields alongside them. Add coverage for legacy manifests: they should produce an inferred picturebook context without changing their source manifest.
 
-- [ ] **Step 5: Run adapter and stage DAG tests**
+- [x] **Step 5: Run adapter and stage DAG tests**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_stage_dag_codex.py -v; python plugins/picturebook-screenwriter/tests/test_stage_dag.py -v`
 
 Expected: all adapter and stage DAG tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add plugins/picturebook-screenwriter/scripts/stage_dag_codex.py plugins/picturebook-screenwriter/tests/test_stage_dag_codex.py
@@ -288,7 +288,7 @@ git commit -m "feat: propagate creative context through dispatch"
 - Contract field `compatibility` declares `legacy_entry_skill`, `legacy_run_schema`, `legacy_task_schema`, and `legacy_knowledge_key_shape`.
 - Entry skill documents collecting medium, genre, series and project context, with legacy picturebook inference when an old project has no medium field.
 
-- [ ] **Step 1: Write failing contract and skill tests**
+- [x] **Step 1: Write failing contract and skill tests**
 
 ```python
 def test_contract_declares_context_and_registry(self):
@@ -307,27 +307,27 @@ def test_entry_documents_context_resolution(self):
     self.assertIn("legacy_default_medium", text)
 ```
 
-- [ ] **Step 2: Run focused contract tests to verify they fail**
+- [x] **Step 2: Run focused contract tests to verify they fail**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_plugin_contract.py -v; python plugins/picturebook-screenwriter/tests/test_skill_contract.py -v`
 
 Expected: FAIL because the contract fields and entry documentation are absent.
 
-- [ ] **Step 3: Add contract metadata and entry documentation**
+- [x] **Step 3: Add contract metadata and entry documentation**
 
 Keep the current contract schema version and existing artifact, quality, illustration, and write-policy fields. Add only the foundation metadata. State that legacy projects without a medium use the picturebook compatibility path and that new generic projects must declare a medium before type-specific drafting.
 
-- [ ] **Step 4: Update the plugin README capability summary**
+- [x] **Step 4: Update the plugin README capability summary**
 
 Describe the new context/type foundation as an evolving capability while preserving the existing picturebook behavior description. Do not advertise shortdrama or tv_longform as fully supported until their type packs land.
 
-- [ ] **Step 5: Run plugin contract and package checks**
+- [x] **Step 5: Run plugin contract and package checks**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_plugin_contract.py -v; python plugins/picturebook-screenwriter/tests/test_skill_contract.py -v; python scripts/package_check.py`
 
 Expected: all focused tests pass and package validation reports success.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add plugins/picturebook-screenwriter/config/plugin-contract.json plugins/picturebook-screenwriter/skills/picturebook-screenwriter/SKILL.md plugins/picturebook-screenwriter/tests/test_plugin_contract.py plugins/picturebook-screenwriter/tests/test_skill_contract.py plugins/picturebook-screenwriter/README.md
@@ -344,7 +344,7 @@ git commit -m "docs: declare screenwriter context foundation"
 - The integration test loads the registry, enriches the legacy picturebook creation template, validates the manifest, builds a Codex dispatch plan, formats a task envelope, and creates a revision run from the enriched parent.
 - The changelog records the new context/type registry foundation and its compatibility boundary.
 
-- [ ] **Step 1: Write the end-to-end regression test**
+- [x] **Step 1: Write the end-to-end regression test**
 
 Exercise this sequence with a `shortdrama` context and a separate legacy picturebook manifest:
 
@@ -355,33 +355,33 @@ Exercise this sequence with a `shortdrama` context and a separate legacy picture
 5. Complete a revision-requested parent and assert the revision retains context and lineage.
 6. Validate that an untouched legacy manifest still infers `picturebook`.
 
-- [ ] **Step 2: Run the focused integration test to verify it fails before integration is complete**
+- [x] **Step 2: Run the focused integration test to verify it fails before integration is complete**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_screenwriter_foundation.py -v`
 
 Expected: FAIL until all prior tasks are integrated.
 
-- [ ] **Step 3: Fix only integration mismatches**
+- [x] **Step 3: Fix only integration mismatches**
 
 Keep changes limited to field names, imports, registry loading, and compatibility behavior required by the test. Do not add knowledge inheritance, skill execution, or new type-specific quality rules in this task.
 
-- [ ] **Step 4: Run the complete plugin regression suite**
+- [x] **Step 4: Run the complete plugin regression suite**
 
 Run: `python scripts/run_plugin_tests.py`
 
 Expected: all tracked plugin tests pass.
 
-- [ ] **Step 5: Run release checks**
+- [x] **Step 5: Run release checks**
 
 Run: `python scripts/governance_check.py; python scripts/package_check.py`
 
 Expected: both commands exit 0.
 
-- [ ] **Step 6: Update the changelog**
+- [x] **Step 6: Update the changelog**
 
 Record that the foundation adds typed creative context, a type-pack registry, optional run metadata, dispatch propagation, and legacy picturebook compatibility. Record that knowledge schema v2, user skills, and additional type packs remain subsequent work.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```powershell
 git add plugins/picturebook-screenwriter/tests/test_screenwriter_foundation.py docs/CHANGELOG.md

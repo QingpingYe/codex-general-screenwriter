@@ -1,6 +1,6 @@
 # General Writer DAG And Quality Gate V1 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 让类型包成为 run/workflow 的唯一结构来源，并给质量检查建立可注册、可快照、可聚合的 v1 契约。
 
@@ -47,7 +47,7 @@
 - 允许的 `stage_type` 值固定为：`session_init`、`brief_gate`、`knowledge_load`、`delegation`、`creation`、`validation`、`synthesis`、`confirmation`、`persistence`、`delivery`。
 - 完整 active v1 包的每个 core/optional stage 必须有非空 `stage_type` 和 `owner`；`gate` 必须是非空字符串。legacy 字符串 artifact 配置仍可读取但不可执行。
 
-- [ ] **Step 1: Write failing model tests**
+- [x] **Step 1: Write failing model tests**
 
 ```python
 def test_stage_runtime_semantics_are_immutable():
@@ -67,27 +67,27 @@ def test_full_active_v1_requires_runtime_semantics():
                 tr.parse_type_registry(payload)
 ```
 
-- [ ] **Step 2: Run focused model tests and observe failures**
+- [x] **Step 2: Run focused model tests and observe failures**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_type_contract_models.py -v; python plugins/picturebook-screenwriter/tests/test_type_registry.py -v`
 
 Expected: FAIL because `stage_type/owner/gate` do not exist and loader does not require them.
 
-- [ ] **Step 3: Implement runtime fields and validation**
+- [x] **Step 3: Implement runtime fields and validation**
 
 Add the three frozen fields, parse them as optional keys, reject unknown values for `stage_type`, and require them on every stage of a full active v1 pack. Keep legacy descriptors readable without runtime semantics.
 
-- [ ] **Step 4: Update picturebook reference contract**
+- [x] **Step 4: Update picturebook reference contract**
 
 In `type-packs.json`, map every core and illustration stage to its existing runtime owner and gate. Do not change stage IDs, dependencies, confirmation gates, or artifact ownership. `confirmation_gate` remains `confirmation_required=true` and `gate=confirmation`; illustration keeps its two explicit confirmation gates.
 
-- [ ] **Step 5: Verify registry and type-pack regressions**
+- [x] **Step 5: Verify registry and type-pack regressions**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_type_contract_models.py -v; python plugins/picturebook-screenwriter/tests/test_type_registry.py -v; python plugins/picturebook-screenwriter/tests/test_stage_dag.py -v; python plugins/picturebook-screenwriter/tests/test_type_pack_review_regression.py -v`
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add plugins/picturebook-screenwriter/scripts/type_registry.py plugins/picturebook-screenwriter/config/type-packs.json plugins/picturebook-screenwriter/tests/test_type_contract_models.py plugins/picturebook-screenwriter/tests/test_type_registry.py
@@ -116,7 +116,7 @@ git commit -m "feat: add stage runtime semantics to type packs"
 - Snapshot adds optional `quality_rules` as a list of compact dictionaries containing exactly: `check_id`, `artifact_ids`, `stage_id`, `blocking_policy`, `validator`.
 - `build_resolution_snapshot(..., quality_rule_ids: Sequence[str] | None = None)` filters declared rules for the selected core artifact and rejects unknown or non-matching rules.
 
-- [ ] **Step 1: Write failing descriptor and snapshot tests**
+- [x] **Step 1: Write failing descriptor and snapshot tests**
 
 Cover all of:
   - `QualityRuleDescriptor` is immutable and sequences are isolated;
@@ -127,17 +127,17 @@ Cover all of:
   - snapshot validation rejects unknown, duplicate, cross-medium, or stale quality-rule IDs for a current-version pack;
   - a legacy snapshot without `quality_rules` remains readable and does not gain the field.
 
-- [ ] **Step 2: Run focused tests and observe failures**
+- [x] **Step 2: Run focused tests and observe failures**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_type_contract_models.py -v; python plugins/picturebook-screenwriter/tests/test_type_registry.py -v; python plugins/picturebook-screenwriter/tests/test_type_pack_snapshot.py -v`
 
 Expected: FAIL because the descriptor, config, and snapshot support are absent.
 
-- [ ] **Step 3: Implement parsing, validation, and snapshot support**
+- [x] **Step 3: Implement parsing, validation, and snapshot support**
 
 Parse `quality_rules` as an optional type-pack field. Validate references inside the same core type-pack namespace. Add `quality_rules` to the allowed snapshot fields and compact-rule shape. Only validate current-version rule references; archived snapshots remain read-only.
 
-- [ ] **Step 4: Add picturebook seed rules**
+- [x] **Step 4: Add picturebook seed rules**
 
 Add only rules that express current behavior:
   - `project_authority`: all five workflow-output core artifacts at `preflight`, `hard_block`, validator `pre_output-baseline`;
@@ -146,13 +146,13 @@ Add only rules that express current behavior:
 
 Do not add new quality algorithms or pretend these declarations execute automatically.
 
-- [ ] **Step 5: Verify contract, snapshot, and dispatch regressions**
+- [x] **Step 5: Verify contract, snapshot, and dispatch regressions**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_type_contract_models.py -v; python plugins/picturebook-screenwriter/tests/test_type_registry.py -v; python plugins/picturebook-screenwriter/tests/test_type_pack_snapshot.py -v; python plugins/picturebook-screenwriter/tests/test_stage_dag_codex.py -v`
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add plugins/picturebook-screenwriter/scripts/type_registry.py plugins/picturebook-screenwriter/scripts/stage_dag.py plugins/picturebook-screenwriter/config/type-packs.json plugins/picturebook-screenwriter/tests/test_type_contract_models.py plugins/picturebook-screenwriter/tests/test_type_registry.py plugins/picturebook-screenwriter/tests/test_type_pack_snapshot.py
@@ -179,7 +179,7 @@ git commit -m "feat: add type pack quality rule contracts"
   - `informational` is recorded but does not block;
   - every declared rule must have at least one result; a missing rule becomes an `unknown` check and is treated as unresolved.
 
-- [ ] **Step 1: Write failing report tests**
+- [x] **Step 1: Write failing report tests**
 
 Cover:
   - a pass report has `passed=True` and `confirmation_ready=True`;
@@ -190,23 +190,23 @@ Cover:
   - missing, duplicate, unknown, or mismatched result check IDs produce a structured error or `unknown` unresolved result;
   - JSON round-trip preserves fields and result status.
 
-- [ ] **Step 2: Run report tests and observe failures**
+- [x] **Step 2: Run report tests and observe failures**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_quality_gate_contract.py -v`
 
 Expected: FAIL because `quality_gate_contract.py` does not exist.
 
-- [ ] **Step 3: Implement report aggregation and serialization**
+- [x] **Step 3: Implement report aggregation and serialization**
 
 Use the `QualityRuleDescriptor` from Task 2 to validate each raw result. The module must not import `stage_dag.py`, read files, call validators, or write output. It only validates structure and aggregates policy outcomes.
 
-- [ ] **Step 4: Run focused report tests**
+- [x] **Step 4: Run focused report tests**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_quality_gate_contract.py -v`
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add plugins/picturebook-screenwriter/scripts/quality_gate_contract.py plugins/picturebook-screenwriter/tests/test_quality_gate_contract.py
@@ -229,7 +229,7 @@ git commit -m "feat: add structured quality gate reports"
 - Stage runtime dictionaries use `stage_type/owner/gate` from `StageContract`; no picturebook owner or stage ID is hardcoded in the builder.
 - Core revision reuses the same core stage graph; do not add hard-coded `revision_init` or `revision_delegate` for explicit-context runs. Legacy no-context revision keeps the existing template.
 
-- [ ] **Step 1: Write failing builder tests**
+- [x] **Step 1: Write failing builder tests**
 
 Use an in-memory `shortdrama`-context fixture pack with version `shortdrama-fixture-v1` and status `active`. It must not be written to `config/type-packs.json`.
 
@@ -243,27 +243,27 @@ Cover:
   - source manifests and input descriptors are deep-copied, so mutating the returned manifest does not mutate the request;
   - a legacy no-context revision still goes through the existing `stage_dag.build_revision_manifest` path unchanged.
 
-- [ ] **Step 2: Run builder tests and observe failures**
+- [x] **Step 2: Run builder tests and observe failures**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_creative_run_builder.py -v`
 
 Expected: FAIL because `creative_run_builder.py` does not exist.
 
-- [ ] **Step 3: Implement the minimal builder**
+- [x] **Step 3: Implement the minimal builder**
 
 The builder validates context, pack status, target/workflow selection, runtime stage metadata, revision lineage fields, and delivery form. It constructs the manifest, calls `build_resolution_snapshot`, adds applicable quality rules, and returns `stage_dag.validate_manifest` output. It must not touch the filesystem or call `assert_manifest_type_executable`; dispatch remains the public execution gate.
 
-- [ ] **Step 4: Extend explicit-context revision safely**
+- [x] **Step 4: Extend explicit-context revision safely**
 
 In `stage_dag.build_revision_manifest`, keep the existing template path for a parent without context. If the parent has context, rebuild the stage graph from the currently resolved executable type pack and target/workflow; reject a stale snapshot version or planned pack. Preserve parent/root IDs, iteration, feedback, source ref, and deep-copied context. Keep the no-context legacy behavior byte-compatible in structure.
 
-- [ ] **Step 5: Run builder, DAG, and revision regressions**
+- [x] **Step 5: Run builder, DAG, and revision regressions**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_creative_run_builder.py -v; python plugins/picturebook-screenwriter/tests/test_stage_dag.py -v; python plugins/picturebook-screenwriter/tests/test_stage_dag_context.py -v; python plugins/picturebook-screenwriter/tests/test_type_pack_snapshot.py -v`
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add plugins/picturebook-screenwriter/scripts/creative_run_builder.py plugins/picturebook-screenwriter/scripts/stage_dag.py plugins/picturebook-screenwriter/tests/test_creative_run_builder.py
@@ -284,7 +284,7 @@ git commit -m "feat: build creative runs from type packs"
 - `assert_manifest_type_executable` rejects a current-version snapshot whose `quality_rules` do not match the current type pack for the selected target/workflow.
 - Codex confirmation behavior remains lead-owned; quality report state is advisory metadata for the lead, not an automatic outcome writer.
 
-- [ ] **Step 1: Write failing dispatch and snapshot isolation tests**
+- [x] **Step 1: Write failing dispatch and snapshot isolation tests**
 
 Cover:
   - a type-pack-built creation manifest exposes identical, isolated `quality_rules` in plan, task envelope, and fallback;
@@ -294,23 +294,23 @@ Cover:
   - planned media still cannot dispatch;
   - confirmation outcomes remain `approved`, `revision_requested`, and `cancelled`.
 
-- [ ] **Step 2: Run dispatch tests and observe failures**
+- [x] **Step 2: Run dispatch tests and observe failures**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_stage_dag.py -v; python plugins/picturebook-screenwriter/tests/test_type_pack_snapshot.py -v; python plugins/picturebook-screenwriter/tests/test_stage_dag_codex.py -v`
 
 Expected: FAIL on missing quality-rule dispatch/isolation enforcement.
 
-- [ ] **Step 3: Implement snapshot propagation and execution checks**
+- [x] **Step 3: Implement snapshot propagation and execution checks**
 
 Do not duplicate snapshot serialization. Reuse the existing deep-copy helpers and extend their allowed/validation behavior. Keep quality rules as contract metadata; the dispatch adapter does not evaluate them.
 
-- [ ] **Step 4: Verify public dispatch and compatibility gates**
+- [x] **Step 4: Verify public dispatch and compatibility gates**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_stage_dag.py -v; python plugins/picturebook-screenwriter/tests/test_stage_dag_context.py -v; python plugins/picturebook-screenwriter/tests/test_type_pack_snapshot.py -v; python plugins/picturebook-screenwriter/tests/test_stage_dag_codex.py -v; python plugins/picturebook-screenwriter/tests/test_type_pack_execution_gate.py -v; python plugins/picturebook-screenwriter/tests/test_type_pack_review_regression.py -v`
 
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add plugins/picturebook-screenwriter/scripts/stage_dag.py plugins/picturebook-screenwriter/scripts/stage_dag_codex.py plugins/picturebook-screenwriter/tests/test_stage_dag.py plugins/picturebook-screenwriter/tests/test_type_pack_snapshot.py plugins/picturebook-screenwriter/tests/test_stage_dag_codex.py
@@ -332,7 +332,7 @@ git commit -m "feat: dispatch quality rule snapshots"
 - Add `quality_gate_contract` metadata with schema version `quality-gate-v1`, allowed blocking policies, and the statement that report aggregation does not execute validators.
 - Preserve all existing `write_policy`, confirmation, illustration, and compatibility fields.
 
-- [ ] **Step 1: Add failing contract and skill assertions**
+- [x] **Step 1: Add failing contract and skill assertions**
 
 Assert that:
   - `quality_gate_contract.schema_version == "quality-gate-v1"`;
@@ -340,29 +340,29 @@ Assert that:
   - contract explicitly says shortdrama/tv_longform remain planned;
   - operator text explains that quality reports inform the confirmation gate but never replace it or write files.
 
-- [ ] **Step 2: Run focused contract tests and observe failures**
+- [x] **Step 2: Run focused contract tests and observe failures**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_plugin_contract.py -v; python plugins/picturebook-screenwriter/tests/test_skill_contract.py -v`
 
 Expected: FAIL because public metadata/docs are absent.
 
-- [ ] **Step 3: Update contract, README, skill, and changelog**
+- [x] **Step 3: Update contract, README, skill, and changelog**
 
 Document only the implemented boundary: type-pack-driven core/optional workflows, quality rule snapshots, structured reports, preserved confirmation semantics, and planned media that cannot dispatch. Do not advertise shortdrama or tv_longform creation.
 
-- [ ] **Step 4: Run all focused subsystem suites**
+- [x] **Step 4: Run all focused subsystem suites**
 
 Run: `python plugins/picturebook-screenwriter/tests/test_type_contract_models.py -v; python plugins/picturebook-screenwriter/tests/test_type_registry.py -v; python plugins/picturebook-screenwriter/tests/test_quality_gate_contract.py -v; python plugins/picturebook-screenwriter/tests/test_creative_run_builder.py -v; python plugins/picturebook-screenwriter/tests/test_type_pack_snapshot.py -v; python plugins/picturebook-screenwriter/tests/test_stage_dag.py -v; python plugins/picturebook-screenwriter/tests/test_stage_dag_codex.py -v`
 
 Expected: all pass.
 
-- [ ] **Step 5: Run complete offline regression and release checks**
+- [x] **Step 5: Run complete offline regression and release checks**
 
 Run: `python .\scripts\run_plugin_tests.py`
 
 Expected: exit 0; report all offline commands passed. Because Tasks 3-4 add two test files, the reported command count should increase from the current 64 by two unless later test consolidation is explicitly reviewed.
 
-- [ ] **Step 6: Review the diff and commit**
+- [x] **Step 6: Review the diff and commit**
 
 Confirm the diff does not include `.sdd-temp-screenwriter-foundation/`, remote writes, user artifacts, or activated planned media. Then commit.
 
@@ -373,13 +373,13 @@ git commit -m "docs: declare creative workflow quality gate contract"
 
 ## Completion Checklist
 
-- [ ] Active type packs declare runtime stage semantics; legacy string packs remain readable but non-executable.
-- [ ] Quality rules are declared, validated, snapshotted, and dispatch-isolated.
-- [ ] Quality reports distinguish hard blockers, user-confirmation risks, warnings, and informational results.
-- [ ] A non-picturebook in-memory active pack can be built and scheduled by the generic kernel without registering or enabling a real new medium.
-- [ ] Explicit-context revision uses the type-pack stage graph; legacy no-context revision remains compatible.
-- [ ] Planned media cannot dispatch; picturebook behavior and confirmation gates remain unchanged.
-- [ ] Full offline regression, governance, and packaging checks pass.
+- [x] Active type packs declare runtime stage semantics; legacy string packs remain readable but non-executable.
+- [x] Quality rules are declared, validated, snapshotted, and dispatch-isolated.
+- [x] Quality reports distinguish hard blockers, user-confirmation risks, warnings, and informational results.
+- [x] A non-picturebook in-memory active pack can be built and scheduled by the generic kernel without registering or enabling a real new medium.
+- [x] Explicit-context revision uses the type-pack stage graph; legacy no-context revision remains compatible.
+- [x] Planned media cannot dispatch; picturebook behavior and confirmation gates remain unchanged.
+- [x] Full offline regression, governance, and packaging checks pass.
 
 ## Plan Self-Review
 
