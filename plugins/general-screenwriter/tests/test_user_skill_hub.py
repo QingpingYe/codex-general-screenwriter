@@ -1,4 +1,5 @@
 import json
+import hashlib
 import shutil
 import sys
 import tempfile
@@ -15,7 +16,10 @@ for path in (
         sys.path.insert(0, path)
 
 from user_skill_hub import (
+    format_user_skills,
+    load_matching_user_skills,
     SUPPORT_FIELDS,
+    used_user_skill_record,
     UserSkillHubError,
     validate_system_skill,
     validate_system_skill_tree,
@@ -286,6 +290,252 @@ class ValidateUserSkillTreeTests(UserSkillHubTestCase):
             (directory / "SKILL.md").write_text("Use this.", encoding="utf-8")
         with self.assertRaisesRegex(UserSkillHubError, "重复 skill_id"):
             validate_user_skill_tree(plugin_root)
+
+
+class MatchingAndInjectionTests(UserSkillHubTestCase):
+    def make_plugin_root(self):
+        plugin_root = self.temp_path / "plugin-root"
+        (plugin_root / "config").mkdir(parents=True)
+        shutil.copy2(
+            ROOT / "config" / "type-packs.json",
+            plugin_root / "config" / "type-packs.json",
+        )
+        return plugin_root
+
+    def make_matching_skill(
+        self, plugin_root, skill_id, supports_overrides=None, title="Shared Title"
+    ):
+        supports = {
+            "medium_ids": ["all"],
+            "genre_ids": ["all"],
+            "series_ids": ["all"],
+            "project_ids": ["all"],
+            "stage_ids": ["all"],
+            "artifact_ids": ["all"],
+        }
+        supports.update(supports_overrides or {})
+        directory = plugin_root / "skills" / "user-skills" / skill_id
+        directory.mkdir(parents=True)
+        manifest = valid_manifest(skill_id=skill_id)
+        manifest["title"] = title
+        manifest["supports"] = supports
+        (directory / "manifest.json").write_text(
+            json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
+        )
+        (directory / "SKILL.md").write_text("Shared user skill.", encoding="utf-8")
+        return directory
+
+    def skill_ids(self, plugin_root, **context):
+        return [
+            skill.manifest["skill_id"]
+            for skill in load_matching_user_skills(plugin_root, **context)
+        ]
+
+    def test_all_supports_match_every_valid_context(self):
+        plugin_root = self.make_plugin_root()
+        self.make_matching_skill(plugin_root, "all-skill")
+        contexts = (
+            {
+                "medium_id": "shortdrama",
+                "genre_ids": ["genre-a"],
+                "series_id": "series-a",
+                "project_id": "project-a",
+                "stage_id": "episode_design",
+                "artifact_id": "episode_outline",
+            },
+            {
+                "medium_id": "picturebook",
+                "genre_ids": [],
+                "series_id": None,
+                "project_id": None,
+                "stage_id": None,
+                "artifact_id": None,
+            },
+        )
+        for context in contexts:
+            with self.subTest(context=context):
+                self.assertEqual(self.skill_ids(plugin_root, **context), ["all-skill"])
+
+    def test_concrete_medium_only_matches_that_medium(self):
+        plugin_root = self.make_plugin_root()
+        self.make_matching_skill(
+            plugin_root, "shortdrama-skill", {"medium_ids": ["shortdrama"]}
+        )
+        self.assertEqual(
+            self.skill_ids(plugin_root, medium_id="shortdrama"),
+            ["shortdrama-skill"],
+        )
+        self.assertEqual(
+            self.skill_ids(plugin_root, medium_id="picturebook"), []
+        )
+
+    def test_concrete_series_and_project_require_matching_context(self):
+        plugin_root = self.make_plugin_root()
+        self.make_matching_skill(
+            plugin_root,
+            "scoped-skill",
+            {"series_ids": ["series-a"], "project_ids": ["project-a"]},
+        )
+        self.make_matching_skill(plugin_root, "agnostic-skill")
+        self.assertEqual(
+            sorted(self.skill_ids(
+                plugin_root,
+                medium_id="shortdrama",
+                series_id="series-a",
+                project_id="project-a",
+            )),
+            ["agnostic-skill", "scoped-skill"],
+        )
+        self.assertEqual(
+            self.skill_ids(
+                plugin_root,
+                medium_id="shortdrama",
+                series_id="series-b",
+                project_id="project-b",
+            ),
+            ["agnostic-skill"],
+        )
+        self.assertEqual(
+            self.skill_ids(plugin_root, medium_id="shortdrama"),
+            ["agnostic-skill"],
+        )
+
+    def test_stage_and_artifact_mismatches_reject_skill(self):
+        plugin_root = self.make_plugin_root()
+        self.make_matching_skill(
+            plugin_root,
+            "stage-artifact-skill",
+            {
+                "medium_ids": ["shortdrama"],
+                "stage_ids": ["episode_design"],
+                "artifact_ids": ["episode_outline"],
+            },
+        )
+        self.assertEqual(
+            self.skill_ids(
+                plugin_root,
+                medium_id="shortdrama",
+                stage_id="episode_design",
+                artifact_id="episode_outline",
+            ),
+            ["stage-artifact-skill"],
+        )
+        self.assertEqual(
+            self.skill_ids(
+                plugin_root,
+                medium_id="shortdrama",
+                stage_id="hook_design",
+                artifact_id="episode_outline",
+            ),
+            [],
+        )
+        self.assertEqual(
+            self.skill_ids(
+                plugin_root,
+                medium_id="shortdrama",
+                stage_id="episode_design",
+                artifact_id="episode_script",
+            ),
+            [],
+        )
+        self.assertEqual(
+            self.skill_ids(plugin_root, medium_id="shortdrama"), []
+        )
+
+    def test_specificity_orders_by_context_dimension(self):
+        plugin_root = self.make_plugin_root()
+        self.make_matching_skill(plugin_root, "all-skill")
+        self.make_matching_skill(
+            plugin_root, "medium-skill", {"medium_ids": ["shortdrama"]}
+        )
+        self.make_matching_skill(
+            plugin_root,
+            "genre-skill",
+            {"medium_ids": ["shortdrama"], "genre_ids": ["genre-a"]},
+        )
+        self.make_matching_skill(
+            plugin_root,
+            "series-skill",
+            {
+                "medium_ids": ["shortdrama"],
+                "genre_ids": ["genre-a"],
+                "series_ids": ["series-a"],
+            },
+        )
+        self.make_matching_skill(
+            plugin_root,
+            "project-skill",
+            {
+                "medium_ids": ["shortdrama"],
+                "genre_ids": ["genre-a"],
+                "series_ids": ["series-a"],
+                "project_ids": ["project-a"],
+            },
+        )
+        self.assertEqual(
+            self.skill_ids(
+                plugin_root,
+                medium_id="shortdrama",
+                genre_ids=["genre-a"],
+                series_id="series-a",
+                project_id="project-a",
+            ),
+            [
+                "project-skill",
+                "series-skill",
+                "genre-skill",
+                "medium-skill",
+                "all-skill",
+            ],
+        )
+
+    def test_title_breaks_specificity_ties(self):
+        plugin_root = self.make_plugin_root()
+        self.make_matching_skill(
+            plugin_root, "second-skill", title="B Skill"
+        )
+        self.make_matching_skill(
+            plugin_root, "first-skill", title="A Skill"
+        )
+        self.assertEqual(
+            self.skill_ids(plugin_root, medium_id="shortdrama"),
+            ["first-skill", "second-skill"],
+        )
+
+    def test_format_user_skills_includes_all_injection_fields(self):
+        directory = self.make_skill(skill_id="format-skill")
+        skill = validate_user_skill(directory, ROOT)
+        formatted = format_user_skills([skill])
+        for value in (
+            "Test Skill",
+            "张三",
+            "A valid test skill.",
+            "Use this user skill.",
+        ):
+            with self.subTest(value=value):
+                self.assertIn(value, formatted)
+
+    def test_used_user_skill_record_contains_exact_fields(self):
+        directory = self.make_skill(skill_id="record-skill")
+        skill = validate_user_skill(directory, ROOT)
+        content_hash = hashlib.sha256(
+            (directory / "SKILL.md").read_bytes()
+        ).hexdigest()
+        record = used_user_skill_record(skill)
+        self.assertEqual(
+            record,
+            {
+                "skill_id": "record-skill",
+                "title": "Test Skill",
+                "user_name": "张三",
+                "updated_at": "2026-10-10T00:00:00+08:00",
+                "content_hash": f"sha256:{content_hash}",
+            },
+        )
+        self.assertEqual(
+            set(record),
+            {"skill_id", "title", "user_name", "updated_at", "content_hash"},
+        )
 
 
 class SystemSkillMetadataTests(unittest.TestCase):

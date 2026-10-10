@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from collections.abc import Sequence
 
 from type_registry import TypeRegistry, load_type_registry
 
@@ -272,6 +274,95 @@ def validate_user_skill_tree(plugin_root: Path) -> tuple[UserSkill, ...]:
         _validate_user_skill(directory, registry)
         for directory in directories
     )
+
+
+def _matches_single_support(supported: list[str], context: str | None) -> bool:
+    if "all" in supported:
+        return True
+    return context is not None and context in supported
+
+
+def _matches_genre_support(supported: list[str], context: Sequence[str]) -> bool:
+    if "all" in supported:
+        return True
+    return any(value in supported for value in context)
+
+
+def _specificity(supports: dict[str, Any]) -> tuple[int, int, int, int]:
+    return tuple(
+        0 if "all" in supports[field] else weight
+        for field, weight in (
+            ("project_ids", 8),
+            ("series_ids", 4),
+            ("genre_ids", 2),
+            ("medium_ids", 1),
+        )
+    )
+
+
+def load_matching_user_skills(
+    plugin_root: Path,
+    *,
+    medium_id: str,
+    genre_ids: Sequence[str] = (),
+    series_id: str | None = None,
+    project_id: str | None = None,
+    stage_id: str | None = None,
+    artifact_id: str | None = None,
+) -> tuple[UserSkill, ...]:
+    skills = validate_user_skill_tree(plugin_root)
+    matched = []
+    for skill in skills:
+        supports = skill.manifest["supports"]
+        if not _matches_single_support(supports["medium_ids"], medium_id):
+            continue
+        if not _matches_genre_support(supports["genre_ids"], genre_ids):
+            continue
+        if not _matches_single_support(supports["series_ids"], series_id):
+            continue
+        if not _matches_single_support(supports["project_ids"], project_id):
+            continue
+        if not _matches_single_support(supports["stage_ids"], stage_id):
+            continue
+        if not _matches_single_support(supports["artifact_ids"], artifact_id):
+            continue
+        matched.append(skill)
+    matched.sort(
+        key=lambda skill: (
+            tuple(-value for value in _specificity(skill.manifest["supports"])),
+            skill.manifest["title"],
+        )
+    )
+    return tuple(matched)
+
+
+def format_user_skills(skills: Sequence[UserSkill]) -> str:
+    blocks = []
+    for skill in skills:
+        manifest = skill.manifest
+        content_path = skill.directory / skill.content
+        content = content_path.read_text(encoding="utf-8-sig")
+        blocks.append(
+            f"[用户技能]\n"
+            f"标题：{manifest['title']}\n"
+            f"用户：{manifest['user_name']}\n"
+            f"描述：{manifest['description']}\n"
+            f"内容：\n{content}"
+        )
+    return "\n\n---\n\n".join(blocks)
+
+
+def used_user_skill_record(skill: UserSkill) -> dict[str, str]:
+    manifest = skill.manifest
+    content_path = skill.directory / skill.content
+    content_hash = hashlib.sha256(content_path.read_bytes()).hexdigest()
+    return {
+        "skill_id": manifest["skill_id"],
+        "title": manifest["title"],
+        "user_name": manifest["user_name"],
+        "updated_at": manifest["updated_at"],
+        "content_hash": f"sha256:{content_hash}",
+    }
 
 
 def _validate_system_skill(
