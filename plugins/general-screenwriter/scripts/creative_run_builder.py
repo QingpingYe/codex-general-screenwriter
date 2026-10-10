@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from importlib.util import module_from_spec, spec_from_file_location
+from pathlib import Path
+import sys
 import stage_dag
 from screenwriter_context import CreativeContext, validate_context
 from type_registry import (
@@ -14,6 +17,13 @@ from type_registry import (
 
 class CreativeRunBuilderError(ValueError):
     """Raised when a request cannot become a valid CreativeRun manifest."""
+
+
+_PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+_USER_SKILL_SCRIPT = (
+    _PLUGIN_ROOT / "skills" / "user-skill-hub" / "scripts" / "user_skill_hub.py"
+)
+_USER_SKILL_HUB = None
 
 
 @dataclass(frozen=True)
@@ -126,6 +136,39 @@ def _build_stages(pack: TypePackDescriptor) -> list[dict]:
     return [_runtime_stage(pack, item, confirmation_stage) for item in stages]
 
 
+def _load_user_skill_hub():
+    global _USER_SKILL_HUB
+    if _USER_SKILL_HUB is None:
+        spec = spec_from_file_location(
+            "general_screenwriter_user_skill_hub", _USER_SKILL_SCRIPT
+        )
+        if spec is None or spec.loader is None:
+            raise CreativeRunBuilderError(f"无法加载用户技能模块：{_USER_SKILL_SCRIPT}")
+        module = module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        _USER_SKILL_HUB = module
+    return _USER_SKILL_HUB
+
+
+def _auto_used_user_skills(
+    context, artifact: ArtifactDescriptor | None,
+) -> list[dict[str, str]] | None:
+    hub = _load_user_skill_hub()
+    skills = hub.load_matching_user_skills(
+        _PLUGIN_ROOT,
+        medium_id=context.medium_id,
+        genre_ids=context.genre_ids,
+        series_id=context.series_id,
+        project_id=context.project_id,
+        stage_id=artifact.production_stage if artifact is not None else None,
+        artifact_id=artifact.artifact_id if artifact is not None else None,
+    )
+    if not skills:
+        return None
+    return [hub.used_user_skill_record(skill) for skill in skills]
+
+
 def _snapshot(pack: TypePackDescriptor, artifact: ArtifactDescriptor | None,
               workflow: WorkflowContract | None, request: CreativeRunRequest) -> dict:
     quality_rule_ids = None
@@ -158,7 +201,13 @@ def build_creative_run(request: CreativeRunRequest) -> dict:
     try:
         context, artifact, workflow = _validate_request(request)
         pack = request.type_pack
-        snapshot = _snapshot(pack, artifact, workflow, request)
+        used_user_skills = request.used_user_skills
+        if used_user_skills is None:
+            used_user_skills = _auto_used_user_skills(context, artifact)
+        snapshot_request = replace(
+            request, used_user_skills=used_user_skills
+        )
+        snapshot = _snapshot(pack, artifact, workflow, snapshot_request)
         manifest = {
             "schema_version": stage_dag.RUN_SCHEMA,
             "run_id": request.run_id,

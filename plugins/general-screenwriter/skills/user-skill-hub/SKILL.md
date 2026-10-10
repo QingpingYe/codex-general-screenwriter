@@ -26,7 +26,7 @@
 
 还要确认：
 
-1. `skill_id`：小写连字符目录名，创建后与目录名保持一致。
+1. `skill_id`：只使用小写英文、数字和中间连字符的目录名，创建后与目录名保持一致。
 2. `title`、`description`：说明技能用途和适用方法。
 3. `skill_type`：`prompt_skill`、`checklist_skill`、`reference_skill` 或 `exporter_skill`。
 4. `medium_ids`、`genre_ids`、`series_ids`、`project_ids`、`stage_ids`、`artifact_ids`：全部使用当前类型包的 canonical ID；`all` 不能与具体 ID 混用，也不接受别名。
@@ -57,6 +57,8 @@ preview:
 
 覆盖时逐项列出旧值和新值；无法恢复的删除项单独标出。
 
+预览时还必须给出软提醒：范围声明过于宽泛、标题过于笼统、正文缺少输入/方法/输出/检查点，或 `skill_id` 与已有技能相似。提醒不阻塞校验，但必须在用户确认前明确展示。
+
 ## 校验与写入
 
 用户确认后，按用户技能契约生成只包含 `manifest.json` 和 `SKILL.md` 的技能目录。工作流必须先运行用户技能树校验，确认：
@@ -76,6 +78,8 @@ preview:
 写入技能包后，若用户要求保存或提交，机械递增 plugin.json 的 patch 版本，例如 `0.6.0` 到 `0.6.1`。不要改 major 或 minor，不要手写日期或描述性版本号。
 
 如果用户要求同步远端，先确认当前分支和未提交工作，再执行 pull/rebase；存在冲突时停止并让用户选择保留方向。推送前必须获得用户明确确认，禁止自动 push。失败或网络不可用时保留本地文件和未提交变更，说明下一步选项。
+
+提交时只暂存目标技能目录和 `.codex-plugin/plugin.json`，不要暂存无关的工作区变更，并保留这些无关变更不变。即使远端落后，也禁止 force push；先按普通 pull/rebase 处理，冲突必须由用户决定。
 
 ## 失败处理
 

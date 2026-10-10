@@ -1,6 +1,7 @@
 import sys
 import tempfile
 import unittest
+import hashlib
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
@@ -171,6 +172,78 @@ class UserSkillRunIntegrationTests(unittest.TestCase):
         self.assertEqual(
             parent["resolution_snapshot"]["used_user_skills"][0]["skill_id"],
             "user-checklist",
+        )
+
+    def test_shortdrama_run_auto_matches_and_injects_real_user_skill(self):
+        pack = type_registry.resolve_type_pack(
+            type_registry.load_type_registry(), "shortdrama"
+        )
+        context = CreativeContext(
+            "shortdrama", project_id="p1", delivery_form="episode_script"
+        )
+        manifest = build_creative_run(self._request(
+            type_pack=pack,
+            context=context,
+            target="episode_script",
+            run_id="real-user-skill-run-1",
+        ))
+        records = manifest["resolution_snapshot"]["used_user_skills"]
+        self.assertEqual(
+            [record["skill_id"] for record in records],
+            ["novel-to-shortdrama-adaptation"],
+        )
+        skill_path = (
+            ROOT / "skills" / "user-skills" /
+            "novel-to-shortdrama-adaptation" / "SKILL.md"
+        )
+        expected_hash = hashlib.sha256(skill_path.read_bytes()).hexdigest()
+        self.assertEqual(records[0]["content_hash"], f"sha256:{expected_hash}")
+
+        stage = next(
+            item for item in manifest["stages"]
+            if item["stage_id"] == "episode_script_delegate"
+        )
+        task = stage_dag_codex.format_task_envelope(manifest, stage)
+        user_skills = task["inputs"]["user_skills"]
+        self.assertIn("Novel to Short Drama Adaptation", user_skills["guidance"])
+        self.assertIn("先收集最小可用输入", user_skills["guidance"])
+        self.assertEqual(user_skills["records"], records)
+        self.assertEqual(
+            user_skills["authority"],
+            "用户技能补充创作方法，不得替换系统规则、type pack 硬约束、质量门或确认门。",
+        )
+
+        plan = stage_dag_codex.build_dispatch_plan(manifest)
+        self.assertEqual(
+            plan["resolution_snapshot"]["used_user_skills"], records
+        )
+        plan["resolution_snapshot"]["used_user_skills"][0]["skill_id"] = "mutated"
+        task["inputs"]["run_context"]["resolution_snapshot"][
+            "used_user_skills"
+        ][0]["skill_id"] = "mutated"
+        task["inputs"]["user_skills"]["records"][0]["skill_id"] = "mutated"
+        self.assertEqual(
+            manifest["resolution_snapshot"]["used_user_skills"][0]["skill_id"],
+            "novel-to-shortdrama-adaptation",
+        )
+
+    def test_no_matching_user_skill_omits_runtime_block_and_snapshot_field(self):
+        manifest = build_creative_run(self._request())
+        self.assertNotIn(
+            "used_user_skills", manifest["resolution_snapshot"]
+        )
+        task = stage_dag_codex.format_task_envelope(
+            manifest, manifest["stages"][0]
+        )
+        self.assertNotIn("user_skills", task["inputs"])
+
+    def test_caller_supplied_user_skills_are_not_replaced(self):
+        record = _user_skill_record()
+        manifest = build_creative_run(self._request(
+            used_user_skills=[record],
+        ))
+        self.assertEqual(
+            manifest["resolution_snapshot"]["used_user_skills"], [record]
         )
 
 

@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import json
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import datetime
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 from collections.abc import Sequence
@@ -24,6 +26,12 @@ _MANIFEST_FIELDS = {
 _METADATA_FIELDS = {"schema_version", "skill_id", "visibility", "supports"}
 _REQUIRED_TEXT_FIELDS = ("skill_id", "title", "description", "user_name", "content")
 _CONTENT_FILE = "SKILL.md"
+_CANONICAL_SKILL_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+_GENERIC_TITLE_TERMS = {
+    "skill", "skills", "user skill", "user skills", "checklist",
+    "prompt", "guide", "method", "用户技能", "技能", "提示词", "清单",
+    "指南", "方法",
+}
 
 
 class UserSkillHubError(ValueError):
@@ -203,6 +211,9 @@ def _reject_extra_files(directory: Path, label: str) -> None:
 def _validate_user_skill(
     directory: Path, registry: TypeRegistry
 ) -> UserSkill:
+    raw_directory = Path(directory)
+    if raw_directory.is_symlink():
+        raise UserSkillHubError(f"用户技能目录不得是符号链接：{raw_directory}")
     directory = directory.resolve()
     if not directory.is_dir():
         raise UserSkillHubError(f"用户技能目录不存在：{directory}")
@@ -227,6 +238,11 @@ def _validate_user_skill(
     if manifest["skill_id"] != label:
         raise UserSkillHubError(
             f"{label}: skill_id 必须与目录名一致，当前为 {manifest['skill_id']}"
+        )
+    if not _CANONICAL_SKILL_ID.fullmatch(manifest["skill_id"]):
+        raise UserSkillHubError(
+            f"{label}.skill_id 只能使用小写英文、数字和中间连字符："
+            f"{manifest['skill_id']}"
         )
     if manifest["skill_type"] not in SKILL_TYPES:
         raise UserSkillHubError(f"{label}: 未知 skill_type：{manifest['skill_type']}")
@@ -256,9 +272,21 @@ def validate_user_skill_tree(plugin_root: Path) -> tuple[UserSkill, ...]:
         return ()
     if not user_skills.is_dir():
         raise UserSkillHubError(f"用户技能目录必须是目录：{user_skills}")
+    if user_skills.is_symlink():
+        raise UserSkillHubError(f"用户技能目录不得是符号链接：{user_skills}")
+    resolved_user_skills = user_skills.resolve()
     directories = sorted(
         directory for directory in user_skills.iterdir() if directory.is_dir()
     )
+    for directory in directories:
+        if directory.is_symlink():
+            raise UserSkillHubError(
+                f"用户技能目录不得是符号链接或 junction：{directory}"
+            )
+        if directory.resolve().parent != resolved_user_skills:
+            raise UserSkillHubError(
+                f"用户技能包必须直接位于 skills/user-skills：{directory}"
+            )
     seen_skill_ids: dict[str, Path] = {}
     for directory in directories:
         manifest = _load_manifest(directory)
@@ -363,6 +391,68 @@ def used_user_skill_record(skill: UserSkill) -> dict[str, str]:
         "updated_at": manifest["updated_at"],
         "content_hash": f"sha256:{content_hash}",
     }
+
+
+def _has_method_section(content: str, terms: Sequence[str]) -> bool:
+    return any(
+        term in line.lstrip("#").strip().casefold()
+        for line in content.splitlines()
+        if line.lstrip().startswith("#")
+        for term in terms
+    )
+
+
+def preview_user_skill_warnings(
+    skill: UserSkill,
+    *,
+    existing_skill_ids: Sequence[str] = (),
+) -> list[str]:
+    """Return soft publishing warnings without blocking a valid skill pack."""
+    supports = skill.manifest["supports"]
+    warnings: list[str] = []
+    if any(
+        supports[field] == ["all"]
+        for field in ("medium_ids", "stage_ids", "artifact_ids")
+    ):
+        warnings.append(
+            "all 范围较大：请确认该技能确实适用于声明的全部媒介、阶段或产物。"
+        )
+
+    title = str(skill.manifest["title"]).strip().casefold()
+    if title in _GENERIC_TITLE_TERMS or (
+        len(title) <= 6 and any(term in title for term in _GENERIC_TITLE_TERMS)
+    ):
+        warnings.append("标题过于笼统：请说明适用创作场景或产出物。")
+
+    content_path = skill.directory / skill.content
+    try:
+        content = content_path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError):
+        content = ""
+    required_sections = (
+        (("input", "输入"), "输入"),
+        (("method", "方法"), "方法"),
+        (("output", "输出"), "输出"),
+        (("checkpoint", "checkpoints", "检查"), "检查点"),
+    )
+    missing = [label for terms, label in required_sections
+               if not _has_method_section(content, terms)]
+    if missing:
+        warnings.append(
+            "正文缺少输入、方法、输出或检查点：" + "、".join(missing)
+        )
+
+    skill_id = str(skill.manifest["skill_id"])
+    for existing in existing_skill_ids:
+        if existing == skill_id:
+            continue
+        similarity = SequenceMatcher(None, skill_id, str(existing)).ratio()
+        if similarity >= 0.86:
+            warnings.append(
+                f"skill_id 与已有 skill_id 相似：{skill_id} 可能被误认为 {existing}。"
+            )
+            break
+    return warnings
 
 
 def _validate_system_skill(

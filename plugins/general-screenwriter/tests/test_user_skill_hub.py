@@ -1,5 +1,6 @@
 import json
 import hashlib
+import os
 import shutil
 import sys
 import tempfile
@@ -18,7 +19,9 @@ for path in (
 from user_skill_hub import (
     format_user_skills,
     load_matching_user_skills,
+    preview_user_skill_warnings,
     SUPPORT_FIELDS,
+    SKILL_TYPES,
     used_user_skill_record,
     UserSkillHubError,
     validate_system_skill,
@@ -197,6 +200,23 @@ class ValidateUserSkillTests(UserSkillHubTestCase):
         )
         self.assert_invalid(directory)
 
+    def test_skill_id_must_use_canonical_format(self):
+        invalid_ids = (
+            "Test-Skill",
+            "test_skill",
+            "test skill",
+            "-test-skill",
+            "test-skill-",
+            "",
+        )
+        for index, skill_id in enumerate(invalid_ids):
+            with self.subTest(skill_id=skill_id):
+                directory = self.make_skill(
+                    skill_id=f"invalid-skill-{index}",
+                    manifest_overrides={"skill_id": skill_id},
+                )
+                self.assert_invalid(directory)
+
     def test_content_outside_the_skill_directory_is_rejected(self):
         outside = self.temp_path / "outside.md"
         outside.write_text("outside", encoding="utf-8")
@@ -289,6 +309,57 @@ class ValidateUserSkillTreeTests(UserSkillHubTestCase):
             )
             (directory / "SKILL.md").write_text("Use this.", encoding="utf-8")
         with self.assertRaisesRegex(UserSkillHubError, "重复 skill_id"):
+            validate_user_skill_tree(plugin_root)
+
+    def _valid_skill_directory(self, plugin_root, skill_id):
+        directory = plugin_root / "skills" / "user-skills" / skill_id
+        directory.mkdir(parents=True)
+        (directory / "manifest.json").write_text(
+            json.dumps(valid_manifest(skill_id=skill_id), ensure_ascii=False),
+            encoding="utf-8",
+        )
+        (directory / "SKILL.md").write_text("Use this skill.", encoding="utf-8")
+        return directory
+
+    def test_symlinked_user_skill_directory_is_rejected(self):
+        plugin_root = self.make_plugin_root()
+        real_directory = self._valid_skill_directory(plugin_root, "real-skill")
+        link = plugin_root / "skills" / "user-skills" / "skill-link"
+        try:
+            os.symlink(real_directory, link, target_is_directory=True)
+        except OSError as error:
+            self.skipTest(f"symbolic links are unavailable on this platform: {error}")
+        with self.assertRaisesRegex(UserSkillHubError, "符号链接"):
+            validate_user_skill_tree(plugin_root)
+
+    def test_windows_junction_user_skill_directory_is_rejected(self):
+        if sys.platform != "win32":
+            self.skipTest("junctions are Windows-specific")
+        plugin_root = self.make_plugin_root()
+        real_directory = self._valid_skill_directory(plugin_root, "real-skill")
+        link = plugin_root / "skills" / "user-skills" / "skill-junction"
+        import _winapi
+        _winapi.CreateJunction(str(real_directory), str(link))
+        with self.assertRaisesRegex(UserSkillHubError, "符号链接|junction"):
+            validate_user_skill_tree(plugin_root)
+
+    def test_pack_must_resolve_directly_under_user_skills(self):
+        plugin_root = self.make_plugin_root()
+        outside_root = self.temp_path / "outside-skills"
+        outside_root.mkdir()
+        outside = outside_root / "escaped-skill"
+        outside.mkdir()
+        (outside / "manifest.json").write_text(
+            json.dumps(valid_manifest(skill_id="escaped-skill"), ensure_ascii=False),
+            encoding="utf-8",
+        )
+        (outside / "SKILL.md").write_text("Use this skill.", encoding="utf-8")
+        link = plugin_root / "skills" / "user-skills" / "escaped-skill"
+        try:
+            os.symlink(outside, link, target_is_directory=True)
+        except OSError as error:
+            self.skipTest(f"symbolic links are unavailable on this platform: {error}")
+        with self.assertRaisesRegex(UserSkillHubError, "skills/user-skills|符号链接"):
             validate_user_skill_tree(plugin_root)
 
 
@@ -536,6 +607,60 @@ class MatchingAndInjectionTests(UserSkillHubTestCase):
             set(record),
             {"skill_id", "title", "user_name", "updated_at", "content_hash"},
         )
+
+    def test_preview_warnings_cover_contract_risks(self):
+        complete_content = (
+            "# Skill\n\n## Input\nUse inputs.\n\n"
+            "## Method\nDo the method.\n\n## Output\nOutput it.\n\n"
+            "## Checkpoints\nCheck the work.\n"
+        )
+
+        broad_directory = self.make_skill(
+            skill_id="broad-skill",
+            manifest_overrides={
+                "supports": {
+                    "medium_ids": ["all"],
+                    "genre_ids": ["all"],
+                    "series_ids": ["all"],
+                    "project_ids": ["all"],
+                    "stage_ids": ["all"],
+                    "artifact_ids": ["all"],
+                }
+            },
+            files={"SKILL.md": complete_content},
+        )
+        broad = validate_user_skill(broad_directory, ROOT)
+        broad_warnings = preview_user_skill_warnings(broad)
+        self.assertTrue(any(item.startswith("all ") for item in broad_warnings))
+
+        generic_directory = self.make_skill(
+            skill_id="generic-skill",
+            manifest_overrides={"title": "用户技能"},
+            files={"SKILL.md": complete_content},
+        )
+        generic = validate_user_skill(generic_directory, ROOT)
+        generic_warnings = preview_user_skill_warnings(generic)
+        self.assertTrue(any(item.startswith("标题") for item in generic_warnings))
+
+        incomplete_directory = self.make_skill(
+            skill_id="incomplete-skill",
+            files={"SKILL.md": "Use this."},
+        )
+        incomplete = validate_user_skill(incomplete_directory, ROOT)
+        incomplete_warnings = preview_user_skill_warnings(incomplete)
+        self.assertTrue(any(item.startswith("正文缺少") for item in incomplete_warnings))
+
+        similar_directory = self.make_skill(
+            skill_id="novel-adaptation",
+            files={"SKILL.md": complete_content},
+        )
+        similar = validate_user_skill(similar_directory, ROOT)
+        warnings = preview_user_skill_warnings(
+            similar, existing_skill_ids=("novel-adaptations",)
+        )
+        self.assertIn("与已有 skill_id 相似", warnings[0])
+        self.assertIn("novel-adaptation", warnings[0])
+        self.assertIn("novel-adaptations", warnings[0])
 
 
 class SystemSkillMetadataTests(unittest.TestCase):
@@ -798,6 +923,13 @@ class HubSkillAndSampleTests(unittest.TestCase):
             },
         )
 
+    def test_contract_matches_validator_policy(self):
+        hub_contract = self.contract["user_skill_hub"]
+        self.assertEqual(hub_contract["all_token"], "all")
+        self.assertEqual(hub_contract["required_user_field"], "user_name")
+        self.assertEqual(set(hub_contract["skill_types"]), SKILL_TYPES)
+        self.assertFalse(hub_contract["allow_executable_files"])
+
     def test_readme_documents_user_skill_hub_contract(self):
         readme = (ROOT.parent.parent / "README.md").read_text(encoding="utf-8")
         self.assertIn("user-skill-hub", self.contract["skills"])
@@ -814,6 +946,14 @@ class HubSkillAndSampleTests(unittest.TestCase):
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, readme)
+
+    def test_publishing_workflow_limits_staging_and_forbids_force_push(self):
+        self.assertIn(
+            "只暂存目标技能目录和 `.codex-plugin/plugin.json`",
+            self.hub_skill,
+        )
+        self.assertIn("不要暂存无关的工作区变更", self.hub_skill)
+        self.assertIn("禁止 force push", self.hub_skill)
 
 
 if __name__ == "__main__":
