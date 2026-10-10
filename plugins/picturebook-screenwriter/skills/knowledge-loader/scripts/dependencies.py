@@ -25,6 +25,7 @@ class DependencyRecord:
     evidence: tuple[Mapping[str, Any], ...]
     scope_chain: tuple[Mapping[str, Any], ...] = ()
     knowledge_schema: str = "v1"
+    skills: tuple[Mapping[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -195,6 +196,8 @@ def render_dependency_record(record: DependencyRecord) -> str:
         "scope_chain": [dict(item) for item in record.scope_chain],
         "knowledge_schema": record.knowledge_schema,
     }
+    if record.skills:
+        payload["skills"] = [dict(item) for item in record.skills]
     return "## built_against\n```json\n" + json.dumps(
         payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     ) + "\n```\n"
@@ -212,7 +215,7 @@ def parse_dependency_record(markdown: str) -> DependencyRecord:
         raise ValueError("invalid built_against JSON") from error
     if (not isinstance(payload, dict)
             or not {"artifact_id", "artifact_type", "built_at", "evidence"} <= set(payload)
-            or not set(payload) <= {"artifact_id", "artifact_type", "built_at", "evidence", "scope_chain", "knowledge_schema"}
+            or not set(payload) <= {"artifact_id", "artifact_type", "built_at", "evidence", "scope_chain", "knowledge_schema", "skills"}
             or not isinstance(payload["artifact_id"], str) or not payload["artifact_id"].strip()
             or payload["artifact_type"] not in ARTIFACT_TYPES
             or not isinstance(payload["built_at"], str) or not payload["built_at"].strip()
@@ -229,6 +232,10 @@ def parse_dependency_record(markdown: str) -> DependencyRecord:
     knowledge_schema = payload.get("knowledge_schema", "v1")
     if not isinstance(knowledge_schema, str) or not knowledge_schema.strip():
         raise ValueError("invalid knowledge_schema")
+    skills = tuple(
+        dict(item) for item in payload.get("skills", ())
+        if isinstance(item, Mapping)
+    )
     return DependencyRecord(
         artifact_id=payload["artifact_id"],
         artifact_type=payload["artifact_type"],
@@ -236,4 +243,5 @@ def parse_dependency_record(markdown: str) -> DependencyRecord:
         evidence=items,
         scope_chain=scope_chain,
         knowledge_schema=knowledge_schema,
+        skills=skills,
     )
