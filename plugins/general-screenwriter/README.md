@@ -38,15 +38,15 @@
 - 未确认的默认图片 API 调用
 - 短剧和长篇连续剧的内容级 validators、类型专属导出器和用户技能管理界面
 
-运行时强制、脚本校验与提示词约束的边界见 [ENFORCEMENT.md](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/docs/ENFORCEMENT.md)。
+运行时强制、脚本校验与提示词约束的边界见 [ENFORCEMENT.md](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/docs/ENFORCEMENT.md)。
 
 ## 操作指南
 
 安装、使用、配置、同步和验证流程统一维护在仓库根 README。本文件保留插件能力与边界说明；以下链接在独立安装的插件包中同样可用。
 
-- [安装插件](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md#add-the-plugin)
-- [使用插件](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md#use-the-plugin)
-- [飞书知识库准备](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md#feishu-knowledge-setup)
-- [配置发现规则](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md#configuration-discovery)
-- [飞书操作命令](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md#feishu-runtime-commands)
-- [本地验证与发布](https://github.com/QingpingYe/codex-picturebook-agent/blob/main/README.md#verify-locally)
+- [安装插件](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#add-the-plugin)
+- [使用插件](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#use-the-plugin)
+- [飞书知识库准备](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#feishu-knowledge-setup)
+- [配置发现规则](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#configuration-discovery)
+- [飞书操作命令](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#feishu-runtime-commands)
+- [本地验证与发布](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#verify-locally)

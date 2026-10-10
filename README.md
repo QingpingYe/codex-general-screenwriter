@@ -20,7 +20,7 @@ This repository is the active home for the Codex plugin. It packages:
 In the ChatGPT desktop app plugin marketplace, add:
 
 ```text
-https://github.com/QingpingYe/codex-picturebook-agent.git
+https://github.com/QingpingYe/codex-general-screenwriter.git
 ```
 
 Use `main` as the Git ref. For a small repository, leave the sparse path empty.
@@ -30,7 +30,7 @@ Use `main` as the Git ref. For a small repository, leave the sparse path empty.
 From Codex CLI, you can also run:
 
 ```powershell
-codex plugin marketplace add https://github.com/QingpingYe/codex-picturebook-agent.git --ref main
+codex plugin marketplace add https://github.com/QingpingYe/codex-general-screenwriter.git --ref main
 codex plugin add general-screenwriter@general-screenwriter-github
 ```
 
