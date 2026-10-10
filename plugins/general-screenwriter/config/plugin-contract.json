@@ -47,7 +47,8 @@
     "image-prompt-architect",
     "image-generate",
     "illustration-export",
-    "session-export"
+    "session-export",
+    "user-skill-hub"
   ],
   "intents": [
     "creation",
@@ -255,6 +256,18 @@
     ],
     "registry_example": "config/user-skills.example.json",
     "cannot_replace_system_rules": true
+  },
+  "user_skill_hub": {
+    "schema_version": "user-skill-hub-v1",
+    "all_token": "all",
+    "required_user_field": "user_name",
+    "skill_types": [
+      "prompt_skill",
+      "checklist_skill",
+      "reference_skill",
+      "exporter_skill"
+    ],
+    "allow_executable_files": false
   },
   "picturebook_migration": {
     "text_core_status": "migrated",

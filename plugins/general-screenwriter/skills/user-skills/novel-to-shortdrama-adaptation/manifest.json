@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "skill_id": "novel-to-shortdrama-adaptation",
+  "title": "Novel to Short Drama Adaptation",
+  "description": "将小说素材改编为强钩子、可连续追更的短剧集方法，覆盖选题收束、集钩子、节拍、分场、台词和成稿检查。",
+  "user_name": "QingpingYe",
+  "skill_type": "prompt_skill",
+  "supports": {
+    "medium_ids": ["shortdrama"],
+    "genre_ids": ["all"],
+    "series_ids": ["all"],
+    "project_ids": ["all"],
+    "stage_ids": [
+      "brief_gate",
+      "knowledge_load",
+      "episode_design",
+      "hook_design",
+      "beat_design",
+      "scene_design",
+      "episode_script_delegate",
+      "hook_check",
+      "pacing_check",
+      "dialogue_check",
+      "quality_gate"
+    ],
+    "artifact_ids": [
+      "episode_outline",
+      "hook_sheet",
+      "beat_sheet",
+      "scene_table",
+      "episode_script"
+    ]
+  },
+  "content": "SKILL.md",
+  "updated_at": "2026-10-10T00:00:00+08:00"
+}

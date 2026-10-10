@@ -706,5 +706,98 @@ class ValidateSystemSkillTests(UserSkillHubTestCase):
             validate_system_skill_tree(plugin_root)
 
 
+class HubSkillAndSampleTests(unittest.TestCase):
+    def setUp(self):
+        self.contract = json.loads(
+            (ROOT / "config" / "plugin-contract.json").read_text(encoding="utf-8")
+        )
+        self.hub_skill = (
+            ROOT / "skills" / "user-skill-hub" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+    def test_real_user_skill_tree_validates(self):
+        skills = validate_user_skill_tree(ROOT)
+        self.assertEqual(
+            [skill.manifest["skill_id"] for skill in skills],
+            ["novel-to-shortdrama-adaptation"],
+        )
+
+    def test_sample_manifest_declares_owner_and_complete_supports(self):
+        path = (
+            ROOT / "skills" / "user-skills" /
+            "novel-to-shortdrama-adaptation" / "manifest.json"
+        )
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(manifest["user_name"], "QingpingYe")
+        self.assertEqual(manifest["skill_type"], "prompt_skill")
+        self.assertEqual(
+            manifest["supports"],
+            {
+                "medium_ids": ["shortdrama"],
+                "genre_ids": ["all"],
+                "series_ids": ["all"],
+                "project_ids": ["all"],
+                "stage_ids": [
+                    "brief_gate",
+                    "knowledge_load",
+                    "episode_design",
+                    "hook_design",
+                    "beat_design",
+                    "scene_design",
+                    "episode_script_delegate",
+                    "hook_check",
+                    "pacing_check",
+                    "dialogue_check",
+                    "quality_gate",
+                ],
+                "artifact_ids": [
+                    "episode_outline",
+                    "hook_sheet",
+                    "beat_sheet",
+                    "scene_table",
+                    "episode_script",
+                ],
+            },
+        )
+        for field in SUPPORT_FIELDS:
+            with self.subTest(field=field):
+                self.assertTrue(manifest["supports"][field])
+
+    def test_hub_requires_user_name_before_create_or_import(self):
+        self.assertIn("创建或导入用户技能前，必须先询问 user_name", self.hub_skill)
+
+    def test_hub_requires_overwrite_and_push_confirmation(self):
+        self.assertIn("覆盖现有技能前必须获得用户明确确认", self.hub_skill)
+        self.assertIn("推送前必须获得用户明确确认", self.hub_skill)
+
+    def test_hub_does_not_expose_internal_commands_as_interface(self):
+        self.assertIn("不得把内部命令作为用户界面", self.hub_skill)
+
+    def test_hub_describes_repository_and_mechanical_patch_bump(self):
+        self.assertIn(
+            "https://github.com/QingpingYe/codex-general-screenwriter.git",
+            self.hub_skill,
+        )
+        self.assertIn("机械递增 plugin.json 的 patch 版本", self.hub_skill)
+
+    def test_contract_declares_user_skill_hub(self):
+        self.assertIn("user-skill-hub", self.contract["skills"])
+        self.assertEqual(
+            self.contract["user_skill_hub"],
+            {
+                "schema_version": "user-skill-hub-v1",
+                "all_token": "all",
+                "required_user_field": "user_name",
+                "skill_types": [
+                    "prompt_skill",
+                    "checklist_skill",
+                    "reference_skill",
+                    "exporter_skill",
+                ],
+                "allow_executable_files": False,
+            },
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

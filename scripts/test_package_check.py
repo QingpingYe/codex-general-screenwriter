@@ -62,6 +62,31 @@ class PackageCheckTests(unittest.TestCase):
             self.assertFalse(report.ok)
             self.assertTrue(any("root_token" in error for error in report.errors))
 
+    def test_contract_all_token_is_not_treated_as_secret(self):
+        with tempfile.TemporaryDirectory() as temp:
+            plugin = Path(temp) / "plugins" / "general-screenwriter"
+            (plugin / ".codex-plugin").mkdir(parents=True)
+            (plugin / "config").mkdir()
+            (plugin / ".codex-plugin" / "plugin.json").write_text(
+                json.dumps({"version": TEST_VERSION}),
+                encoding="utf-8",
+            )
+            (plugin / "config" / "plugin-contract.json").write_text(
+                json.dumps({
+                    "user_skill_hub": {"all_token": "all"},
+                    "integration": {"root_token": "live-wiki-token"},
+                }),
+                encoding="utf-8",
+            )
+            report = build_package_report(Path(temp))
+            self.assertFalse(report.ok)
+            self.assertFalse(
+                any("user_skill_hub.all_token" in error for error in report.errors)
+            )
+            self.assertTrue(
+                any("integration.root_token" in error for error in report.errors)
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
