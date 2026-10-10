@@ -65,8 +65,8 @@ def valid_manifest(skill_id="test-skill", content="SKILL.md"):
             "genre_ids": ["all"],
             "series_ids": ["all"],
             "project_ids": ["all"],
-            "stage_ids": ["creation_delegate"],
-            "artifact_ids": ["script"],
+            "stage_ids": ["episode_design"],
+            "artifact_ids": ["episode_outline"],
         },
         "content": content,
         "updated_at": "2026-10-10T00:00:00+08:00",
@@ -278,7 +278,7 @@ Write `SKILL.md` with three modes: create, import/adapt, and update/overwrite. D
 
 - [ ] **Step 4: Create the sample skill**
 
-Write the manifest using `skill_type="prompt_skill"` and stages `brief_gate`, `knowledge_load`, `creation_delegate`, and `qa`. Write `SKILL.md` as a practical novel-to-shortdrama adaptation methodology with input, method, episode/hook structure, output format, and checkpoints.
+Write the manifest using `skill_type="prompt_skill"` and canonical shortdrama stages `brief_gate`, `knowledge_load`, `episode_design`, `hook_design`, `beat_design`, `scene_design`, `episode_script_delegate`, `hook_check`, `pacing_check`, `dialogue_check`, and `quality_gate`. Declare artifacts `episode_outline`, `hook_sheet`, `beat_sheet`, `scene_table`, and `episode_script`. Write `SKILL.md` as a practical novel-to-shortdrama adaptation methodology with input, method, episode/hook structure, output format, and checkpoints.
 
 - [ ] **Step 5: Bump the plugin release cursor**
 
