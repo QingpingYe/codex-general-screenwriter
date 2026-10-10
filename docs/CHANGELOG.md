@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-10
+
 ### Added
 
 - Executable picturebook migration compatibility matrix (legacy entry, run/task schemas, artifacts, knowledge keys, planned-media gates).
