@@ -33,6 +33,7 @@ class CreativeRunRequest:
     revision_feedback: list[dict] | None = None
     source_artifact_ref: str | None = None
     skills_resolution: list[dict] | None = None
+    used_user_skills: list[dict[str, str]] | None = None
 
 
 def _required_text(value, label):
@@ -144,6 +145,10 @@ def _snapshot(pack: TypePackDescriptor, artifact: ArtifactDescriptor | None,
         skills=(
             copy.deepcopy(request.skills_resolution)
             if request.skills_resolution is not None else None
+        ),
+        used_user_skills=(
+            copy.deepcopy(request.used_user_skills)
+            if request.used_user_skills is not None else None
         ),
     )
 

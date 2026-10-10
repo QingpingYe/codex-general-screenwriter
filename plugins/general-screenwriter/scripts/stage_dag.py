@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import re
 import sys
 from collections import deque
 from argparse import ArgumentParser
@@ -132,6 +133,7 @@ def build_resolution_snapshot(
     quality_rule_ids: list[str] | None = None,
     workflow_inputs: list[dict] | None = None,
     skills: list[dict] | None = None,
+    used_user_skills: list[dict[str, str]] | None = None,
 ) -> dict:
     """Build metadata only; do not start workflows or mutate a registry."""
     try:
@@ -187,6 +189,12 @@ def build_resolution_snapshot(
             if problems:
                 raise TypeRegistryError("；".join(problems))
             snapshot["skills"] = copy.deepcopy(skills)
+        if used_user_skills is not None:
+            problems = []
+            _validate_used_user_skills(used_user_skills, problems)
+            if problems:
+                raise TypeRegistryError("；".join(problems))
+            snapshot["used_user_skills"] = copy.deepcopy(used_user_skills)
         return snapshot
     except (TypeRegistryError, TypeError, AttributeError) as error:
         raise StageDagError(f"resolution snapshot 无效：{error}") from error
@@ -196,7 +204,7 @@ def _validate_resolution_snapshot(snapshot, context, errors, artifact_type=None)
     if not isinstance(snapshot, dict) or any(not isinstance(k, str) for k in snapshot):
         errors.append("resolution_snapshot 必须是字符串键对象")
         return
-    unknown = set(snapshot) - {"type_pack", "knowledge", "skills", "artifact", "workflow", "workflow_inputs", "quality_rules"}
+    unknown = set(snapshot) - {"type_pack", "knowledge", "skills", "artifact", "workflow", "workflow_inputs", "quality_rules", "used_user_skills"}
     if unknown:
         errors.append("resolution_snapshot 包含未知字段：" + ", ".join(sorted(unknown)))
     start_errors = len(errors)
@@ -223,6 +231,12 @@ def _validate_resolution_snapshot(snapshot, context, errors, artifact_type=None)
             errors.append("resolution_snapshot.skills 必须是数组")
         else:
             _validate_compact_skills(skills, errors)
+    if "used_user_skills" in snapshot:
+        skills = snapshot["used_user_skills"]
+        if not isinstance(skills, list):
+            errors.append("resolution_snapshot.used_user_skills 必须是数组")
+        else:
+            _validate_used_user_skills(skills, errors)
     for key, fields in (("artifact", {"artifact_id", "delivery_form"}), ("workflow", {"workflow_id", "trigger_intent"})):
         if key not in snapshot:
             continue
@@ -345,6 +359,11 @@ SKILL_SNAPSHOT_FIELDS = {
     "stage_id", "execution_policy", "status", "content_hash",
 }
 
+USED_USER_SKILL_FIELDS = {
+    "skill_id", "title", "user_name", "updated_at", "content_hash",
+}
+_SHA256_HASH = re.compile(r"sha256:[0-9a-f]{64}")
+
 
 def _validate_compact_skills(skills, errors):
     for index, item in enumerate(skills):
@@ -359,6 +378,18 @@ def _validate_compact_skills(skills, errors):
         if (not isinstance(scopes, list) or not scopes
                 or any(not isinstance(scope, dict) or not scope for scope in scopes)):
             errors.append(f"{label}.scopes 必须是非空对象数组")
+
+
+def _validate_used_user_skills(skills, errors):
+    for index, item in enumerate(skills):
+        label = f"resolution_snapshot.used_user_skills[{index}]"
+        if not isinstance(item, dict) or set(item) != USED_USER_SKILL_FIELDS:
+            errors.append(f"{label} 包含缺失或未知字段")
+            continue
+        for field in USED_USER_SKILL_FIELDS:
+            _require_nonempty_str(item[field], f"{label}.{field}", errors)
+        if not isinstance(item["content_hash"], str) or not _SHA256_HASH.fullmatch(item["content_hash"]):
+            errors.append(f"{label}.content_hash 必须是 SHA-256 哈希")
 
 
 def _load_skill_registry(path=None):
@@ -1558,6 +1589,9 @@ def build_revision_manifest(parent_run, feedback, artifact_ref, run_id):
                 workflow_inputs=parent["resolution_snapshot"].get("workflow_inputs"),
                 skills_resolution=copy.deepcopy(
                     parent["resolution_snapshot"].get("skills")
+                ),
+                used_user_skills=copy.deepcopy(
+                    parent["resolution_snapshot"].get("used_user_skills")
                 ),
             ))
         except (ContextError, TypeRegistryError) as error:
