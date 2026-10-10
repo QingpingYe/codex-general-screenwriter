@@ -189,3 +189,105 @@ snapshot 由 revision 深拷贝继承；dispatch plan/task envelope 只携带已
 实施后独立代码复核确认：旧类型包快照虽然要可读，但显式 context 的执行/派发必须匹配当前 type-pack version；planned 类型不能从任一公开 DAG 调度或状态迁移入口取得可执行批次。`artifact_type` 在核心 run 必须是 active 核心输出，不能是简报输入或插画产物；插画必须使用自己的八阶段 DAG。
 
 对于显式 context 的插画 run，`resolution_snapshot.workflow_inputs` 记录 `script` 的来源证据：`status=approved` 且有非空 `ref`；或用户明确提供时 `status=user_supplied`、非空 `ref`、`user_confirmation=true`。这只是运行时来源声明的结构校验，不替代主编核实用户确认或证明引用文件确实已批准。无该声明不派发插画；旧 manifest 的读取不补写此字段。artifact/stage ID 与 alias 在同一类型包的解析作用域内不能交叉冲突。
+
+## 12. 绘本迁移与兼容矩阵
+
+本节合并自原绘本迁移设计专项（2026-10-09），保留迁移清单、兼容矩阵和验收标准；类型包结构、核心产物与插画 workflow 契约见本文第 2、3 节，不再重复。
+
+### 12.1 迁移现状
+
+已具备：
+
+- `picturebook` 是唯一 active 类型包；
+- 六个核心产物、核心阶段和插画 optional workflow 均已进入契约；
+- 质量规则 `project_authority`、`knowledge_collision`、`craft_benchmark` 已声明进类型包；
+- planned 媒介不可派发；
+- 旧 manifest 和旧产物仍兼容读取。
+
+尚未完成：
+
+- 绘本知识读取仍走全局 knowledge-loader，尚未按类型包作用域隔离（见知识库作用域设计）；
+- 质量规则已声明但校验器不会自动执行，代表性样例仍缺；
+- 插画执行能力（图片生成、导出技能）仍以插件 skill 形式存在；
+- 缺少可执行的迁移矩阵回归测试，由 remaining-work 计划 Task 6 落地。
+
+### 12.2 能力迁移矩阵
+
+| 现有能力 | 迁移方式 |
+| --- | --- |
+| 主编入口 | 保留旧入口；新增通用入口按 context 解析绘本包 |
+| 六类产物 | 作为 picturebook artifact descriptor |
+| 文本工艺 | 作为 picturebook 专属方法论 |
+| craft benchmark | 作为 picturebook validator |
+| 分镜规划 | 作为 picturebook 可选能力 |
+| 插画提示词 | 作为 optional workflow 的 validator |
+| 图片生成 | 仅在用户明确确认后使用 |
+| 插画导出 | 属于 optional workflow 的 exporter |
+| HTML 预览 | 属于 optional workflow 的产物 |
+| Feishu 知识 | 通过知识库适配层读取，不直接耦合绘本包 |
+
+### 12.3 旧对象兼容
+
+| 旧对象 | 目标 |
+| --- | --- |
+| `picturebook-screenwriter` | 保留入口别名 |
+| 旧 six artifact | 保留读取语义 |
+| `pb-stage-run-v2` | 只读兼容 |
+| `pb-stage-task-v1` | 只读兼容 |
+| `pb-screenwriter` | 保留 owner/assignee 别名 |
+| `illustration-template` | 继续映射 optional workflow |
+| 旧知识 key | 继续按 schema v1 读取 |
+
+### 12.4 迁移清单
+
+#### 文本核心
+
+1. 六类产物已在类型包声明；
+2. producer / validator / exporter 关系一致；
+3. artifact 依赖不冒充阶段依赖；
+4. creation/revision 每个 run 只产出一个目标；
+5. preflight、collision check、qa 语义清晰。
+
+#### 插画链路
+
+1. 8 个阶段全部在 optional workflow；
+2. 4 类插画产物不进入核心产物集合；
+3. 确认门和输入来源声明结构完整；
+4. 图片生成与 HTML 导出不自动触发。
+
+#### 知识
+
+1. 绘本知识读取通过 KnowledgeQuery；
+2. v1 旧 key 可读；
+3. v2 页面按 scope chain 解析；
+4. 知识来源和 revision 可追溯。
+
+#### 质量
+
+1. craft benchmark 属于 picturebook validator；
+2. 硬约束失败阻断确认；
+3. 工艺指标偏差显式呈现；
+4. Lexile 只接受实测结果。
+
+### 12.5 回归矩阵
+
+| 用例 | 期望 |
+| --- | --- |
+| 旧 creation run 无 context | 按绘本兼容路径可读 |
+| 旧 illustration run | 按插画 optional workflow 可读 |
+| 新 picturebook creation | 可从类型包解析核心产物 |
+| 新 picturebook revision | 可继承快照并重新质检 |
+| planned shortdrama | 不派发 |
+| planned tv_longform | 不派发 |
+| 空 active picturebook | 加载失败 |
+| 插画混入核心 DAG | 加载失败 |
+| illustration 没有 script 来源声明 | 不派发 |
+
+### 12.6 验收标准
+
+- `picturebook` 能在不依赖旧主流程的情况下表达核心契约；
+- 文本创作、修订、确认和落盘行为保持兼容；
+- 插画可选 workflow 可独立解释；
+- 旧入口、旧产物、旧 manifest、旧知识 key 全部可读；
+- planned 媒介不被误派发；
+- 所有类型包校验失败都有明确错误。

@@ -16,7 +16,6 @@
 - `docs/superpowers/specs/2026-10-09-general-screenwriter-knowledge-scope-design.md`
 - `docs/superpowers/specs/2026-10-09-general-screenwriter-dag-quality-gate-design.md`
 - `docs/superpowers/specs/2026-10-09-general-screenwriter-user-skill-governance-design.md`
-- `docs/superpowers/specs/2026-10-09-general-screenwriter-picturebook-migration-design.md`
 - `docs/superpowers/specs/2026-10-09-general-screenwriter-other-media-type-packs-design.md`
 - `docs/superpowers/specs/2026-10-09-general-screenwriter-quality-output-release-design.md`
 
