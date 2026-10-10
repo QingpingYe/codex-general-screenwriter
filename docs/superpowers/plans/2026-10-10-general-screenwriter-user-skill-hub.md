@@ -141,7 +141,7 @@ Create `skill-meta.json` for:
 general-screenwriter, stage-orchestration, wiki-ingest, feishu-knowledge-store,
 knowledge-loader, lexile-check, story-planning, pre_create-baseline,
 in_create-baseline, post_create-baseline, pre_output-baseline,
-quality-baseline, session-export, user-skill-hub, jev-decision-runtime
+quality-baseline, session-export, user-skill-hub
 ```
 
 with:
@@ -173,7 +173,7 @@ using the same shape, except `medium_ids: ["picturebook"]`. Before marking `lexi
 
 - [ ] **Step 5: Update the plugin contract**
 
-Add both `user-skill-hub` and `jev-decision-runtime` to `config/plugin-contract.json.skills`. Add a `user_skill_hub` object declaring:
+Add `user-skill-hub` to `config/plugin-contract.json.skills`. Do not add ignored, repository-local skills such as `jev-decision-runtime`. Add a `user_skill_hub` object declaring:
 
 ```json
 {
