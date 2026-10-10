@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import stage_dag
 from screenwriter_context import CreativeContext
+from type_registry import load_type_registry, resolve_type_pack
 
 
 class StageDagContextTests(unittest.TestCase):
@@ -126,6 +127,111 @@ class StageDagContextTests(unittest.TestCase):
         )
         self.assertNotEqual(revision["run_id"], parent["run_id"])
         self.assertEqual(revision["revision_of_run_id"], parent["run_id"])
+
+
+SKILL_SNAPSHOT = {
+    "skill_id": "project-hook-checklist",
+    "version": "1.0.0",
+    "authority": "project_skill",
+    "scopes": [{"scope_type": "project", "project_id": "p1"}],
+    "stage_id": "qa",
+    "execution_policy": "advisory",
+    "status": "active",
+    "content_hash": "abc123def456",
+}
+
+
+def _skills_snapshot(**skill_overrides):
+    skill = dict(SKILL_SNAPSHOT)
+    skill.update(skill_overrides)
+    return {
+        "type_pack": {"medium_id": "picturebook", "version": "picturebook-v1"},
+        "skills": [skill],
+    }
+
+
+class SkillsSnapshotTests(unittest.TestCase):
+    def test_build_resolution_snapshot_accepts_skills(self):
+        snapshot = stage_dag.build_resolution_snapshot(
+            resolve_type_pack(load_type_registry(), "picturebook"),
+            skills=[dict(SKILL_SNAPSHOT)],
+        )
+        self.assertEqual(snapshot["skills"], [SKILL_SNAPSHOT])
+
+    def test_snapshot_skills_are_deep_copied(self):
+        skills = [dict(SKILL_SNAPSHOT)]
+        snapshot = stage_dag.build_resolution_snapshot(
+            resolve_type_pack(load_type_registry(), "picturebook"),
+            skills=skills,
+        )
+        snapshot["skills"][0]["skill_id"] = "mutated"
+        self.assertEqual(skills[0]["skill_id"], "project-hook-checklist")
+
+    def test_validate_manifest_accepts_compact_skills_snapshot(self):
+        manifest = stage_dag.attach_context(
+            stage_dag._creation_template_manifest(),
+            CreativeContext("picturebook", project_id="p1"),
+            _skills_snapshot(),
+        )
+        self.assertEqual(stage_dag.validate_manifest(manifest), manifest)
+
+    def test_validate_manifest_rejects_unknown_skill_fields(self):
+        snapshot = _skills_snapshot(extra="x")
+        with self.assertRaises(stage_dag.StageDagError):
+            stage_dag.attach_context(
+                stage_dag._creation_template_manifest(),
+                CreativeContext("picturebook", project_id="p1"),
+                snapshot,
+            )
+
+    def test_validate_manifest_rejects_missing_content_hash(self):
+        skill = dict(SKILL_SNAPSHOT)
+        skill.pop("content_hash")
+        snapshot = {
+            "type_pack": {"medium_id": "picturebook", "version": "picturebook-v1"},
+            "skills": [skill],
+        }
+        with self.assertRaises(stage_dag.StageDagError):
+            stage_dag.attach_context(
+                stage_dag._creation_template_manifest(),
+                CreativeContext("picturebook", project_id="p1"),
+                snapshot,
+            )
+
+    def test_revision_manifest_inherits_skills_snapshot(self):
+        manifest = stage_dag._creation_template_manifest()
+        manifest["project_root"] = str(REPO_ROOT)
+        manifest = stage_dag.attach_context(
+            manifest,
+            CreativeContext("picturebook", project_id="p1"),
+            _skills_snapshot(),
+        )
+        for stage_id in ("session_init", "brief_gate", "knowledge_load",
+                         "creation_delegate", "preflight", "collision_check",
+                         "qa", "qa_synthesis"):
+            for status in ("ready", "running", "done"):
+                manifest = stage_dag.transition_stage(manifest, stage_id, status)
+        for status in ("ready", "running"):
+            manifest = stage_dag.transition_stage(manifest, "confirmation_gate", status)
+        manifest = stage_dag.transition_stage(
+            manifest, "confirmation_gate", "done", outcome="revision_requested")
+        parent = stage_dag.finalize_run(manifest, "revision_requested")
+
+        revision = stage_dag.build_revision_manifest(
+            parent,
+            feedback=[{"issue": "hook", "instruction": "strengthen"}],
+            artifact_ref="plugins/picturebook-screenwriter/config/type-packs.json",
+            run_id="skills-revision-0002",
+        )
+        self.assertEqual(
+            revision["resolution_snapshot"]["skills"],
+            parent["resolution_snapshot"]["skills"],
+        )
+        revision["resolution_snapshot"]["skills"][0]["skill_id"] = "mutated"
+        self.assertEqual(
+            parent["resolution_snapshot"]["skills"][0]["skill_id"],
+            "project-hook-checklist",
+        )
 
 
 if __name__ == "__main__":

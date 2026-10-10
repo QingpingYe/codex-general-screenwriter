@@ -103,6 +103,22 @@ class CreativeRunBuilderTests(unittest.TestCase):
         self.assertEqual(manifest["stages"][3]["assignee"], "writer")
         self.assertEqual(manifest["stages"][3]["gate"], "none")
         self.assertEqual(manifest["stages"][3]["stage_type"], "creation")
+
+    def test_skills_resolution_lands_in_snapshot_and_stays_isolated(self):
+        skills = [{
+            "skill_id": "project-hook-checklist",
+            "version": "1.0.0",
+            "authority": "project_skill",
+            "scopes": [{"scope_type": "project", "project_id": "p1"}],
+            "stage_id": "qa",
+            "execution_policy": "advisory",
+            "status": "active",
+            "content_hash": "abc123def456",
+        }]
+        manifest = build_creative_run(request(skills_resolution=skills))
+        self.assertEqual(manifest["resolution_snapshot"]["skills"], skills)
+        manifest["resolution_snapshot"]["skills"][0]["skill_id"] = "mutated"
+        self.assertEqual(skills[0]["skill_id"], "project-hook-checklist")
         self.assertEqual(
             manifest["resolution_snapshot"]["type_pack"],
             {"medium_id": "shortdrama", "version": "shortdrama-fixture-v1",

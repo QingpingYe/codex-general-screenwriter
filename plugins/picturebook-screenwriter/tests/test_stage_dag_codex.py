@@ -443,5 +443,53 @@ class StageDagCodexAdapterTest(unittest.TestCase):
         )
 
 
+SKILL_SNAPSHOT = {
+    "skill_id": "project-hook-checklist",
+    "version": "1.0.0",
+    "authority": "project_skill",
+    "scopes": [{"scope_type": "project", "project_id": "p1"}],
+    "stage_id": "qa",
+    "execution_policy": "advisory",
+    "status": "active",
+    "content_hash": "abc123def456",
+}
+
+
+class SkillsDispatchTests(unittest.TestCase):
+    @staticmethod
+    def _manifest_with_skills():
+        snapshot = {
+            "type_pack": {"medium_id": "picturebook", "version": "picturebook-v1"},
+            "skills": [dict(SKILL_SNAPSHOT)],
+        }
+        return stage_dag.attach_context(
+            stage_dag._creation_template_manifest(),
+            CreativeContext("picturebook", project_id="p1"),
+            snapshot,
+        )
+
+    def test_skills_snapshot_is_deep_copied_into_dispatch_outputs(self):
+        manifest = self._manifest_with_skills()
+        plan = stage_dag_codex.build_dispatch_plan(manifest)
+        task = stage_dag_codex.format_task_envelope(manifest, manifest["stages"][1])
+        fallback = stage_dag_codex.build_sequential_fallback(manifest)
+        self.assertEqual(plan["resolution_snapshot"]["skills"], [SKILL_SNAPSHOT])
+        self.assertEqual(
+            task["inputs"]["run_context"]["resolution_snapshot"]["skills"],
+            [SKILL_SNAPSHOT],
+        )
+        self.assertEqual(fallback["resolution_snapshot"]["skills"], [SKILL_SNAPSHOT])
+        plan["resolution_snapshot"]["skills"][0]["skill_id"] = "mutated"
+        task["inputs"]["run_context"]["resolution_snapshot"]["skills"][0]["skill_id"] = "mutated"
+        self.assertEqual(
+            manifest["resolution_snapshot"]["skills"][0]["skill_id"],
+            "project-hook-checklist",
+        )
+
+    def test_legacy_manifest_does_not_gain_skills_snapshot(self):
+        plan = stage_dag_codex.build_dispatch_plan(stage_dag._creation_template_manifest())
+        self.assertNotIn("skills", plan.get("resolution_snapshot", {}))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

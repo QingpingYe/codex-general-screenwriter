@@ -207,6 +207,24 @@ class DependencyRecordTests(unittest.TestCase):
         self.assertEqual(record.knowledge_schema, "v1")
         self.assertEqual(record.scope_chain, ())
 
+    def test_dependency_record_carries_skills_resolution(self):
+        page = make_evidence("s1/p1/worldview")
+        bundle = make_bundle([page])
+        skills = [{
+            "skill_id": "project-hook-checklist",
+            "version": "1.0.0",
+            "authority": "project_skill",
+            "stage_id": "qa",
+            "content_hash": "abc123",
+        }]
+
+        record = build_dependency_record(
+            bundle, "run-1", "script", skills_resolution=skills)
+
+        self.assertEqual([dict(item) for item in record.skills], skills)
+        skills[0]["skill_id"] = "mutated"
+        self.assertEqual(record.skills[0]["skill_id"], "project-hook-checklist")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,6 +32,7 @@ class CreativeRunRequest:
     revision_iteration: int | None = None
     revision_feedback: list[dict] | None = None
     source_artifact_ref: str | None = None
+    skills_resolution: list[dict] | None = None
 
 
 def _required_text(value, label):
@@ -139,6 +140,10 @@ def _snapshot(pack: TypePackDescriptor, artifact: ArtifactDescriptor | None,
         workflow_inputs=(
             copy.deepcopy(request.workflow_inputs)
             if request.workflow_inputs is not None else None
+        ),
+        skills=(
+            copy.deepcopy(request.skills_resolution)
+            if request.skills_resolution is not None else None
         ),
     )
 

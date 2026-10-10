@@ -114,11 +114,21 @@ def resolve_knowledge(bundle, query):
     )
 
 
-def build_dependency_record(bundle, artifact_id, artifact_type, resolution=None):
-    if resolution is None:
+def build_dependency_record(bundle, artifact_id, artifact_type,
+                            resolution=None, skills_resolution=None):
+    if resolution is None and skills_resolution is None:
         return _build_v1_record(bundle, artifact_id, artifact_type)
+    if resolution is None:
+        record = _build_v1_record(bundle, artifact_id, artifact_type)
+        return replace(record, skills=tuple(
+            dict(item) for item in skills_resolution
+        ) if skills_resolution else ())
     filtered = replace(bundle, items=tuple(resolution.matches))
     record = _build_v1_record(filtered, artifact_id, artifact_type)
+    if skills_resolution:
+        record = replace(record, skills=tuple(
+            dict(item) for item in skills_resolution
+        ))
     chain = tuple(
         {
             "scope_type": node.scope_type,

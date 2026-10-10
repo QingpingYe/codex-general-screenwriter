@@ -14,6 +14,7 @@ import sys
 from collections import deque
 from argparse import ArgumentParser
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from screenwriter_context import (
@@ -130,6 +131,7 @@ def build_resolution_snapshot(
     *, delivery_form: str | None = None,
     quality_rule_ids: list[str] | None = None,
     workflow_inputs: list[dict] | None = None,
+    skills: list[dict] | None = None,
 ) -> dict:
     """Build metadata only; do not start workflows or mutate a registry."""
     try:
@@ -179,6 +181,12 @@ def build_resolution_snapshot(
             if workflow is None:
                 raise TypeRegistryError("workflow_inputs 必须与 workflow 一起提供")
             snapshot["workflow_inputs"] = copy.deepcopy(workflow_inputs)
+        if skills is not None:
+            problems: list[str] = []
+            _validate_compact_skills(skills, problems)
+            if problems:
+                raise TypeRegistryError("；".join(problems))
+            snapshot["skills"] = copy.deepcopy(skills)
         return snapshot
     except (TypeRegistryError, TypeError, AttributeError) as error:
         raise StageDagError(f"resolution snapshot 无效：{error}") from error
@@ -206,9 +214,15 @@ def _validate_resolution_snapshot(snapshot, context, errors, artifact_type=None)
             _require_nonempty_str(pack_data["workflow_policy"], "resolution_snapshot.type_pack.workflow_policy", errors)
         if ("artifact" in snapshot or "workflow" in snapshot) and "workflow_policy" not in pack_data:
             errors.append("新 artifact/workflow 快照必须记录 type_pack.workflow_policy")
-    for key in ("knowledge", "skills"):
+    for key in ("knowledge",):
         if key in snapshot and not isinstance(snapshot[key], (list, dict)):
             errors.append(f"resolution_snapshot.{key} 必须是数组或对象")
+    if "skills" in snapshot:
+        skills = snapshot["skills"]
+        if not isinstance(skills, list):
+            errors.append("resolution_snapshot.skills 必须是数组")
+        else:
+            _validate_compact_skills(skills, errors)
     for key, fields in (("artifact", {"artifact_id", "delivery_form"}), ("workflow", {"workflow_id", "trigger_intent"})):
         if key not in snapshot:
             continue
@@ -326,6 +340,54 @@ def _validate_optional_context(manifest, errors):
     return context
 
 
+SKILL_SNAPSHOT_FIELDS = {
+    "skill_id", "version", "authority", "scopes",
+    "stage_id", "execution_policy", "status", "content_hash",
+}
+
+
+def _validate_compact_skills(skills, errors):
+    for index, item in enumerate(skills):
+        label = f"resolution_snapshot.skills[{index}]"
+        if not isinstance(item, dict) or set(item) != SKILL_SNAPSHOT_FIELDS:
+            errors.append(f"{label} 包含缺失或未知字段")
+            continue
+        for field in ("skill_id", "version", "authority", "stage_id",
+                      "execution_policy", "status", "content_hash"):
+            _require_nonempty_str(item[field], f"{label}.{field}", errors)
+        scopes = item["scopes"]
+        if (not isinstance(scopes, list) or not scopes
+                or any(not isinstance(scope, dict) or not scope for scope in scopes)):
+            errors.append(f"{label}.scopes 必须是非空对象数组")
+
+
+def _load_skill_registry(path=None):
+    """Return the deployable user-skill registry, or None when none is configured."""
+    source = Path(path) if path is not None else (
+        Path(__file__).resolve().parent.parent / "config" / "user-skills.json"
+    )
+    if not source.exists():
+        return None
+    from user_skill_contract import UserSkillContractError, load_user_skill_registry
+    try:
+        return load_user_skill_registry(source)
+    except UserSkillContractError:
+        return None
+
+
+def _validate_skills_against_registry(skills, registry):
+    active = {
+        (skill.skill_id, skill.version): skill
+        for skill in registry.skills if skill.status == "active"
+    }
+    for item in skills:
+        key = (item["skill_id"], item["version"])
+        if key not in active:
+            raise TypeRegistryError(
+                f"resolution_snapshot skills 与当前用户技能注册表不一致：{key[0]} {key[1]}"
+            )
+
+
 def assert_manifest_type_executable(manifest):
     """Enforce current contract only when dispatching an explicit-context run."""
     if not isinstance(manifest, dict) or "context" not in manifest:
@@ -359,6 +421,11 @@ def assert_manifest_type_executable(manifest):
                 )
                 if snapshot["quality_rules"] != expected:
                     raise TypeRegistryError("resolution_snapshot quality_rules 与当前 type pack 不一致")
+            skills = snapshot.get("skills")
+            if skills:
+                registry = _load_skill_registry()
+                if registry is not None:
+                    _validate_skills_against_registry(skills, registry)
         stage_ids = {stage["stage_id"] for stage in manifest["stages"]}
         workflow_data = snapshot.get("workflow")
         if workflow_data is None:
@@ -1489,6 +1556,9 @@ def build_revision_manifest(parent_run, feedback, artifact_ref, run_id):
                 source_artifact_ref=artifact_ref,
                 workflow_id=workflow.get("workflow_id"),
                 workflow_inputs=parent["resolution_snapshot"].get("workflow_inputs"),
+                skills_resolution=copy.deepcopy(
+                    parent["resolution_snapshot"].get("skills")
+                ),
             ))
         except (ContextError, TypeRegistryError) as error:
             raise StageDagError(f"无法构建 typed revision run：{error}") from error
