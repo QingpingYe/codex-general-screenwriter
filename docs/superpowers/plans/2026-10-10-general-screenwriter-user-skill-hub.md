@@ -103,7 +103,6 @@ git commit -m "feat: validate lightweight user skill packs"
 **Files:**
 - Modify: `plugins/general-screenwriter/skills/user-skill-hub/scripts/user_skill_hub.py`
 - Create: `plugins/general-screenwriter/skills/<skill-name>/skill-meta.json` for every existing skill listed below, except the `user-skills` data directory.
-- Modify: `plugins/general-screenwriter/config/plugin-contract.json`
 - Test: `plugins/general-screenwriter/tests/test_user_skill_hub.py`
 
 **Interfaces:**
@@ -171,9 +170,9 @@ image-prompt-architect, image-generate, illustration-export
 
 using the same shape, except `medium_ids: ["picturebook"]`. Before marking `lexile-check` or another skill `all`, verify its method truly applies across media; if uncertain, leave it scoped and record the reason in the PR description.
 
-- [ ] **Step 5: Update the plugin contract**
+- [ ] **Step 5: Defer plugin contract registration**
 
-Add `user-skill-hub` to `config/plugin-contract.json.skills`. Do not add ignored, repository-local skills such as `jev-decision-runtime`. Add a `user_skill_hub` object declaring:
+Do not add `user-skill-hub` to `config/plugin-contract.json` in this task; its `SKILL.md` is created in Task 4, and adding the contract entry now would fail governance with a contract-only skill. Do not add ignored, repository-local skills such as `jev-decision-runtime`. Task 4 will add the contract entry and object:
 
 ```json
 {
@@ -187,13 +186,13 @@ Add `user-skill-hub` to `config/plugin-contract.json.skills`. Do not add ignored
 
 - [ ] **Step 6: Run tests and governance**
 
-Run: `python plugins/general-screenwriter/tests/test_user_skill_hub.py -v; python scripts/governance_check.py`  
+Run: `python plugins/general-screenwriter/tests/test_user_skill_hub.py -v; python scripts/governance_check.py; python scripts/package_check.py`  
 Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add plugins/general-screenwriter/skills plugins/general-screenwriter/config/plugin-contract.json plugins/general-screenwriter/tests/test_user_skill_hub.py
+git add plugins/general-screenwriter/skills plugins/general-screenwriter/tests/test_user_skill_hub.py
 git commit -m "feat: add system skill scope metadata"
 ```
 
@@ -249,6 +248,7 @@ git commit -m "feat: match user skills by creative context"
 - Create: `plugins/general-screenwriter/skills/user-skill-hub/SKILL.md`
 - Create: `plugins/general-screenwriter/skills/user-skills/novel-to-shortdrama-adaptation/manifest.json`
 - Create: `plugins/general-screenwriter/skills/user-skills/novel-to-shortdrama-adaptation/SKILL.md`
+- Modify: `plugins/general-screenwriter/config/plugin-contract.json`
 - Modify: `plugins/general-screenwriter/.codex-plugin/plugin.json`
 - Test: `plugins/general-screenwriter/tests/test_user_skill_hub.py`
 
@@ -265,7 +265,8 @@ Add tests asserting:
 3. `user-skill-hub/SKILL.md` explicitly requires asking for `user_name` before creating/importing;
 4. it explicitly requires overwrite and push confirmation;
 5. it forbids exposing internal commands as the user interface;
-6. it describes the GitHub repository and mechanical plugin patch bump.
+6. it describes the GitHub repository and mechanical plugin patch bump;
+7. `plugin-contract.json.skills` contains `user-skill-hub` and its `user_skill_hub` object declares `schema_version="user-skill-hub-v1"`, `all_token="all"`, `required_user_field="user_name"`, `skill_types=["prompt_skill","checklist_skill","reference_skill","exporter_skill"]`, and `allow_executable_files=false`.
 
 - [ ] **Step 2: Run tests**
 
@@ -280,7 +281,9 @@ Write `SKILL.md` with three modes: create, import/adapt, and update/overwrite. D
 
 Write the manifest using `skill_type="prompt_skill"` and canonical shortdrama stages `brief_gate`, `knowledge_load`, `episode_design`, `hook_design`, `beat_design`, `scene_design`, `episode_script_delegate`, `hook_check`, `pacing_check`, `dialogue_check`, and `quality_gate`. Declare artifacts `episode_outline`, `hook_sheet`, `beat_sheet`, `scene_table`, and `episode_script`. Write `SKILL.md` as a practical novel-to-shortdrama adaptation methodology with input, method, episode/hook structure, output format, and checkpoints.
 
-- [ ] **Step 5: Bump the plugin release cursor**
+- [ ] **Step 5: Register the hub contract and bump the plugin release cursor**
+
+Add `user-skill-hub` to `config/plugin-contract.json.skills` and add the contract object declared above. Do not add ignored, repository-local skills such as `jev-decision-runtime`.
 
 Increment the patch component of `version` in `.codex-plugin/plugin.json`.
 
@@ -292,7 +295,7 @@ Expected: PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add plugins/general-screenwriter/skills/user-skill-hub/SKILL.md plugins/general-screenwriter/skills/user-skills plugins/general-screenwriter/.codex-plugin/plugin.json plugins/general-screenwriter/tests/test_user_skill_hub.py
+git add plugins/general-screenwriter/skills/user-skill-hub/SKILL.md plugins/general-screenwriter/skills/user-skills plugins/general-screenwriter/config/plugin-contract.json plugins/general-screenwriter/.codex-plugin/plugin.json plugins/general-screenwriter/tests/test_user_skill_hub.py
 git commit -m "feat: add user skill hub and shortdrama sample"
 ```
 
