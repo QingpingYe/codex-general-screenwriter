@@ -160,6 +160,13 @@ class ValidateUserSkillTests(UserSkillHubTestCase):
         directory = self.make_skill(files={"SKILL.md": "   \n"})
         self.assert_invalid(directory)
 
+    def test_content_must_be_skill_md(self):
+        directory = self.make_skill(
+            manifest_overrides={"content": "notes.md"},
+            files={"notes.md": "Arbitrary content reference."},
+        )
+        self.assert_invalid(directory)
+
     def test_executable_files_are_rejected(self):
         directory = self.make_skill(files={"run.bat": "@echo off\n"})
         self.assert_invalid(directory)
@@ -197,6 +204,16 @@ class ValidateUserSkillTests(UserSkillHubTestCase):
         result = validate_user_skill(directory, ROOT)
         self.assertEqual(result.manifest["skill_id"], "all-skill")
 
+    def test_noncanonical_medium_alias_is_rejected(self):
+        supports = dict(valid_manifest()["supports"])
+        supports.update(
+            medium_ids=["picturebook-screenwriter"],
+            stage_ids=["all"],
+            artifact_ids=["all"],
+        )
+        directory = self.make_skill(manifest_overrides={"supports": supports})
+        self.assert_invalid(directory)
+
 
 class ValidateUserSkillTreeTests(UserSkillHubTestCase):
     def make_plugin_root(self):
@@ -220,7 +237,7 @@ class ValidateUserSkillTreeTests(UserSkillHubTestCase):
                 json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
             )
             (directory / "SKILL.md").write_text("Use this.", encoding="utf-8")
-        with self.assertRaises(UserSkillHubError):
+        with self.assertRaisesRegex(UserSkillHubError, "重复 skill_id"):
             validate_user_skill_tree(plugin_root)
 
 

@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from type_registry import TypeRegistry, load_type_registry, resolve_type_pack
+from type_registry import TypeRegistry, load_type_registry
 
 
 SUPPORT_FIELDS: tuple[str, ...] = (
@@ -20,6 +20,7 @@ _MANIFEST_FIELDS = {
     "skill_type", "supports", "content", "updated_at",
 }
 _REQUIRED_TEXT_FIELDS = ("skill_id", "title", "description", "user_name", "content")
+_CONTENT_FILE = "SKILL.md"
 
 
 class UserSkillHubError(ValueError):
@@ -88,22 +89,21 @@ def _validate_timestamp(value: Any, label: str) -> None:
 def _selected_type_packs(
     registry: TypeRegistry, medium_ids: list[str], label: str
 ):
+    active_packs = {
+        pack.medium_id: pack for pack in registry.packs if pack.status == "active"
+    }
     if medium_ids == ["all"]:
-        packs = tuple(pack for pack in registry.packs if pack.status == "active")
+        packs = tuple(active_packs.values())
         if not packs:
             raise UserSkillHubError(f"{label}.supports.medium_ids 没有 active 类型包")
         return packs
     packs = []
     for medium_id in medium_ids:
-        try:
-            pack = resolve_type_pack(registry, medium_id)
-        except ValueError as error:
+        pack = active_packs.get(medium_id)
+        if pack is None:
             raise UserSkillHubError(
-                f"{label}.supports.medium_ids 引用未知 medium_id：{medium_id}"
-            ) from error
-        if pack.status != "active":
-            raise UserSkillHubError(
-                f"{label}.supports.medium_ids 引用非 active 类型包：{medium_id}"
+                f"{label}.supports.medium_ids 必须是 canonical active medium_id，"
+                f"当前无效：{medium_id}"
             )
         packs.append(pack)
     return tuple(packs)
@@ -146,32 +146,23 @@ def _validate_type_references(
 
 
 def _validate_content(directory: Path, value: Any, label: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise UserSkillHubError(f"{label}.content 必须是技能目录内的非空路径")
-    relative = Path(value)
-    if relative.is_absolute() or not relative.parts or ".." in relative.parts:
-        raise UserSkillHubError(f"{label}.content 必须位于技能目录内")
-    path = (directory / relative).resolve()
-    try:
-        path.relative_to(directory)
-    except ValueError as error:
-        raise UserSkillHubError(f"{label}.content 必须位于技能目录内") from error
+    if value != _CONTENT_FILE:
+        raise UserSkillHubError(f"{label}.content 必须是 {_CONTENT_FILE}")
+    path = directory / _CONTENT_FILE
     if not path.is_file() or path.is_symlink():
         raise UserSkillHubError(f"{label}.content 指向的文件不存在：{value}")
     try:
         if not path.read_text(encoding="utf-8-sig").strip():
-            raise UserSkillHubError(f"{label}.content 文件不得为空：{value}")
+            raise UserSkillHubError(f"{label}.content 文件不得为空：{_CONTENT_FILE}")
     except (OSError, UnicodeError) as error:
-        raise UserSkillHubError(f"{label}.content 文件无法读取：{value}") from error
+        raise UserSkillHubError(f"{label}.content 文件无法读取：{_CONTENT_FILE}") from error
     return value
 
 
-def _reject_extra_files(directory: Path, content_path: Path, label: str) -> None:
-    allowed_files = {directory / "manifest.json", content_path}
+def _reject_extra_files(directory: Path, label: str) -> None:
+    allowed_files = {directory / "manifest.json", directory / _CONTENT_FILE}
     for path in directory.rglob("*"):
         if path in allowed_files and path.is_file() and not path.is_symlink():
-            continue
-        if path.is_dir() and not path.is_symlink() and path in content_path.parents:
             continue
         raise UserSkillHubError(f"{label} 只能包含 manifest.json 与 content 文件：{path.name}")
 
@@ -215,8 +206,7 @@ def _validate_user_skill(
     )
 
     content = _validate_content(directory, manifest["content"], label)
-    content_path = (directory / content).resolve()
-    _reject_extra_files(directory, content_path, label)
+    _reject_extra_files(directory, label)
     return UserSkill(directory=directory, manifest=manifest, content=content)
 
 
@@ -233,8 +223,21 @@ def validate_user_skill_tree(plugin_root: Path) -> tuple[UserSkill, ...]:
         return ()
     if not user_skills.is_dir():
         raise UserSkillHubError(f"用户技能目录必须是目录：{user_skills}")
+    directories = sorted(
+        directory for directory in user_skills.iterdir() if directory.is_dir()
+    )
+    seen_skill_ids: dict[str, Path] = {}
+    for directory in directories:
+        manifest = _load_manifest(directory)
+        skill_id = manifest.get("skill_id")
+        if isinstance(skill_id, str):
+            previous = seen_skill_ids.get(skill_id)
+            if previous is not None:
+                raise UserSkillHubError(
+                    f"重复 skill_id：{skill_id}（{previous.name}，{directory.name}）"
+                )
+            seen_skill_ids[skill_id] = directory
     return tuple(
         _validate_user_skill(directory, registry)
-        for directory in sorted(user_skills.iterdir())
-        if directory.is_dir()
+        for directory in directories
     )
