@@ -62,6 +62,16 @@ The plugin supports:
 - Self-contained HTML preview
 - Feishu authoritative knowledge retrieval and synchronized ingestion
 
+## User skill hub
+
+插件提供 `user-skill-hub` 自然对话入口。你可以直接说想添加、导入、适配或更新技能；Codex 会先询问并记录 `user_name`，再生成只包含 `manifest.json` 和 `SKILL.md` 的轻量技能包。
+
+六个适用范围数组必须非空。适用维度用 `all`，不能留空数组；`all` 也不能与具体 ID 混用。已有目标 `skill_id` 会进入覆盖模式：先展示差异或新文件预览，再等待用户明确确认。
+
+用户要求保存或提交时，插件会机械递增 `plugin.json` 的 patch 版本，便于 Marketplace 将其作为插件包更新。要求同步远端时必须先确认工作区状态，且推送前需要用户明确批准。
+
+用户技能只承载可注入的方法、检查清单、参考资料或导出说明，不能携带可执行文件。系统技能保持插件内置；用户技能不能替代系统技能、运行时规则或类型包契约。
+
 ## Feishu knowledge setup
 
 每位使用者需要自己的 lark-cli 登录身份，以及原始飞书 Wiki 的读取权限；执行同步还需要目标 Wiki 的写入权限。

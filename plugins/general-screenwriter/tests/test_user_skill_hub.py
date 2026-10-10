@@ -798,6 +798,23 @@ class HubSkillAndSampleTests(unittest.TestCase):
             },
         )
 
+    def test_readme_documents_user_skill_hub_contract(self):
+        readme = (ROOT.parent.parent / "README.md").read_text(encoding="utf-8")
+        self.assertIn("user-skill-hub", self.contract["skills"])
+        self.assertIn("自然对话", readme)
+        self.assertIn("user_name", readme)
+        self.assertIn("覆盖", readme)
+        self.assertIn("patch 版本", readme)
+        self.assertIn("系统技能", readme)
+        for phrase in (
+            "all",
+            "非空",
+            "不能留空数组",
+            "不能携带可执行文件",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, readme)
+
 
 if __name__ == "__main__":
     unittest.main()

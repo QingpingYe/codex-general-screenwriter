@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-10
+
+### Added
+
+- Natural-language `user-skill-hub` workflow for lightweight user skill packs with required `user_name`, mandatory nonempty support arrays, `all` as the sole wildcard, explicit overwrite confirmation, and mechanical patch bump for plugin-market updates.
+- System skill scope metadata and user skill run traceability through `used_user_skills`.
+- Sample user skill for novel-to-shortdrama adaptation.
+
 ## [0.6.0] - 2026-10-10
 
 ### Added
