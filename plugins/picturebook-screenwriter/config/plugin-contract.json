@@ -257,5 +257,17 @@
     ],
     "registry_example": "config/user-skills.example.json",
     "cannot_replace_system_rules": true
+  },
+  "picturebook_migration": {
+    "text_core_status": "migrated",
+    "illustration_workflow_status": "migrated",
+    "knowledge_adapter_status": "v1_compatible",
+    "legacy_aliases": [
+      "picturebook-screenwriter",
+      "pb-stage-run-v2",
+      "pb-stage-task-v1",
+      "pb-screenwriter",
+      "illustration-template"
+    ]
   }
 }

@@ -4,6 +4,7 @@
 
 ### Added
 
+- Executable picturebook migration compatibility matrix (legacy entry, run/task schemas, artifacts, knowledge keys, planned-media gates).
 - Codex-native picture-book editorial workflow and baseline slots.
 - Feishu authoritative knowledge synchronization and retrieval.
 - Craft benchmark, project red lines, Wiki lint, and optional Lexile gates.
