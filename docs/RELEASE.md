@@ -12,18 +12,18 @@
 
    ```powershell
    $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { "$HOME\.codex" }
-   python "$codexHome\skills\.system\plugin-creator\scripts\validate_plugin.py" .\plugins\picturebook-screenwriter
+   python "$codexHome\skills\.system\plugin-creator\scripts\validate_plugin.py" .\plugins\general-screenwriter
    ```
 
-3. Confirm the version in `plugins/picturebook-screenwriter/.codex-plugin/plugin.json`, `docs/CHANGELOG.md`, and the release tag describe the same release. Run the release-version gate with the tag value:
+3. Confirm the version in `plugins/general-screenwriter/.codex-plugin/plugin.json`, `docs/CHANGELOG.md`, and the release tag describe the same release. Run the release-version gate with the tag value:
 
    ```powershell
-   $env:PICTUREBOOK_EXPECTED_VERSION = "<release-version>"
-   python .\plugins\picturebook-screenwriter\tests\test_release_contract.py
-   Remove-Item Env:PICTUREBOOK_EXPECTED_VERSION
+   $env:GENERAL_SCREENWRITER_EXPECTED_VERSION = "<release-version>"
+   python .\plugins\general-screenwriter\tests\test_release_contract.py
+   Remove-Item Env:GENERAL_SCREENWRITER_EXPECTED_VERSION
    ```
 
-4. Confirm no credentials, run directories, or `.picturebook-screenwriter` files are committed.
+4. Confirm no credentials, run directories, or `.general-screenwriter` files are committed.
 
 ## Explicit live gates
 
@@ -40,5 +40,5 @@ ordered checks (registry contract, knowledge adapter, skill registry, DAG
 scheduler, quality gate, exporter contract, offline regression, governance
 check, packaging check), stops on the first failure, and exits nonzero. A
 failed run must not be released. Migration status is reported with
-`plugins/picturebook-screenwriter/scripts/migration_report.py`, which is
+`plugins/general-screenwriter/scripts/migration_report.py`, which is
 read-only: it never rewrites run manifests, knowledge keys, or user artifacts.

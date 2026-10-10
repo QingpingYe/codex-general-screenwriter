@@ -10,11 +10,11 @@ TEST_VERSION = "1.2.3"
 
 
 def write_plugin(root: Path, contract_skills: list[str]) -> Path:
-    plugin = root / "plugins" / "picturebook-screenwriter"
+    plugin = root / "plugins" / "general-screenwriter"
     (plugin / ".codex-plugin").mkdir(parents=True)
     (plugin / "config").mkdir()
-    (plugin / "skills" / "picturebook-screenwriter").mkdir(parents=True)
-    (plugin / "skills" / "picturebook-screenwriter" / "SKILL.md").write_text(
+    (plugin / "skills" / "general-screenwriter").mkdir(parents=True)
+    (plugin / "skills" / "general-screenwriter" / "SKILL.md").write_text(
         "# entry",
         encoding="utf-8",
     )
@@ -26,7 +26,7 @@ def write_plugin(root: Path, contract_skills: list[str]) -> Path:
         json.dumps(
             {
                 "schema_version": 1,
-                "entry_skill": "picturebook-screenwriter",
+                "entry_skill": "general-screenwriter",
                 "skills": contract_skills,
             },
             ensure_ascii=False,
@@ -45,7 +45,7 @@ class GovernanceCheckTests(unittest.TestCase):
 
     def test_missing_contract_is_error(self):
         with tempfile.TemporaryDirectory() as temp:
-            plugin = Path(temp) / "plugins" / "picturebook-screenwriter"
+            plugin = Path(temp) / "plugins" / "general-screenwriter"
             (plugin / ".codex-plugin").mkdir(parents=True)
             (plugin / ".codex-plugin" / "plugin.json").write_text(
                 "{}",
@@ -60,7 +60,7 @@ class GovernanceCheckTests(unittest.TestCase):
     def test_installed_and_contract_skills_must_match(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            plugin = write_plugin(root, ["picturebook-screenwriter"])
+            plugin = write_plugin(root, ["general-screenwriter"])
             extra = plugin / "skills" / "extra"
             extra.mkdir()
             (extra / "SKILL.md").write_text("# extra", encoding="utf-8")
@@ -72,7 +72,7 @@ class GovernanceCheckTests(unittest.TestCase):
 
     def test_valid_local_plugin_passes(self):
         with tempfile.TemporaryDirectory() as temp:
-            write_plugin(Path(temp), ["picturebook-screenwriter"])
+            write_plugin(Path(temp), ["general-screenwriter"])
             report = check_repo(Path(temp))
             self.assertEqual(report.errors, ())
             self.assertTrue(report.ok)

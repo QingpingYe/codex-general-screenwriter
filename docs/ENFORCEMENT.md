@@ -19,13 +19,15 @@ host policy enforces the call.
 
 | Gate | Level | Enforcement point | Consequence |
 |---|---|---|---|
-| Stage DAG schema, transitions, and terminal state | `runtime_required` | `plugins/picturebook-screenwriter/scripts/stage_dag.py` | Invalid manifests and transitions fail closed. |
-| Lead-owned confirmation gates are not dispatched | `runtime_required` | `plugins/picturebook-screenwriter/scripts/stage_dag_codex.py` | Dispatch planning waits instead of assigning a lead-owned gate. |
-| Agent output path scope | `runtime_required` | `plugins/picturebook-screenwriter/scripts/stage_dag.py` | Traversal and paths outside the agent scope are rejected. |
+| Stage DAG schema, transitions, and terminal state | `runtime_required` | `plugins/general-screenwriter/scripts/stage_dag.py` | Invalid manifests and transitions fail closed. |
+| Type pack execution boundary and snapshots | `runtime_required` | `plugins/general-screenwriter/scripts/stage_dag.py`, `plugins/general-screenwriter/scripts/stage_dag_codex.py` | Unknown or planned media, stale snapshots, invalid targets/workflows, and missing workflow-input evidence fail before dispatch. |
+| Lead-owned confirmation gates are not dispatched | `runtime_required` | `plugins/general-screenwriter/scripts/stage_dag_codex.py` | Dispatch planning waits instead of assigning a lead-owned gate. |
+| Agent output path scope | `runtime_required` | `plugins/general-screenwriter/scripts/stage_dag.py` | Traversal and paths outside the agent scope are rejected. |
 | Feishu revision-protected writes | `runtime_required` | `skills/feishu-knowledge-store/scripts/publisher.py` | Writes use the observed revision and verify readback. |
 | Self-contained HTML image embedding and size limit | `runtime_required` | `skills/illustration-export/scripts/embed_images.py` | Missing images or over-limit output fail with a non-zero result. |
 | Image output directory, size, quality, and API key source | `script_checked` | `skills/image-generate/generate.js` | Missing arguments or key sources fail before generation. |
 | HTML build and session export output arguments | `script_checked` | `skills/illustration-export/scripts/build_html.py`, `skills/session-export/scripts/export_session.py` | Callers must provide the expected inputs before the scripts write files. |
+| Export request and destination policy | `runtime_required` | `plugins/general-screenwriter/scripts/exporter_contract.py`, `plugins/general-screenwriter/skills/illustration-export/scripts/build_html.py` | Missing inputs/params, unsupported formats, missing destinations, and default overwrite are rejected. |
 | Explicit user confirmation before image generation | `prompt_only` | Entry and `image-generate` Skill instructions | A caller that invokes the script directly is not blocked by a consent token. |
 | Confirmation gate and default dialog-only write policy | `prompt_only` | Entry Skill instructions | Scripts cannot prove that the user approved a write. |
 

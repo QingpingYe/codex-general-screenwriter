@@ -20,7 +20,7 @@ class PackageCheckTests(unittest.TestCase):
 
     def test_forbidden_credential_file_fails_closed(self):
         with tempfile.TemporaryDirectory() as temp:
-            plugin = Path(temp) / "plugins" / "picturebook-screenwriter"
+            plugin = Path(temp) / "plugins" / "general-screenwriter"
             (plugin / ".codex-plugin").mkdir(parents=True)
             (plugin / ".codex-plugin" / "plugin.json").write_text(
                 json.dumps({"version": TEST_VERSION}),
@@ -33,7 +33,7 @@ class PackageCheckTests(unittest.TestCase):
 
     def test_generated_directories_are_excluded(self):
         with tempfile.TemporaryDirectory() as temp:
-            plugin = Path(temp) / "plugins" / "picturebook-screenwriter"
+            plugin = Path(temp) / "plugins" / "general-screenwriter"
             (plugin / ".codex-plugin").mkdir(parents=True)
             (plugin / ".codex-plugin" / "plugin.json").write_text(
                 json.dumps({"version": TEST_VERSION}),
@@ -47,7 +47,7 @@ class PackageCheckTests(unittest.TestCase):
 
     def test_json_token_fields_must_be_placeholders(self):
         with tempfile.TemporaryDirectory() as temp:
-            plugin = Path(temp) / "plugins" / "picturebook-screenwriter"
+            plugin = Path(temp) / "plugins" / "general-screenwriter"
             (plugin / ".codex-plugin").mkdir(parents=True)
             (plugin / "config").mkdir()
             (plugin / ".codex-plugin" / "plugin.json").write_text(

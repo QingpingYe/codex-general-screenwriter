@@ -46,7 +46,7 @@ def _check_json_secret_values(path: Path, relative: str, errors: list[str]) -> N
 
 def build_package_report(root: Path) -> PackageReport:
     errors: list[str] = []
-    plugin = root / "plugins" / "picturebook-screenwriter"
+    plugin = root / "plugins" / "general-screenwriter"
     manifest_path = plugin / ".codex-plugin" / "plugin.json"
 
     try:
@@ -62,13 +62,13 @@ def build_package_report(root: Path) -> PackageReport:
         "README.md",
         "config/plugin-contract.json",
         ".codex-plugin/plugin.json",
-        "skills/picturebook-screenwriter/SKILL.md",
+        "skills/general-screenwriter/SKILL.md",
     ):
         if not (plugin / relative).is_file():
             errors.append(f"missing package file: {relative}")
 
     files: list[str] = []
-    excluded_parts = {"__pycache__", "node_modules", ".picturebook-screenwriter"}
+    excluded_parts = {"__pycache__", "node_modules", ".general-screenwriter"}
     for path in plugin.rglob("*"):
         if not path.is_file():
             continue

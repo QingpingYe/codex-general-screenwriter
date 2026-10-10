@@ -23,7 +23,7 @@ def _read_json(path: Path):
 def check_repo(root: Path) -> GovernanceReport:
     errors: list[str] = []
     warnings: list[str] = []
-    plugin = root / "plugins" / "picturebook-screenwriter"
+    plugin = root / "plugins" / "general-screenwriter"
     manifest_path = plugin / ".codex-plugin" / "plugin.json"
     contract_path = plugin / "config" / "plugin-contract.json"
 
@@ -60,7 +60,7 @@ def check_repo(root: Path) -> GovernanceReport:
         if entry_skill not in installed:
             errors.append(f"entry skill is not installed: {entry_skill}")
 
-    for relative in (".env", ".picturebook-screenwriter"):
+    for relative in (".env", ".general-screenwriter"):
         if (plugin / relative).exists():
             errors.append(f"forbidden runtime path in plugin: {relative}")
 

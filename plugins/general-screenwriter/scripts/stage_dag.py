@@ -1,0 +1,1705 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""General Screenwriter — 阶段 DAG 调度核心。
+
+本模块只负责清单校验、状态迁移、依赖排序与并行批次规划；不执行任何 Agent，
+也不直接写用户产物。所有用户确认仍由主编处理。
+"""
+from __future__ import annotations
+
+import copy
+import json
+import os
+import sys
+from collections import deque
+from argparse import ArgumentParser
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal
+
+from screenwriter_context import (
+    ContextError,
+    CreativeContext,
+    context_from_dict,
+    context_to_dict,
+    validate_context,
+)
+
+
+from type_registry import (
+    ArtifactDescriptor, TypePackDescriptor, WorkflowContract, TypeRegistryError,
+    BLOCKING_POLICIES, QualityRuleDescriptor,
+    default_type_registry, resolve_type_pack, resolve_artifact, resolve_workflow,
+    resolve_workflow_artifact, resolve_stage, validate_type_contract,
+    assert_core_artifact_target, assert_type_pack_executable, TypePackNotExecutableError,
+)
+
+
+def _compact_quality_rule(rule: QualityRuleDescriptor) -> dict:
+    return {
+        "check_id": rule.check_id,
+        "artifact_ids": list(rule.artifact_ids),
+        "stage_id": rule.stage_id,
+        "blocking_policy": rule.blocking_policy,
+        "validator": rule.validator,
+    }
+
+
+def _expected_quality_rules(pack, artifact_id):
+    if artifact_id is None:
+        return []
+    return [
+        _compact_quality_rule(rule)
+        for rule in pack.quality_rules
+        if artifact_id in rule.artifact_ids
+    ]
+
+RUN_SCHEMA_V1 = "pb-stage-run-v1"
+RUN_SCHEMA = "pb-stage-run-v2"
+TASK_SCHEMA = "pb-stage-task-v1"
+RESULT_SCHEMA = "pb-stage-result-v1"
+
+RUN_STATUSES = {
+    "pending", "running", "blocked", "completed", "failed", "cancelled",
+}
+RUN_TERMINAL_STATUSES = {"completed", "failed", "cancelled"}
+RUN_MODES = {"full", "light"}
+RUN_OUTCOMES = {None, "approved", "revision_requested", "cancelled"}
+CONFIRMATION_OUTCOMES = {
+    "approved", "revision_requested", "cancelled",
+}
+TERMINAL_STAGE_STATUSES = {"done", "skipped", "failed", "cancelled"}
+
+STAGE_STATUSES = {
+    "pending", "ready", "running", "blocked",
+    "done", "skipped", "failed", "cancelled",
+}
+RESULT_STATUSES = {"done", "needs_input", "blocked", "failed", "cancelled"}
+REQUEST_TYPES = {
+    "request_input", "request_review", "report_event",
+    "confirmation_required", "report_done",
+}
+
+TRANSITIONS = {
+    "pending": {
+        "ready", "running", "blocked", "failed", "cancelled", "skipped",
+    },
+    "ready": {"running", "blocked", "failed", "cancelled", "skipped"},
+    "running": {"blocked", "done", "failed", "cancelled"},
+    "blocked": {"ready", "running", "failed", "cancelled"},
+    "failed": {"ready", "running"},
+    "cancelled": set(),
+    "done": set(),
+    "skipped": set(),
+}
+
+
+@dataclass(frozen=True)
+class StageDecision:
+    stage_id: str
+    decision: Literal["waiting", "ready", "skip", "block"]
+    reason: str
+
+
+class StageDagError(Exception):
+    """带结构化错误清单的调度异常。"""
+
+    def __init__(self, errors):
+        if isinstance(errors, str):
+            errors = [errors]
+        self.errors = list(errors)
+        super().__init__("；".join(self.errors))
+
+
+def _require_nonempty_str(value, label, errors):
+    if not isinstance(value, str) or not value.strip():
+        errors.append(f"{label} 必须是非空字符串")
+
+
+def _validate_optional_reason(stage, key, index, errors):
+    value = stage.get(key)
+    if value is not None and (
+        not isinstance(value, str) or not value.strip()
+    ):
+        errors.append(f"stages[{index}].{key} 必须为 null 或非空字符串")
+
+
+def build_resolution_snapshot(
+    type_pack: TypePackDescriptor,
+    artifact: ArtifactDescriptor | None = None,
+    workflow: WorkflowContract | None = None,
+    *, delivery_form: str | None = None,
+    quality_rule_ids: list[str] | None = None,
+    workflow_inputs: list[dict] | None = None,
+    skills: list[dict] | None = None,
+) -> dict:
+    """Build metadata only; do not start workflows or mutate a registry."""
+    try:
+        validate_type_contract(type_pack)
+        snapshot = {"type_pack": {
+            "medium_id": type_pack.medium_id, "version": type_pack.version,
+            "workflow_policy": type_pack.workflow_policy,
+        }}
+        if workflow is not None:
+            if resolve_workflow(type_pack, workflow.workflow_id) != workflow:
+                raise TypeRegistryError("workflow 不属于该 type pack 快照")
+            snapshot["workflow"] = {
+                "workflow_id": workflow.workflow_id, "trigger_intent": workflow.trigger_intent,
+            }
+        if artifact is not None:
+            canonical = (resolve_workflow_artifact(workflow, artifact.artifact_id)
+                         if workflow is not None else assert_core_artifact_target(type_pack, artifact.artifact_id))
+            if canonical != artifact:
+                raise TypeRegistryError("artifact descriptor 与 type pack 中的契约不一致")
+            scope = workflow if workflow is not None else type_pack
+            if (artifact.origin != "workflow_output" or artifact.status != "active" or
+                    resolve_stage(scope, artifact.production_stage).status != "active"):
+                raise TypeRegistryError("artifact 缺少 active production stage")
+            if delivery_form is None:
+                if len(artifact.delivery_forms) != 1:
+                    raise TypeRegistryError("多交付形式必须显式指定 delivery_form")
+                delivery_form = artifact.delivery_forms[0]
+            if delivery_form not in artifact.delivery_forms:
+                raise TypeRegistryError("delivery_form 不属于目标 artifact")
+            snapshot["artifact"] = {"artifact_id": artifact.artifact_id, "delivery_form": delivery_form}
+        elif delivery_form is not None:
+            raise TypeRegistryError("没有 artifact 时不得指定 delivery_form")
+        if quality_rule_ids is not None:
+            if artifact is None:
+                raise TypeRegistryError("quality_rules 必须与 artifact 一起选择")
+            rules = {rule.check_id: rule for rule in type_pack.quality_rules}
+            selected = []
+            for rule_id in quality_rule_ids:
+                rule = rules.get(rule_id)
+                if rule is None or artifact.artifact_id not in rule.artifact_ids:
+                    raise TypeRegistryError(
+                        f"quality rule {rule_id!r} 不适用于 artifact {artifact.artifact_id!r}"
+                    )
+                selected.append(_compact_quality_rule(rule))
+            snapshot["quality_rules"] = selected
+        if workflow_inputs is not None:
+            if workflow is None:
+                raise TypeRegistryError("workflow_inputs 必须与 workflow 一起提供")
+            snapshot["workflow_inputs"] = copy.deepcopy(workflow_inputs)
+        if skills is not None:
+            problems: list[str] = []
+            _validate_compact_skills(skills, problems)
+            if problems:
+                raise TypeRegistryError("；".join(problems))
+            snapshot["skills"] = copy.deepcopy(skills)
+        return snapshot
+    except (TypeRegistryError, TypeError, AttributeError) as error:
+        raise StageDagError(f"resolution snapshot 无效：{error}") from error
+
+
+def _validate_resolution_snapshot(snapshot, context, errors, artifact_type=None):
+    if not isinstance(snapshot, dict) or any(not isinstance(k, str) for k in snapshot):
+        errors.append("resolution_snapshot 必须是字符串键对象")
+        return
+    unknown = set(snapshot) - {"type_pack", "knowledge", "skills", "artifact", "workflow", "workflow_inputs", "quality_rules"}
+    if unknown:
+        errors.append("resolution_snapshot 包含未知字段：" + ", ".join(sorted(unknown)))
+    start_errors = len(errors)
+    pack_data = snapshot.get("type_pack")
+    if not isinstance(pack_data, dict):
+        errors.append("resolution_snapshot.type_pack 必须是对象")
+    else:
+        if set(pack_data) - {"medium_id", "version", "workflow_policy"}:
+            errors.append("resolution_snapshot.type_pack 包含未知字段")
+        for key in ("medium_id", "version"):
+            _require_nonempty_str(pack_data.get(key), f"resolution_snapshot.type_pack.{key}", errors)
+        if context is not None and pack_data.get("medium_id") != context.medium_id:
+            errors.append("resolution_snapshot.type_pack.medium_id 必须与 context.medium_id 一致")
+        if "workflow_policy" in pack_data:
+            _require_nonempty_str(pack_data["workflow_policy"], "resolution_snapshot.type_pack.workflow_policy", errors)
+        if ("artifact" in snapshot or "workflow" in snapshot) and "workflow_policy" not in pack_data:
+            errors.append("新 artifact/workflow 快照必须记录 type_pack.workflow_policy")
+    for key in ("knowledge",):
+        if key in snapshot and not isinstance(snapshot[key], (list, dict)):
+            errors.append(f"resolution_snapshot.{key} 必须是数组或对象")
+    if "skills" in snapshot:
+        skills = snapshot["skills"]
+        if not isinstance(skills, list):
+            errors.append("resolution_snapshot.skills 必须是数组")
+        else:
+            _validate_compact_skills(skills, errors)
+    for key, fields in (("artifact", {"artifact_id", "delivery_form"}), ("workflow", {"workflow_id", "trigger_intent"})):
+        if key not in snapshot:
+            continue
+        value = snapshot[key]
+        if not isinstance(value, dict) or set(value) != fields:
+            errors.append(f"resolution_snapshot.{key} 包含缺失或未知字段")
+            continue
+        for field in fields:
+            _require_nonempty_str(value[field], f"resolution_snapshot.{key}.{field}", errors)
+    if "workflow_inputs" in snapshot:
+        inputs = snapshot["workflow_inputs"]
+        if "workflow" not in snapshot or not isinstance(inputs, list):
+            errors.append("resolution_snapshot.workflow_inputs 必须是 workflow 的数组")
+        else:
+            seen = set()
+            for index, entry in enumerate(inputs):
+                label = f"resolution_snapshot.workflow_inputs[{index}]"
+                if not isinstance(entry, dict) or not {"artifact_id", "status", "ref"} <= set(entry) or set(entry) - {"artifact_id", "status", "ref", "user_confirmation"}:
+                    errors.append(f"{label} 包含缺失或未知字段")
+                    continue
+                for field in ("artifact_id", "status", "ref"):
+                    _require_nonempty_str(entry[field], f"{label}.{field}", errors)
+                if entry["artifact_id"] in seen:
+                    errors.append(f"{label}.artifact_id 重复")
+                seen.add(entry["artifact_id"])
+                if entry["status"] not in {"approved", "user_supplied"}:
+                    errors.append(f"{label}.status 必须为 approved 或 user_supplied")
+                if entry["status"] == "user_supplied" and entry.get("user_confirmation") is not True:
+                    errors.append(f"{label} 用户提供脚本须有明确确认")
+                if "user_confirmation" in entry and type(entry["user_confirmation"]) is not bool:
+                    errors.append(f"{label}.user_confirmation 必须是布尔值")
+    if "quality_rules" in snapshot:
+        rules = snapshot["quality_rules"]
+        if not isinstance(rules, list):
+            errors.append("resolution_snapshot.quality_rules 必须是数组")
+        else:
+            seen_rules = set()
+            for index, rule in enumerate(rules):
+                label = f"resolution_snapshot.quality_rules[{index}]"
+                fields = {"check_id", "artifact_ids", "stage_id", "blocking_policy", "validator"}
+                if not isinstance(rule, dict) or set(rule) != fields:
+                    errors.append(f"{label} 包含缺失或未知字段")
+                    continue
+                _require_nonempty_str(rule["check_id"], f"{label}.check_id", errors)
+                _require_nonempty_str(rule["stage_id"], f"{label}.stage_id", errors)
+                _require_nonempty_str(rule["blocking_policy"], f"{label}.blocking_policy", errors)
+                if rule["blocking_policy"] not in BLOCKING_POLICIES:
+                    errors.append(f"{label}.blocking_policy 无效")
+                ids = rule["artifact_ids"]
+                if not isinstance(ids, list) or not ids or any(not isinstance(item, str) or not item.strip() for item in ids):
+                    errors.append(f"{label}.artifact_ids 必须是非空字符串数组")
+                if rule["validator"] is not None:
+                    _require_nonempty_str(rule["validator"], f"{label}.validator", errors)
+                if rule["check_id"] in seen_rules:
+                    errors.append(f"{label}.check_id 重复")
+                seen_rules.add(rule["check_id"])
+    if len(errors) != start_errors or context is None:
+        return
+    artifact_data = snapshot.get("artifact")
+    workflow_data = snapshot.get("workflow")
+    if artifact_data is not None:
+        target = artifact_data["artifact_id"]
+        allowed = {target}
+        if workflow_data is not None:
+            allowed.add(workflow_data["workflow_id"])
+        if artifact_type is not None and artifact_type not in allowed:
+            errors.append("snapshot artifact 与 manifest.artifact_type 不一致")
+        if context.delivery_form is not None and context.delivery_form != artifact_data["delivery_form"]:
+            errors.append("snapshot delivery_form 与 context.delivery_form 不一致")
+    elif workflow_data is not None and artifact_type is not None and artifact_type != workflow_data["workflow_id"]:
+        errors.append("snapshot workflow 与 manifest.artifact_type 不一致")
+    try:
+        pack = resolve_type_pack(default_type_registry(), context.medium_id)
+        # Archived metadata is readable; execution checks the current version lock separately.
+        if pack_data["version"] != pack.version:
+            return
+        if "workflow_policy" in pack_data and pack_data["workflow_policy"] != pack.workflow_policy:
+            errors.append("snapshot workflow_policy 与当前同版本 type pack 不一致")
+        workflow = None
+        if workflow_data is not None:
+            workflow = resolve_workflow(pack, workflow_data["workflow_id"])
+            if workflow_data["trigger_intent"] != workflow.trigger_intent:
+                errors.append("snapshot workflow trigger_intent 不一致")
+        if artifact_data is not None:
+            artifact = (resolve_workflow_artifact(workflow, artifact_data["artifact_id"])
+                        if workflow is not None else resolve_artifact(pack, artifact_data["artifact_id"]))
+            if artifact_data["delivery_form"] not in artifact.delivery_forms:
+                errors.append("snapshot delivery_form 不属于 artifact 契约")
+            expected_rules = [
+                _compact_quality_rule(rule)
+                for rule in pack.quality_rules
+                if artifact.artifact_id in rule.artifact_ids
+            ]
+            if "quality_rules" in snapshot and snapshot["quality_rules"] != expected_rules:
+                errors.append("resolution_snapshot.quality_rules 与当前同版本 type pack 不一致")
+    except TypeRegistryError as error:
+        errors.append(f"resolution_snapshot 引用无效：{error}")
+
+
+def _validate_optional_context(manifest, errors):
+    has_context = "context" in manifest
+    raw_context = manifest.get("context")
+    context = None
+    if has_context:
+        try:
+            context = context_from_dict(raw_context, require_project=True)
+        except ContextError as error:
+            errors.append(f"context 无效：{error}")
+    if "resolution_snapshot" in manifest:
+        if context is None:
+            errors.append("resolution_snapshot 必须与有效 context 一起提供")
+        _validate_resolution_snapshot(
+            manifest["resolution_snapshot"], context, errors, manifest.get("artifact_type")
+        )
+    return context
+
+
+SKILL_SNAPSHOT_FIELDS = {
+    "skill_id", "version", "authority", "scopes",
+    "stage_id", "execution_policy", "status", "content_hash",
+}
+
+
+def _validate_compact_skills(skills, errors):
+    for index, item in enumerate(skills):
+        label = f"resolution_snapshot.skills[{index}]"
+        if not isinstance(item, dict) or set(item) != SKILL_SNAPSHOT_FIELDS:
+            errors.append(f"{label} 包含缺失或未知字段")
+            continue
+        for field in ("skill_id", "version", "authority", "stage_id",
+                      "execution_policy", "status", "content_hash"):
+            _require_nonempty_str(item[field], f"{label}.{field}", errors)
+        scopes = item["scopes"]
+        if (not isinstance(scopes, list) or not scopes
+                or any(not isinstance(scope, dict) or not scope for scope in scopes)):
+            errors.append(f"{label}.scopes 必须是非空对象数组")
+
+
+def _load_skill_registry(path=None):
+    """Return the deployable user-skill registry, or None when none is configured."""
+    source = Path(path) if path is not None else (
+        Path(__file__).resolve().parent.parent / "config" / "user-skills.json"
+    )
+    if not source.exists():
+        return None
+    from user_skill_contract import UserSkillContractError, load_user_skill_registry
+    try:
+        return load_user_skill_registry(source)
+    except UserSkillContractError:
+        return None
+
+
+def _validate_skills_against_registry(skills, registry):
+    active = {
+        (skill.skill_id, skill.version): skill
+        for skill in registry.skills if skill.status == "active"
+    }
+    for item in skills:
+        key = (item["skill_id"], item["version"])
+        if key not in active:
+            raise TypeRegistryError(
+                f"resolution_snapshot skills 与当前用户技能注册表不一致：{key[0]} {key[1]}"
+            )
+
+
+def assert_manifest_type_executable(manifest):
+    """Enforce current contract only when dispatching an explicit-context run."""
+    if not isinstance(manifest, dict) or "context" not in manifest:
+        return None
+    try:
+        context = context_from_dict(manifest["context"], require_project=True)
+        pack = resolve_type_pack(default_type_registry(), context.medium_id)
+        assert_type_pack_executable(pack)
+        snapshot = manifest.get("resolution_snapshot") or {}
+        locked = snapshot.get("type_pack")
+        if locked:
+            if locked["version"] != pack.version:
+                raise TypeRegistryError("历史 type pack 快照只读，执行前须重新解析当前版本")
+            if locked.get("workflow_policy") is not None and locked["workflow_policy"] != pack.workflow_policy:
+                raise TypeRegistryError("resolution_snapshot workflow_policy 与当前 type pack 不一致")
+            if "quality_rules" in snapshot:
+                core_target = None
+                optional_target = None
+                workflow_data = snapshot.get("workflow")
+                if workflow_data is None:
+                    core_target = assert_core_artifact_target(pack, manifest["artifact_type"])
+                else:
+                    workflow = resolve_workflow(pack, workflow_data["workflow_id"])
+                    if manifest["artifact_type"] != workflow.workflow_id:
+                        optional_target = resolve_workflow_artifact(workflow, manifest["artifact_type"])
+                expected = _expected_quality_rules(
+                    pack,
+                    core_target.artifact_id if core_target is not None else (
+                        optional_target.artifact_id if optional_target is not None else None
+                    ),
+                )
+                if snapshot["quality_rules"] != expected:
+                    raise TypeRegistryError("resolution_snapshot quality_rules 与当前 type pack 不一致")
+            skills = snapshot.get("skills")
+            if skills:
+                registry = _load_skill_registry()
+                if registry is not None:
+                    _validate_skills_against_registry(skills, registry)
+        stage_ids = {stage["stage_id"] for stage in manifest["stages"]}
+        workflow_data = snapshot.get("workflow")
+        if workflow_data is None:
+            target = assert_core_artifact_target(pack, manifest["artifact_type"])
+            if context.delivery_form and context.delivery_form not in target.delivery_forms:
+                raise TypeRegistryError("context.delivery_form 不属于核心目标")
+            core_ids = {stage.stage_id for stage in pack.stages}
+            if manifest.get("intent") == "revision":
+                core_ids.update({"revision_init", "revision_delegate"})
+            if stage_ids - core_ids:
+                raise TypeRegistryError("核心 run 混入非核心 workflow 阶段")
+        else:
+            workflow = resolve_workflow(pack, workflow_data["workflow_id"])
+            if workflow.trigger_intent != workflow_data["trigger_intent"]:
+                raise TypeRegistryError("workflow trigger_intent 不一致")
+            if manifest["artifact_type"] not in {workflow.workflow_id, *(a.artifact_id for a in workflow.artifact_types)}:
+                raise TypeRegistryError("目标不是选中的可选 workflow")
+            if stage_ids != {stage.stage_id for stage in workflow.stages}:
+                raise TypeRegistryError("可选 workflow run 的阶段必须与独立 DAG 一致")
+            evidence = snapshot.get("workflow_inputs", [])
+            for requirement in workflow.inputs:
+                matches = [item for item in evidence if item["artifact_id"] == requirement.artifact_id]
+                if len(matches) != 1 or not matches[0]["ref"].strip():
+                    raise TypeRegistryError(f"workflow 缺少 {requirement.artifact_id} 输入来源声明")
+                item = matches[0]
+                if item["status"] != requirement.required_status and not (
+                    item["status"] == "user_supplied" and item.get("user_confirmation") is True
+                ):
+                    raise TypeRegistryError(f"workflow 输入 {requirement.artifact_id} 未获准使用")
+        return pack
+    except TypePackNotExecutableError:
+        raise
+    except (ContextError, TypeRegistryError, KeyError, TypeError) as error:
+        raise StageDagError(f"type pack 不可执行：{error}") from error
+
+
+def extract_context(manifest) -> CreativeContext:
+    """Return stored context or infer the legacy picturebook context."""
+    if not isinstance(manifest, dict):
+        raise StageDagError("manifest 顶层必须是对象")
+    if "context" not in manifest:
+        return CreativeContext("picturebook")
+    raw_context = manifest["context"]
+    try:
+        return context_from_dict(raw_context, require_project=True)
+    except ContextError as error:
+        raise StageDagError(f"context 无效：{error}") from error
+
+
+def attach_context(manifest, context, resolution_snapshot=None):
+    """Return a validated deep copy enriched with creative context."""
+    try:
+        normalized = validate_context(context, require_project=True)
+    except ContextError as error:
+        raise StageDagError(f"context 无效：{error}") from error
+    enriched = copy.deepcopy(manifest)
+    enriched["context"] = context_to_dict(normalized)
+    if resolution_snapshot is not None:
+        enriched["resolution_snapshot"] = copy.deepcopy(resolution_snapshot)
+    else:
+        enriched.pop("resolution_snapshot", None)
+    return validate_manifest(enriched)
+
+
+def _validate_manifest_structure(manifest):
+    if not isinstance(manifest, dict):
+        return ["manifest 顶层必须是对象"]
+    errors = []
+    schema_version = manifest.get("schema_version")
+    if schema_version == RUN_SCHEMA_V1:
+        errors.append(
+            f"schema_version 是 {RUN_SCHEMA_V1}，请先运行 --action migrate")
+    elif schema_version != RUN_SCHEMA:
+        errors.append(f"schema_version 必须是 {RUN_SCHEMA}")
+    for key in (
+        "run_id", "root_run_id", "intent", "artifact_type",
+        "mode", "project_root",
+    ):
+        _require_nonempty_str(manifest.get(key), key, errors)
+
+    _validate_optional_context(manifest, errors)
+
+    iteration = manifest.get("iteration")
+    if (
+        isinstance(iteration, bool)
+        or not isinstance(iteration, int)
+        or iteration < 1
+    ):
+        errors.append("iteration 必须是 >= 1 的整数")
+
+    if manifest.get("status") not in RUN_STATUSES:
+        errors.append(f"status 非法：{manifest.get('status')!r}")
+    if manifest.get("outcome") not in RUN_OUTCOMES:
+        errors.append(f"outcome 非法：{manifest.get('outcome')!r}")
+    mode = manifest.get("mode")
+    run_status = manifest.get("status")
+    run_outcome = manifest.get("outcome")
+    if mode not in RUN_MODES:
+        errors.append(f"mode 非法：{mode!r}")
+    if run_status == "completed" and run_outcome not in {
+            "approved", "revision_requested"}:
+        errors.append("completed run 的 outcome 必须是 approved 或 revision_requested")
+    if run_status == "cancelled" and run_outcome != "cancelled":
+        errors.append("cancelled run 的 outcome 必须是 cancelled")
+    if (
+        run_status in {"pending", "running", "blocked", "failed"}
+        and run_outcome is not None
+    ):
+        errors.append(f"{run_status} run 的 outcome 必须为 null")
+    if run_outcome == "cancelled" and run_status != "cancelled":
+        errors.append("outcome=cancelled 要求 status=cancelled")
+    if (
+        run_outcome in {"approved", "revision_requested"}
+        and run_status != "completed"
+    ):
+        errors.append(
+            f"outcome={run_outcome} 要求 status=completed")
+
+    for key in ("revision_feedback", "stages"):
+        if not isinstance(manifest.get(key), list):
+            errors.append(f"{key} 必须是数组")
+
+    revision_of = manifest.get("revision_of_run_id")
+    if revision_of is not None and not isinstance(revision_of, str):
+        errors.append("revision_of_run_id 必须为 null 或字符串")
+    source_ref = manifest.get("source_artifact_ref")
+    if source_ref is not None and not isinstance(source_ref, str):
+        errors.append("source_artifact_ref 必须为 null 或字符串")
+    revision_feedback = manifest.get("revision_feedback")
+    intent = manifest.get("intent")
+    if intent == "revision":
+        _require_nonempty_str(
+            revision_of, "revision_of_run_id", errors)
+        if isinstance(iteration, int) and not isinstance(iteration, bool):
+            if iteration < 2:
+                errors.append("revision iteration 必须 >= 2")
+        if isinstance(revision_of, str) and revision_of == manifest.get(
+                "run_id"):
+            errors.append("revision_of_run_id 不得与 run_id 相同")
+        if not isinstance(revision_feedback, list) or not revision_feedback:
+            errors.append("revision_feedback 必须是非空数组")
+        _require_nonempty_str(
+            source_ref, "source_artifact_ref", errors)
+        if mode != "full":
+            errors.append("revision mode 必须是 full")
+    elif intent == "creation":
+        if revision_of is not None:
+            errors.append("creation revision_of_run_id 必须为 null")
+        if (
+            not isinstance(revision_feedback, list)
+            or revision_feedback
+        ):
+            errors.append("creation revision_feedback 必须为空数组")
+        if source_ref is not None:
+            errors.append("creation source_artifact_ref 必须为 null")
+
+    stages = manifest.get("stages")
+    is_light = manifest.get("mode") == "light"
+    if not isinstance(stages, list):
+        errors.append("stages 必须是非空数组")
+        return errors
+    if not stages and not is_light:
+        errors.append("stages 必须是非空数组（mode=light 时允许为空）")
+        return errors
+
+    stage_by_id = {
+        stage.get("stage_id"): stage
+        for stage in stages
+        if isinstance(stage, dict)
+        and isinstance(stage.get("stage_id"), str)
+    }
+    ids = set()
+    for index, stage in enumerate(stages):
+        if not isinstance(stage, dict):
+            errors.append(f"stages[{index}] 必须是对象")
+            continue
+        sid = stage.get("stage_id")
+        _require_nonempty_str(sid, f"stages[{index}].stage_id", errors)
+        if isinstance(sid, str) and sid:
+            if sid in ids:
+                errors.append(f"stage_id 重复：{sid}")
+            ids.add(sid)
+        _require_nonempty_str(
+            stage.get("assignee"), f"stages[{index}].assignee", errors)
+        deps = stage.get("depends_on")
+        if not isinstance(deps, list):
+            errors.append(f"stages[{index}].depends_on 必须是数组")
+        stage_status = stage.get("status")
+        if stage_status not in STAGE_STATUSES:
+            errors.append(f"stages[{index}].status 非法：{stage_status!r}")
+        stage_outcome = stage.get("outcome")
+        if stage.get("gate") == "confirmation":
+            if stage_outcome is not None and (
+                not isinstance(stage_outcome, str)
+                or stage_outcome not in CONFIRMATION_OUTCOMES
+            ):
+                errors.append(
+                    f"stages[{index}].outcome 非法：{stage_outcome!r}")
+            if (
+                stage_status == "done"
+                and stage_outcome not in CONFIRMATION_OUTCOMES
+            ):
+                errors.append(
+                    f"stages[{index}] confirmation gate done 时必须提供 outcome")
+            if stage_outcome is not None and stage_status != "done":
+                errors.append(
+                    f"stages[{index}] confirmation gate 只有 done 时才能提供 outcome")
+        elif stage_outcome is not None:
+            errors.append(f"stages[{index}].outcome 必须为 null")
+        _require_nonempty_str(stage.get("gate"), f"stages[{index}].gate", errors)
+        when = stage.get("when")
+        if when is not None:
+            if not isinstance(when, dict) or set(when) != {"stage_id", "outcome"}:
+                errors.append(
+                    f"stages[{index}].when 必须只包含 stage_id 和 outcome")
+            else:
+                _require_nonempty_str(
+                    when.get("stage_id"), f"stages[{index}].when.stage_id", errors)
+                when_stage_id = when.get("stage_id")
+                when_outcome = when.get("outcome")
+                if (
+                    not isinstance(when_outcome, str)
+                    or when_outcome not in CONFIRMATION_OUTCOMES
+                ):
+                    errors.append(
+                        f"stages[{index}].when.outcome 非法："
+                        f"{when_outcome!r}")
+                condition_stage = (
+                    stage_by_id.get(when_stage_id)
+                    if isinstance(when_stage_id, str)
+                    else None
+                )
+                if (
+                    condition_stage is None
+                    or condition_stage.get("gate") != "confirmation"
+                ):
+                    errors.append(
+                        f"stages[{index}].when.stage_id 必须引用"
+                        " confirmation gate")
+                deps = stage.get("depends_on")
+                if (
+                    isinstance(deps, list)
+                    and when_stage_id not in deps
+                ):
+                    errors.append(
+                        f"stages[{index}].when.stage_id 必须是直接依赖")
+        for key in ("input_refs", "output_refs"):
+            if not isinstance(stage.get(key), list):
+                errors.append(f"stages[{index}].{key} 必须是数组")
+        _validate_optional_reason(stage, "skip_reason", index, errors)
+        _validate_optional_reason(stage, "blocked_reason", index, errors)
+        if stage_status == "skipped" and not (
+            isinstance(stage.get("skip_reason"), str)
+            and stage["skip_reason"].strip()
+        ):
+            errors.append(
+                f"stages[{index}] status=skipped 时必须提供 skip_reason")
+        if stage_status == "blocked" and not (
+            isinstance(stage.get("blocked_reason"), str)
+            and stage["blocked_reason"].strip()
+        ):
+            errors.append(
+                f"stages[{index}] status=blocked 时必须提供 blocked_reason")
+    confirmation_gate = stage_by_id.get("confirmation_gate")
+    if (
+        run_status in {"completed", "cancelled"}
+        and confirmation_gate is not None
+    ):
+        if (
+            confirmation_gate.get("status") != "done"
+            or confirmation_gate.get("outcome") != run_outcome
+        ):
+            errors.append(
+                "terminal run 的 confirmation_gate 必须 done 且 outcome 与 run 一致"
+            )
+    if run_status == "completed" and run_outcome == "approved":
+        for stage_id in ("persistence", "knowledge_reminder"):
+            stage = stage_by_id.get(stage_id)
+            if stage is not None and stage.get("status") != "done":
+                errors.append(
+                    f"completed/approved run 的 {stage_id} 必须 done"
+                )
+    if run_status == "completed" and run_outcome == "revision_requested":
+        for stage_id in ("persistence", "knowledge_reminder"):
+            stage = stage_by_id.get(stage_id)
+            if stage is not None and stage.get("status") != "skipped":
+                errors.append(
+                    f"completed/revision_requested run 的 {stage_id} 必须 skipped"
+                )
+    return errors
+
+
+def _find_dependency_errors(stages):
+    ids = {s.get("stage_id") for s in stages if isinstance(s, dict)}
+    errors = []
+    for stage in stages:
+        if not isinstance(stage, dict):
+            continue
+        sid = stage.get("stage_id")
+        for dep in stage.get("depends_on") or []:
+            if dep not in ids:
+                errors.append(f"stage {sid} 依赖未知的 stage：{dep}")
+    return errors
+
+
+def _topological_order(stages):
+    ids = {s["stage_id"] for s in stages}
+    dependents = {sid: [] for sid in ids}
+    indegree = {sid: 0 for sid in ids}
+    for stage in stages:
+        sid = stage["stage_id"]
+        for dep in stage["depends_on"]:
+            dependents[dep].append(sid)
+            indegree[sid] += 1
+
+    queue = deque(sorted(sid for sid, degree in indegree.items() if degree == 0))
+    order = []
+    while queue:
+        sid = queue.popleft()
+        order.append(sid)
+        for dependent in dependents[sid]:
+            indegree[dependent] -= 1
+            if indegree[dependent] == 0:
+                queue.append(dependent)
+
+    if len(order) != len(ids):
+        remaining = ", ".join(sorted(ids - set(order)))
+        raise StageDagError(f"阶段依赖存在循环：{remaining}")
+    return order
+
+
+def validate_manifest(manifest):
+    """校验并返回 run manifest 的深拷贝。"""
+    errors = _validate_manifest_structure(manifest)
+    if errors:
+        raise StageDagError(errors)
+    stages = manifest["stages"]
+    errors.extend(_find_dependency_errors(stages))
+    if errors:
+        raise StageDagError(errors)
+    _topological_order(stages)
+    return copy.deepcopy(manifest)
+
+
+_V1_CREATION_STAGE_IDS = {
+    "session_init", "brief_gate", "knowledge_load", "creation_delegate",
+    "preflight", "collision_check", "qa", "qa_synthesis",
+    "confirmation_gate", "revision_loop", "persistence", "knowledge_reminder",
+}
+_V1_CREATION_REQUIRED_STAGE_IDS = (
+    _V1_CREATION_STAGE_IDS - {"revision_loop"}
+)
+_V1_GENERIC_STAGE_IDS = {"session_init", "brief_gate"}
+_V1_ILLUSTRATION_STAGE_IDS = {
+    "illustration_init", "asset_extraction", "asset_confirmation",
+    "asset_preproduction", "asset_final_confirmation",
+    "illustration_generation", "html_export", "illustration_delivery",
+}
+_V1_KNOWN_STAGE_IDS = (
+    _V1_CREATION_STAGE_IDS
+    | _V1_GENERIC_STAGE_IDS
+    | _V1_ILLUSTRATION_STAGE_IDS
+)
+
+
+def _validate_v1_manifest_shape(manifest):
+    errors = []
+    for key in ("run_id", "intent", "artifact_type", "mode", "project_root"):
+        _require_nonempty_str(manifest.get(key), f"v1 {key}", errors)
+    if manifest.get("mode") not in RUN_MODES:
+        errors.append(f"v1 mode 非法：{manifest.get('mode')!r}")
+    if (
+        "status" in manifest
+        and manifest.get("status") not in RUN_STATUSES
+    ):
+        errors.append(f"v1 status 非法：{manifest.get('status')!r}")
+    if (
+        "outcome" in manifest
+        and manifest.get("outcome") not in RUN_OUTCOMES
+    ):
+        errors.append(f"v1 outcome 非法：{manifest.get('outcome')!r}")
+
+    stages = manifest.get("stages")
+    if not isinstance(stages, list):
+        errors.append("v1 stages 必须是数组")
+        return errors
+
+    seen_stage_ids = set()
+    for index, stage in enumerate(stages):
+        if not isinstance(stage, dict):
+            errors.append(f"v1 stages[{index}] 必须是对象")
+            continue
+
+        stage_id = stage.get("stage_id")
+        _require_nonempty_str(
+            stage_id, f"v1 stages[{index}].stage_id", errors)
+        if isinstance(stage_id, str) and stage_id:
+            if stage_id in seen_stage_ids:
+                errors.append(f"v1 stage_id 重复：{stage_id}")
+            seen_stage_ids.add(stage_id)
+
+        _require_nonempty_str(
+            stage.get("assignee"), f"v1 stages[{index}].assignee", errors)
+        _require_nonempty_str(
+            stage.get("gate"), f"v1 stages[{index}].gate", errors)
+
+        deps = stage.get("depends_on")
+        if not isinstance(deps, list):
+            errors.append(f"v1 stages[{index}].depends_on 必须是数组")
+        else:
+            for dep_index, dep in enumerate(deps):
+                _require_nonempty_str(
+                    dep,
+                    f"v1 stages[{index}].depends_on[{dep_index}]",
+                    errors,
+                )
+
+        status = stage.get("status")
+        if not isinstance(status, str) or status not in STAGE_STATUSES:
+            errors.append(f"v1 stages[{index}].status 非法：{status!r}")
+
+        outcome = stage.get("outcome")
+        if (
+            outcome is not None
+            and (
+                not isinstance(outcome, str)
+                or outcome not in CONFIRMATION_OUTCOMES
+            )
+        ):
+            errors.append(f"v1 stages[{index}].outcome 非法：{outcome!r}")
+        elif outcome is not None and stage.get("gate") != "confirmation":
+            errors.append(
+                f"v1 stages[{index}].outcome 只能用于 confirmation gate")
+
+        for key in ("input_refs", "output_refs"):
+            if not isinstance(stage.get(key), list):
+                errors.append(f"v1 stages[{index}].{key} 必须是数组")
+
+    return errors
+
+
+def migrate_manifest_v1(manifest):
+    """把冻结的 v1 run manifest 显式迁移为可执行的 v2。"""
+    if not isinstance(manifest, dict):
+        raise StageDagError("v1 manifest 顶层必须是对象")
+    if manifest.get("schema_version") != RUN_SCHEMA_V1:
+        raise StageDagError("migrate 只接受 pb-stage-run-v1")
+
+    migrated = copy.deepcopy(manifest)
+    stages = migrated.get("stages")
+    if not isinstance(stages, list):
+        raise StageDagError("v1 stages 必须是数组")
+
+    shape_errors = _validate_v1_manifest_shape(manifest)
+    if shape_errors:
+        raise StageDagError(shape_errors)
+
+    by_id = {stage.get("stage_id"): stage for stage in stages}
+    stage_ids = set(by_id)
+    unknown_stage_ids = sorted(stage_ids - _V1_KNOWN_STAGE_IDS)
+    if unknown_stage_ids:
+        raise StageDagError(
+            f"v1 包含未知 stage：{', '.join(unknown_stage_ids)}")
+
+    if stage_ids == _V1_GENERIC_STAGE_IDS:
+        graph_kind = "generic"
+    elif stage_ids == _V1_ILLUSTRATION_STAGE_IDS:
+        graph_kind = "illustration"
+    elif (
+        _V1_CREATION_REQUIRED_STAGE_IDS <= stage_ids
+        and stage_ids <= _V1_CREATION_STAGE_IDS
+    ):
+        graph_kind = "creation"
+    else:
+        missing_stage_ids = sorted(
+            _V1_CREATION_REQUIRED_STAGE_IDS - stage_ids)
+        if missing_stage_ids:
+            raise StageDagError(
+                f"v1 缺少必需 stage：{', '.join(missing_stage_ids)}")
+        raise StageDagError(
+            "v1 stage 集合不是受支持的 creation、generic 或 illustration 模板"
+        )
+
+    gate = by_id.get("confirmation_gate")
+    gate_outcome = gate.get("outcome") if gate else None
+    if gate and gate.get("status") == "done" and not gate_outcome:
+        raise StageDagError("确认门已 done 但缺少 outcome，无法安全迁移")
+
+    revision = by_id.get("revision_loop")
+    persistence = by_id.get("persistence")
+    revision_started = (
+        revision is not None
+        and revision.get("status") not in {"pending", "cancelled"}
+    )
+    persistence_started = (
+        persistence is not None
+        and persistence.get("status") not in {"pending", "cancelled"}
+    )
+    if gate and gate.get("status") == "done":
+        if gate_outcome == "approved" and revision_started:
+            raise StageDagError(
+                "确认门 approved 时 revision_loop 已开始，状态存在歧义")
+        if gate_outcome == "revision_requested" and persistence_started:
+            raise StageDagError(
+                "确认门 revision_requested 时 persistence 已开始，状态存在歧义")
+        if gate_outcome == "cancelled" and (
+            revision_started or persistence_started
+        ):
+            raise StageDagError(
+                "确认门 cancelled 时存在下游执行记录，状态存在歧义")
+    elif graph_kind == "creation" and (
+        revision_started or persistence_started
+    ):
+        if revision_started or persistence_started:
+            raise StageDagError("v1 revision_loop/persistence 状态存在歧义")
+
+    run_status = manifest.get("status", "pending")
+    run_outcome = manifest.get("outcome")
+    if graph_kind == "creation" and gate and gate.get("status") == "done":
+        if gate_outcome == "approved":
+            if (
+                persistence is not None
+                and persistence.get("status") == "done"
+                and by_id["knowledge_reminder"].get("status") == "done"
+            ):
+                run_status = "completed"
+                run_outcome = "approved"
+        elif gate_outcome == "revision_requested":
+            run_status = "completed"
+            run_outcome = "revision_requested"
+        elif gate_outcome == "cancelled":
+            run_status = "cancelled"
+            run_outcome = "cancelled"
+
+    migrated["schema_version"] = RUN_SCHEMA
+    migrated["root_run_id"] = manifest.get("root_run_id", manifest["run_id"])
+    migrated["revision_of_run_id"] = None
+    migrated["iteration"] = 1
+    migrated["status"] = run_status
+    migrated["outcome"] = run_outcome
+    migrated["revision_feedback"] = []
+    migrated["source_artifact_ref"] = None
+    migrated["stages"] = [
+        stage for stage in stages
+        if stage.get("stage_id") != "revision_loop"
+    ]
+    for stage in migrated["stages"]:
+        stage.setdefault("outcome", None)
+        stage.setdefault("when", None)
+        stage.setdefault("skip_reason", None)
+        stage.setdefault("blocked_reason", None)
+    if graph_kind == "creation":
+        persistence = next(
+            stage for stage in migrated["stages"]
+            if stage["stage_id"] == "persistence"
+        )
+        persistence["when"] = {
+            "stage_id": "confirmation_gate",
+            "outcome": "approved",
+        }
+    if (
+        graph_kind == "creation"
+        and gate_outcome == "revision_requested"
+    ):
+        for stage_id in ("persistence", "knowledge_reminder"):
+            stage = next(
+                item for item in migrated["stages"]
+                if item["stage_id"] == stage_id
+            )
+            if stage["status"] in {"pending", "ready"}:
+                stage["status"] = "skipped"
+                stage["skip_reason"] = (
+                    "confirmation_requested_revision"
+                )
+    return validate_manifest(migrated)
+
+
+def topological_order(manifest):
+    """返回全局拓扑序；发现循环时抛出 StageDagError。"""
+    validated = validate_manifest(manifest)
+    return _topological_order(validated["stages"])
+
+
+def ready_stages(manifest):
+    """返回所有依赖均已完成的待执行阶段。"""
+    return sorted(
+        item.stage_id
+        for item in resolve_stage_decisions(manifest)
+        if item.decision == "ready"
+    )
+
+
+def resolve_stage_decisions(manifest):
+    """按依赖状态和条件返回 pending/ready 阶段的调度决策。"""
+    validated = validate_manifest(manifest)
+    assert_manifest_type_executable(validated)
+    if validated["status"] in RUN_TERMINAL_STATUSES:
+        return []
+    stages = {
+        stage["stage_id"]: stage
+        for stage in validated["stages"]
+    }
+    decisions = []
+    for stage in validated["stages"]:
+        if stage["status"] not in {"pending", "ready"}:
+            continue
+
+        dependencies = [stages[dep] for dep in stage["depends_on"]]
+        if any(
+            dep["status"] in {"failed", "blocked", "cancelled"}
+            for dep in dependencies
+        ):
+            decisions.append(StageDecision(
+                stage["stage_id"],
+                "block",
+                "dependency failed, blocked, or cancelled",
+            ))
+            continue
+        if any(
+            dep["status"] in {"pending", "ready", "running"}
+            for dep in dependencies
+        ):
+            decisions.append(StageDecision(
+                stage["stage_id"],
+                "waiting",
+                "dependency is not done",
+            ))
+            continue
+
+        when = stage.get("when")
+        if when is not None:
+            condition = stages[when["stage_id"]]
+            if condition["outcome"] != when["outcome"]:
+                decisions.append(StageDecision(
+                    stage["stage_id"],
+                    "skip",
+                    "condition outcome does not match",
+                ))
+            else:
+                decisions.append(StageDecision(
+                    stage["stage_id"],
+                    "ready",
+                    "condition outcome matched",
+                ))
+            continue
+
+        if all(dep["status"] == "done" for dep in dependencies):
+            decisions.append(StageDecision(
+                stage["stage_id"],
+                "ready",
+                "dependencies are done",
+            ))
+        elif any(dep["status"] == "skipped" for dep in dependencies):
+            decisions.append(StageDecision(
+                stage["stage_id"],
+                "skip",
+                "dependency was skipped",
+            ))
+        else:
+            decisions.append(StageDecision(
+                stage["stage_id"],
+                "waiting",
+                "dependencies are not ready",
+            ))
+    return decisions
+
+
+def next_batches(manifest):
+    """返回下一批可执行阶段，并正确处理条件阶段。"""
+    validated = validate_manifest(manifest)
+    assert_manifest_type_executable(validated)
+    if validated["status"] in RUN_TERMINAL_STATUSES:
+        return []
+    ready = [
+        item.stage_id
+        for item in resolve_stage_decisions(validated)
+        if item.decision == "ready"
+    ]
+    return [sorted(ready)] if ready else []
+
+
+def finalize_run(manifest, outcome):
+    """按确认结果收敛 run 及其下游阶段。"""
+    validated = validate_manifest(manifest)
+    if outcome not in CONFIRMATION_OUTCOMES:
+        raise StageDagError(f"非法 run outcome：{outcome!r}")
+    gate = next(
+        (
+            stage for stage in validated["stages"]
+            if stage["stage_id"] == "confirmation_gate"
+            and stage["gate"] == "confirmation"
+        ),
+        None,
+    )
+    if gate is None:
+        raise StageDagError("找不到 confirmation_gate，无法结束 run")
+    if gate["status"] != "done":
+        raise StageDagError(
+            "confirmation_gate 尚未完成，无法结束 run"
+        )
+    if gate["outcome"] != outcome:
+        raise StageDagError(
+            "confirmation_gate outcome 与 run outcome 不一致："
+            f"{gate['outcome']!r} != {outcome!r}"
+        )
+
+    if outcome == "approved":
+        persistence = next(
+            stage for stage in validated["stages"]
+            if stage["stage_id"] == "persistence"
+        )
+        reminder = next(
+            stage for stage in validated["stages"]
+            if stage["stage_id"] == "knowledge_reminder"
+        )
+        if persistence["status"] != "done":
+            raise StageDagError("persistence 未完成，run 不能标记 approved")
+        if reminder["status"] != "done":
+            raise StageDagError(
+                "knowledge_reminder 未完成，run 不能标记 approved")
+        validated["status"] = "completed"
+        validated["outcome"] = "approved"
+    elif outcome == "revision_requested":
+        for stage_id in ("persistence", "knowledge_reminder"):
+            stage = next(
+                item for item in validated["stages"]
+                if item["stage_id"] == stage_id
+            )
+            if stage["status"] in {"pending", "ready"}:
+                stage["status"] = "skipped"
+                stage["skip_reason"] = "confirmation_requested_revision"
+            elif stage["status"] != "skipped":
+                raise StageDagError(
+                    f"{stage_id} 状态无法安全收敛为 skipped"
+                )
+        validated["status"] = "completed"
+        validated["outcome"] = "revision_requested"
+    else:
+        validated["status"] = "cancelled"
+        validated["outcome"] = "cancelled"
+    return validate_manifest(validated)
+
+
+def parallel_batches(manifest):
+    """把 DAG 展开成按波次执行的并行批次。"""
+    validated = validate_manifest(manifest)
+    assert_manifest_type_executable(validated)
+    if validated["status"] in RUN_TERMINAL_STATUSES:
+        return []
+    if any(stage.get("when") is not None for stage in validated["stages"]):
+        raise StageDagError(
+            "parallel_batches 不支持条件阶段；请使用 next_batches"
+        )
+    work = {
+        stage["stage_id"]: dict(stage)
+        for stage in validated["stages"]
+    }
+    batches = []
+    while True:
+        if any(
+            stage["status"] in ("blocked", "failed", "cancelled")
+            for stage in work.values()
+        ):
+            break
+        ready = sorted(
+            sid for sid, stage in work.items()
+            if stage["status"] in ("pending", "ready")
+            and all(work[dep]["status"] == "done" for dep in stage["depends_on"])
+        )
+        if not ready:
+            break
+        batches.append(ready)
+        for sid in ready:
+            work[sid]["status"] = "done"
+    return batches
+
+
+def transition_stage(manifest, stage_id, status, **fields):
+    """校验并执行一次阶段状态迁移。"""
+    if status not in STAGE_STATUSES:
+        raise StageDagError(f"非法阶段状态：{status!r}")
+    validated = validate_manifest(manifest)
+    assert_manifest_type_executable(validated)
+    index = next(
+        (i for i, stage in enumerate(validated["stages"])
+         if stage["stage_id"] == stage_id),
+        None,
+    )
+    if index is None:
+        raise StageDagError(f"未知阶段：{stage_id}")
+
+    current = validated["stages"][index]["status"]
+    if status not in TRANSITIONS[current]:
+        raise StageDagError(
+            f"阶段 {stage_id} 不允许从 {current} 迁移到 {status}")
+    validated["stages"][index]["status"] = status
+    validated["stages"][index].update(fields)
+    current_stage = validated["stages"][index]
+
+    if status == "skipped" and not fields.get("skip_reason"):
+        raise StageDagError("skipped 阶段必须提供 skip_reason")
+
+    if status == "blocked" and not fields.get("blocked_reason"):
+        raise StageDagError("blocked 阶段必须提供 blocked_reason")
+
+    if status == "done" and current_stage["gate"] == "confirmation":
+        outcome = fields.get("outcome")
+        if outcome not in CONFIRMATION_OUTCOMES:
+            raise StageDagError(f"confirmation outcome 非法：{outcome!r}")
+
+    if status == "done" and current_stage["gate"] != "confirmation":
+        if fields.get("outcome") is not None:
+            raise StageDagError("非 confirmation 阶段不得写入 outcome")
+    return validated
+
+
+def validate_task(task, manifest=None):
+    """校验任务信封；传入 manifest 时同时校验阶段与执行者归属。"""
+    if not isinstance(task, dict):
+        raise StageDagError("task 顶层必须是对象")
+    errors = []
+    if task.get("schema_version") != TASK_SCHEMA:
+        errors.append(f"task schema_version 必须是 {TASK_SCHEMA}")
+    for key in ("run_id", "task_id", "stage_id", "agent_id",
+                "logical_target", "resume_context", "return_channel"):
+        _require_nonempty_str(task.get(key), key, errors)
+    for key in ("inputs", "constraints"):
+        if not isinstance(task.get(key), dict):
+            errors.append(f"{key} 必须是对象")
+    if not isinstance(task.get("output_paths"), list):
+        errors.append("output_paths 必须是数组")
+    elif any(not isinstance(item, str) for item in task["output_paths"]):
+        errors.append("output_paths 的每一项必须是字符串")
+    elif isinstance(task.get("agent_id"), str) and task["agent_id"].strip():
+        expected_prefix = f"outputs/{task['agent_id']}/"
+        for index, path in enumerate(task["output_paths"]):
+            normalized = path.replace("\\", "/")
+            if ".." in normalized.split("/"):
+                errors.append(
+                    f"output_paths[{index}] 禁止路径穿越：{path!r}")
+            elif not normalized.startswith(expected_prefix):
+                errors.append(
+                    f"output_paths[{index}] 必须以 {expected_prefix!r} 开头，"
+                    f"实际值：{path!r}")
+    if errors:
+        raise StageDagError(errors)
+
+    if manifest is None:
+        return copy.deepcopy(task)
+
+    validated_manifest = validate_manifest(manifest)
+    if task["run_id"] != validated_manifest.get("run_id"):
+        raise StageDagError("task.run_id 与 manifest.run_id 不一致")
+    stage = next(
+        (stage for stage in validated_manifest["stages"]
+         if stage["stage_id"] == task["stage_id"]),
+        None,
+    )
+    if stage is None:
+        raise StageDagError(f"task 引用未知阶段：{task['stage_id']}")
+    if task["agent_id"] != stage["assignee"]:
+        raise StageDagError(
+            f"task.agent_id 与阶段负责人不一致：{task['agent_id']} != {stage['assignee']}")
+    return copy.deepcopy(task)
+
+
+def validate_result(result):
+    """校验结果信封与协作请求。"""
+    if not isinstance(result, dict):
+        raise StageDagError("result 顶层必须是对象")
+    errors = []
+    if result.get("schema_version") != RESULT_SCHEMA:
+        errors.append(f"result schema_version 必须是 {RESULT_SCHEMA}")
+    for key in ("run_id", "task_id", "stage_id", "agent_id", "resume_context"):
+        _require_nonempty_str(result.get(key), key, errors)
+    status = result.get("status")
+    if status not in RESULT_STATUSES:
+        errors.append(f"result.status 非法：{status!r}")
+    if not isinstance(result.get("result"), dict):
+        errors.append("result.result 必须是对象")
+    for key in ("artifact_refs", "requests", "risks"):
+        if not isinstance(result.get(key), list):
+            errors.append(f"result.{key} 必须是数组")
+
+    requests = result.get("requests")
+    if isinstance(requests, list):
+        for index, request in enumerate(requests):
+            if not isinstance(request, dict):
+                errors.append(f"requests[{index}] 必须是对象")
+                continue
+            if request.get("type") not in REQUEST_TYPES:
+                errors.append(
+                    f"requests[{index}].type 非法：{request.get('type')!r}")
+            _require_nonempty_str(
+                request.get("logical_target"),
+                f"requests[{index}].logical_target", errors)
+            if not isinstance(request.get("payload"), dict):
+                errors.append(f"requests[{index}].payload 必须是对象")
+            if not isinstance(request.get("blocking"), bool):
+                errors.append(f"requests[{index}].blocking 必须是布尔值")
+    if errors:
+        raise StageDagError(errors)
+    return copy.deepcopy(result)
+
+
+def _v2_stage(stage_id, assignee, depends_on, gate, when=None):
+    return {
+        "stage_id": stage_id,
+        "assignee": assignee,
+        "depends_on": depends_on,
+        "status": "pending",
+        "gate": gate,
+        "outcome": None,
+        "when": when,
+        "input_refs": [],
+        "output_refs": [],
+        "skip_reason": None,
+        "blocked_reason": None,
+    }
+
+
+def _template_manifest():
+    return {
+        "schema_version": RUN_SCHEMA,
+        "run_id": "00000000-example-0001",
+        "root_run_id": "00000000-example-0001",
+        "revision_of_run_id": None,
+        "iteration": 1,
+        "intent": "creation",
+        "artifact_type": "script",
+        "mode": "full",
+        "project_root": "E:/workspace/example-project",
+        "status": "pending",
+        "outcome": None,
+        "revision_feedback": [],
+        "source_artifact_ref": None,
+        "stages": [
+            _v2_stage(
+                "session_init", "pb-intake-agent", [], "none"),
+            _v2_stage(
+                "brief_gate", "pb-intake-agent", ["session_init"], "brief"),
+        ],
+    }
+
+
+def _creation_template_manifest():
+    """spec 第 5 节定义的 11 阶段 creation 全流程模板。"""
+    lead = "general-screenwriter-team-lead"
+    return {
+        "schema_version": RUN_SCHEMA,
+        "run_id": "00000000-creation-0001",
+        "root_run_id": "00000000-creation-0001",
+        "revision_of_run_id": None,
+        "iteration": 1,
+        "intent": "creation",
+        "artifact_type": "script",
+        "mode": "full",
+        "project_root": "E:/workspace/example-project",
+        "status": "pending",
+        "outcome": None,
+        "revision_feedback": [],
+        "source_artifact_ref": None,
+        "stages": [
+            _v2_stage(
+                "session_init", "pb-intake-agent", [], "none"),
+            _v2_stage(
+                "brief_gate", "pb-intake-agent", ["session_init"], "brief"),
+            _v2_stage(
+                "knowledge_load", "pb-knowledge-steward", ["session_init"], "authority"),
+            _v2_stage(
+                "creation_delegate", "pb-screenwriter",
+                ["brief_gate", "knowledge_load"], "none"),
+            _v2_stage(
+                "preflight", "pb-preflight-agent", ["creation_delegate"], "redline"),
+            _v2_stage(
+                "collision_check", "pb-knowledge-steward",
+                ["creation_delegate"], "collision"),
+            _v2_stage(
+                "qa", "pb-quality-reviewer",
+                ["preflight", "collision_check"], "quality"),
+            _v2_stage("qa_synthesis", lead, ["qa"], "none"),
+            _v2_stage(
+                "confirmation_gate", lead, ["qa_synthesis"], "confirmation"),
+            _v2_stage(
+                "persistence", "pb-persistence-agent",
+                ["confirmation_gate"], "none",
+                when={
+                    "stage_id": "confirmation_gate",
+                    "outcome": "approved",
+                }),
+            _v2_stage(
+                "knowledge_reminder", lead, ["persistence"], "none"),
+        ],
+    }
+
+
+def _revision_template_manifest():
+    """spec 第 12 节定义的 revision 全流程模板。"""
+    lead = "general-screenwriter-team-lead"
+    return {
+        "schema_version": RUN_SCHEMA,
+        "run_id": "00000000-revision-0001",
+        "root_run_id": "00000000-creation-0001",
+        "revision_of_run_id": "00000000-creation-0001",
+        "iteration": 2,
+        "intent": "revision",
+        "artifact_type": "script",
+        "mode": "full",
+        "project_root": "E:/workspace/example-project",
+        "status": "pending",
+        "outcome": None,
+        "revision_feedback": [
+            {
+                "page": 1,
+                "issue": "example issue",
+                "instruction": "apply the requested revision",
+            },
+        ],
+        "source_artifact_ref": "picturebook/script_v1.md",
+        "stages": [
+            _v2_stage(
+                "revision_init", "pb-intake-agent", [], "none"),
+            _v2_stage(
+                "knowledge_load", "pb-knowledge-steward",
+                ["revision_init"], "authority"),
+            _v2_stage(
+                "revision_delegate", "pb-screenwriter",
+                ["revision_init", "knowledge_load"], "none"),
+            _v2_stage(
+                "preflight", "pb-preflight-agent",
+                ["revision_delegate"], "redline"),
+            _v2_stage(
+                "collision_check", "pb-knowledge-steward",
+                ["revision_delegate"], "collision"),
+            _v2_stage(
+                "qa", "pb-quality-reviewer",
+                ["preflight", "collision_check"], "quality"),
+            _v2_stage("qa_synthesis", lead, ["qa"], "none"),
+            _v2_stage(
+                "confirmation_gate", lead, ["qa_synthesis"], "confirmation"),
+            _v2_stage(
+                "persistence", "pb-persistence-agent",
+                ["confirmation_gate"], "none",
+                when={
+                    "stage_id": "confirmation_gate",
+                    "outcome": "approved",
+                }),
+            _v2_stage(
+                "knowledge_reminder", lead, ["persistence"], "none"),
+        ],
+    }
+
+
+def _validate_revision_source(project_root, artifact_ref):
+    errors = []
+    _require_nonempty_str(artifact_ref, "artifact_ref", errors)
+    if errors:
+        raise StageDagError(errors)
+    if os.path.isabs(artifact_ref):
+        raise StageDagError("artifact_ref 必须是 project_root 下的相对路径")
+
+    root = os.path.realpath(project_root)
+    source_path = os.path.realpath(
+        os.path.join(root, artifact_ref)
+    )
+    try:
+        inside_root = os.path.commonpath([root, source_path]) == root
+    except ValueError:
+        inside_root = False
+    if not inside_root:
+        raise StageDagError("artifact_ref 不得越过 project_root")
+    if not os.path.isfile(source_path):
+        raise StageDagError(f"artifact_ref 不是可读文件：{artifact_ref!r}")
+    if not os.access(source_path, os.R_OK):
+        raise StageDagError(f"artifact_ref 不可读：{artifact_ref!r}")
+
+
+def build_revision_manifest(parent_run, feedback, artifact_ref, run_id):
+    """从已请求修订的父 run 创建下一轮 revision run。"""
+    parent = validate_manifest(parent_run)
+    if parent["status"] != "completed":
+        raise StageDagError("父 run 必须 completed")
+    if parent["outcome"] != "revision_requested":
+        raise StageDagError("父 run outcome 必须为 revision_requested")
+    if not isinstance(feedback, list) or not feedback:
+        raise StageDagError("revision_feedback 必须非空")
+    errors = []
+    _require_nonempty_str(run_id, "run_id", errors)
+    if run_id == parent["run_id"]:
+        errors.append("run_id 不得复用父 run_id")
+    if errors:
+        raise StageDagError(errors)
+    _validate_revision_source(parent["project_root"], artifact_ref)
+
+    manifest = _revision_template_manifest()
+    manifest["run_id"] = run_id
+    manifest["root_run_id"] = parent["root_run_id"]
+    manifest["revision_of_run_id"] = parent["run_id"]
+    manifest["iteration"] = parent["iteration"] + 1
+    manifest["artifact_type"] = parent["artifact_type"]
+    manifest["project_root"] = parent["project_root"]
+    manifest["revision_feedback"] = copy.deepcopy(feedback)
+    manifest["source_artifact_ref"] = artifact_ref
+    if "context" in parent:
+        from creative_run_builder import CreativeRunRequest, build_creative_run
+
+        try:
+            context = context_from_dict(parent["context"], require_project=True)
+            pack = resolve_type_pack(default_type_registry(), context.medium_id)
+            assert_type_pack_executable(pack)
+            locked = (parent.get("resolution_snapshot") or {}).get("type_pack")
+            if not locked:
+                raise TypeRegistryError("带 context 的父 run 缺少 type pack 快照")
+            if locked["version"] != pack.version:
+                raise TypeRegistryError("历史 type pack 快照只读，revision 前须重新解析当前版本")
+            workflow = parent["resolution_snapshot"].get("workflow") or {}
+            return build_creative_run(CreativeRunRequest(
+                type_pack=pack,
+                context=context,
+                intent="revision",
+                target=parent["artifact_type"],
+                run_id=run_id,
+                project_root=parent["project_root"],
+                root_run_id=parent["root_run_id"],
+                revision_of_run_id=parent["run_id"],
+                revision_iteration=parent["iteration"] + 1,
+                revision_feedback=feedback,
+                source_artifact_ref=artifact_ref,
+                workflow_id=workflow.get("workflow_id"),
+                workflow_inputs=parent["resolution_snapshot"].get("workflow_inputs"),
+                skills_resolution=copy.deepcopy(
+                    parent["resolution_snapshot"].get("skills")
+                ),
+            ))
+        except (ContextError, TypeRegistryError) as error:
+            raise StageDagError(f"无法构建 typed revision run：{error}") from error
+    return validate_manifest(manifest)
+
+
+def _illustration_template_manifest():
+    """spec 第 5 节定义的 8 阶段插画子图模板。"""
+    art = "picturebook-art-agent"
+    lead = "general-screenwriter-team-lead"
+    return {
+        "schema_version": RUN_SCHEMA,
+        "run_id": "00000000-illustration-0001",
+        "root_run_id": "00000000-illustration-0001",
+        "revision_of_run_id": None,
+        "iteration": 1,
+        "intent": "creation",
+        "artifact_type": "illustration",
+        "mode": "full",
+        "project_root": "E:/workspace/example-project",
+        "status": "pending",
+        "outcome": None,
+        "revision_feedback": [],
+        "source_artifact_ref": None,
+        "stages": [
+            _v2_stage(
+                "illustration_init", "pb-intake-agent", [], "script-approved"),
+            _v2_stage(
+                "asset_extraction", art, ["illustration_init"], "none"),
+            _v2_stage(
+                "asset_confirmation", lead, ["asset_extraction"], "asset-list"),
+            _v2_stage(
+                "asset_preproduction", art, ["asset_confirmation"], "none"),
+            _v2_stage(
+                "asset_final_confirmation", lead,
+                ["asset_preproduction"], "asset-final"),
+            _v2_stage(
+                "illustration_generation", art,
+                ["asset_final_confirmation"], "none"),
+            _v2_stage(
+                "html_export", art, ["illustration_generation"], "none"),
+            _v2_stage(
+                "illustration_delivery", lead, ["html_export"], "none"),
+        ],
+    }
+
+
+def _creation_template_manifest_v1():
+    """Return the frozen v1 creation template used only by migration tests."""
+    def _stage(sid, assignee, deps, gate):
+        return {
+            "stage_id": sid,
+            "assignee": assignee,
+            "depends_on": deps,
+            "status": "pending",
+            "gate": gate,
+            "input_refs": [],
+            "output_refs": [],
+        }
+
+    lead = "general-screenwriter-team-lead"
+    return {
+        "schema_version": RUN_SCHEMA_V1,
+        "run_id": "00000000-creation-0001",
+        "intent": "creation",
+        "artifact_type": "script",
+        "mode": "full",
+        "project_root": "E:/workspace/example-project",
+        "stages": [
+            _stage("session_init", "pb-intake-agent", [], "none"),
+            _stage("brief_gate", "pb-intake-agent", ["session_init"], "brief"),
+            _stage("knowledge_load", "pb-knowledge-steward", ["session_init"], "authority"),
+            _stage("creation_delegate", "pb-screenwriter", ["brief_gate", "knowledge_load"], "none"),
+            _stage("preflight", "pb-preflight-agent", ["creation_delegate"], "redline"),
+            _stage("collision_check", "pb-knowledge-steward", ["creation_delegate"], "collision"),
+            _stage("qa", "pb-quality-reviewer", ["preflight", "collision_check"], "quality"),
+            _stage("qa_synthesis", lead, ["qa"], "none"),
+            _stage("confirmation_gate", lead, ["qa_synthesis"], "confirmation"),
+            _stage("revision_loop", "pb-screenwriter", ["confirmation_gate"], "revision"),
+            _stage("persistence", "pb-persistence-agent", ["confirmation_gate"], "none"),
+            _stage("knowledge_reminder", lead, ["persistence"], "none"),
+        ],
+    }
+
+
+def run_cli(argv=None):
+    """供 hook / 主编调用的命令行入口。"""
+    parser = ArgumentParser(description="阶段 DAG 调度器")
+    parser.add_argument("--manifest", help="run manifest JSON 路径")
+    parser.add_argument(
+        "--action",
+        required=True,
+        choices=(
+            "validate", "ready", "batches", "template", "migrate",
+            "creation-template", "revision-template",
+            "illustration-template",
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        if args.action == "template":
+            print(json.dumps(_template_manifest(), ensure_ascii=False, indent=2))
+            return 0
+        if args.action == "creation-template":
+            print(json.dumps(_creation_template_manifest(), ensure_ascii=False, indent=2))
+            return 0
+        if args.action == "revision-template":
+            print(json.dumps(
+                _revision_template_manifest(), ensure_ascii=False, indent=2))
+            return 0
+        if args.action == "illustration-template":
+            print(json.dumps(
+                _illustration_template_manifest(), ensure_ascii=False, indent=2))
+            return 0
+        if not args.manifest:
+            parser.error("--manifest 在 validate/ready/batches/migrate 模式下必填")
+        with open(args.manifest, encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        if args.action == "migrate":
+            print(json.dumps(
+                migrate_manifest_v1(manifest),
+                ensure_ascii=False,
+                indent=2,
+            ))
+            return 0
+        if args.action == "validate":
+            validate_manifest(manifest)
+            print("OK")
+        elif args.action == "ready":
+            print(json.dumps(ready_stages(manifest), ensure_ascii=False, indent=2))
+        elif args.action == "batches":
+            print(json.dumps(next_batches(manifest), ensure_ascii=False, indent=2))
+        return 0
+    except (StageDagError, TypeRegistryError) as exc:
+        print("[stage_dag] 清单或调度失败：", file=sys.stderr)
+        errors = exc.errors if isinstance(exc, StageDagError) else [str(exc)]
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_cli())

@@ -7,8 +7,9 @@
 - Executable picturebook migration compatibility matrix (legacy entry, run/task schemas, artifacts, knowledge keys, planned-media gates).
 - Cross-media representative pass/fail samples with type-pack rule drift checks.
 - shortdrama and tv_longform minimal type packs (artifacts, stage chains, structural checks) activated after sample coverage.
-- Read-only migration report and unified release gate (nine ordered checks, stop-on-first-failure).
 - Fail-closed exporter contract with explicit destination and overwrite policy.
+- User skill contract, scope/stage resolution, conflict audit, and isolated dispatch snapshots.
+- Read-only migration report and unified release gate (nine ordered checks, stop-on-first-failure).
 - Codex-native picture-book editorial workflow and baseline slots.
 - Feishu authoritative knowledge synchronization and retrieval.
 - Craft benchmark, project red lines, Wiki lint, and optional Lexile gates.
@@ -18,7 +19,7 @@
 - Portable Feishu config discovery for project subdirectories, user directories, and shared plugin distribution.
 - Typed creative context and a type-pack registry for picturebook-compatible screenwriting workflows.
 
-- Type-pack contract v1 separates core picturebook artifacts/stages from an optional illustration workflow; planned media are read-only and cannot dispatch.
+- Type-pack contract v1 separates core artifacts/stages from the optional picturebook illustration workflow; planned packs, when present, remain read-only and cannot dispatch.
 - New optional run snapshots record type-pack, target artifact, delivery form, and workflow selection while retaining old manifest/revision compatibility.
 - Knowledge loading now supports optional scope metadata and a task-to-global scope chain while keeping schema v1 pages readable.
 - General creative DAG and quality gate v1: full v1 packs declare runtime stage semantics; explicit-context runs are built from type packs; structured quality reports distinguish hard blockers from user-confirmation risks; dispatch snapshots enforce declared quality rules.
@@ -31,14 +32,15 @@
 - Revision rounds create new runs and rerun preflight, collision, and QA checks.
 - v1 run manifests require explicit migration.
 - Dispatch plans and task envelopes carry validated creative context snapshots while legacy picturebook runs remain readable.
-- Film is no longer registered as a supported medium; supported planned media are shortdrama and tv_longform.
+- Renamed the plugin package and entry skill from picturebook-only `picturebook-screenwriter` to `general-screenwriter`; legacy configuration paths and old run lead-owner IDs remain read-compatible.
+- Film is no longer registered as a supported medium; shortdrama and tv_longform are active minimal type packs.
 
 - Type-pack loading rejects empty active v1 packs, invalid artifact/stage links, and workflows that would block core completion.
-- Next design slice: knowledge schema v2, scope inheritance, and AuthorityQuery/page_codec migration.
+- Knowledge schema v2 scope resolution, compatible page metadata, and dependency records are implemented; full v2 write migration remains a follow-up.
 
 ### Fixed
 
-- Dispatch and public DAG scheduling reject planned media, stale type-pack snapshots, input-only targets, and core/illustration stage mixing; optional illustration requires explicit script-source evidence.
+- Dispatch and public DAG scheduling reject unknown or planned media, stale type-pack snapshots, input-only targets, and core/illustration stage mixing; optional illustration requires explicit script-source evidence.
 - Artifact/stage alias collisions are rejected across contract categories.
 
 - Knowledge loading now rejects page revisions behind the remote index, marks page-ahead evidence as `index_synced=false`, and prevents unsynced reads from replacing the last confirmed cache.

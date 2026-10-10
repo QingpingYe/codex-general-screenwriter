@@ -10,7 +10,7 @@ from typing import Sequence
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PLUGIN_ROOT = REPO_ROOT / "plugins" / "picturebook-screenwriter"
+PLUGIN_ROOT = REPO_ROOT / "plugins" / "general-screenwriter"
 PYTHON_TEST_ROOTS = (PLUGIN_ROOT, REPO_ROOT / "scripts")
 EXCLUDED_DIRS = frozenset({".git", ".tmp", "__pycache__", "node_modules"})
 
@@ -43,7 +43,7 @@ def discover_python_tests(roots: Sequence[Path]) -> list[Path]:
 
 def build_commands(repo_root: Path) -> list[list[str]]:
     """Build the complete offline verification command sequence."""
-    plugin_root = repo_root / "plugins" / "picturebook-screenwriter"
+    plugin_root = repo_root / "plugins" / "general-screenwriter"
     python_tests = discover_python_tests(
         (plugin_root, repo_root / "scripts")
     )

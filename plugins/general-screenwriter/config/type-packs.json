@@ -1,0 +1,1393 @@
+{
+  "schema_version": 1,
+  "packs": [
+    {
+      "medium_id": "picturebook",
+      "version": "picturebook-v1",
+      "aliases": [
+        "picture-book",
+        "picture book",
+        "绘本"
+      ],
+      "delivery_forms": [
+        "positioning",
+        "topic_plan",
+        "worldview",
+        "characters",
+        "outline",
+        "page_script",
+        "illustration_prompt_payload",
+        "image_asset",
+        "asset_registry",
+        "html_preview"
+      ],
+      "artifact_types": [
+        {
+          "artifact_id": "positioning",
+          "aliases": [
+            "brief-positioning"
+          ],
+          "delivery_forms": [
+            "positioning"
+          ],
+          "depends_on": [],
+          "origin": "user_input",
+          "input_stage": "brief_gate",
+          "production_stage": null,
+          "validation_stages": [],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "topic_plan",
+          "aliases": [
+            "topic-plan"
+          ],
+          "delivery_forms": [
+            "topic_plan"
+          ],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "creation_delegate",
+          "validation_stages": [
+            "preflight",
+            "qa"
+          ],
+          "validator": "pre_output-baseline",
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "worldview",
+          "aliases": [
+            "world-building"
+          ],
+          "delivery_forms": [
+            "worldview"
+          ],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "creation_delegate",
+          "validation_stages": [
+            "preflight",
+            "qa"
+          ],
+          "validator": "pre_output-baseline",
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "characters",
+          "aliases": [
+            "character-bible"
+          ],
+          "delivery_forms": [
+            "characters"
+          ],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "creation_delegate",
+          "validation_stages": [
+            "preflight",
+            "qa"
+          ],
+          "validator": "pre_output-baseline",
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "outline",
+          "aliases": [
+            "story-outline"
+          ],
+          "delivery_forms": [
+            "outline"
+          ],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "creation_delegate",
+          "validation_stages": [
+            "preflight",
+            "qa"
+          ],
+          "validator": "pre_output-baseline",
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "script",
+          "aliases": [
+            "final-script"
+          ],
+          "delivery_forms": [
+            "page_script"
+          ],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "creation_delegate",
+          "validation_stages": [
+            "preflight",
+            "qa"
+          ],
+          "validator": "craft-benchmark-check",
+          "exporter": null,
+          "status": "active"
+        }
+      ],
+      "stages": [
+        {
+          "stage_id": "session_init",
+          "aliases": [
+            "intake"
+          ],
+          "depends_on": [],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "session_init",
+          "owner": "intake",
+          "gate": "none"
+        },
+        {
+          "stage_id": "brief_gate",
+          "aliases": [
+            "briefing"
+          ],
+          "depends_on": [
+            "session_init"
+          ],
+          "consumes_artifact_ids": [
+            "positioning"
+          ],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "brief_gate",
+          "owner": "intake",
+          "gate": "brief"
+        },
+        {
+          "stage_id": "knowledge_load",
+          "aliases": [
+            "authority-knowledge"
+          ],
+          "depends_on": [
+            "session_init"
+          ],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "knowledge_load",
+          "owner": "knowledge_steward",
+          "gate": "authority"
+        },
+        {
+          "stage_id": "creation_delegate",
+          "aliases": [
+            "drafting"
+          ],
+          "depends_on": [
+            "brief_gate",
+            "knowledge_load"
+          ],
+          "consumes_artifact_ids": [
+            "positioning",
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
+          "produces_artifact_ids": [
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "creation",
+          "owner": "screenwriter",
+          "gate": "none"
+        },
+        {
+          "stage_id": "preflight",
+          "aliases": [
+            "pre-output"
+          ],
+          "depends_on": [
+            "creation_delegate"
+          ],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "validation",
+          "owner": "preflight_agent",
+          "gate": "redline"
+        },
+        {
+          "stage_id": "collision_check",
+          "aliases": [
+            "knowledge-collision"
+          ],
+          "depends_on": [
+            "creation_delegate"
+          ],
+          "consumes_artifact_ids": [
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "validation",
+          "owner": "knowledge_steward",
+          "gate": "collision"
+        },
+        {
+          "stage_id": "qa",
+          "aliases": [
+            "quality"
+          ],
+          "depends_on": [
+            "preflight",
+            "collision_check"
+          ],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "validation",
+          "owner": "quality_reviewer",
+          "gate": "quality"
+        },
+        {
+          "stage_id": "qa_synthesis",
+          "aliases": [
+            "quality-synthesis"
+          ],
+          "depends_on": [
+            "qa"
+          ],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "synthesis",
+          "owner": "general-screenwriter-team-lead",
+          "gate": "none"
+        },
+        {
+          "stage_id": "confirmation_gate",
+          "aliases": [
+            "confirmation"
+          ],
+          "depends_on": [
+            "qa_synthesis"
+          ],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": true,
+          "status": "active",
+          "stage_type": "confirmation",
+          "owner": "general-screenwriter-team-lead",
+          "gate": "confirmation"
+        },
+        {
+          "stage_id": "persistence",
+          "aliases": [
+            "save"
+          ],
+          "depends_on": [
+            "confirmation_gate"
+          ],
+          "consumes_artifact_ids": [
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "persistence",
+          "owner": "persistence_agent",
+          "gate": "none"
+        },
+        {
+          "stage_id": "knowledge_reminder",
+          "aliases": [
+            "landing"
+          ],
+          "depends_on": [
+            "persistence"
+          ],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "delivery",
+          "owner": "general-screenwriter-team-lead",
+          "gate": "none"
+        }
+      ],
+      "workflow_policy": "picturebook-v1",
+      "validators": [
+        "pre_output-baseline",
+        "quality-baseline",
+        "craft-benchmark-check",
+        "image-prompt-architect"
+      ],
+      "exporters": [
+        "illustration-export"
+      ],
+      "capabilities": [
+        "illustration",
+        "asset-export",
+        "html-preview"
+      ],
+      "quality_rules": [
+        {
+          "check_id": "project_authority",
+          "artifact_ids": [
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
+          "stage_id": "preflight",
+          "blocking_policy": "hard_block",
+          "validator": "pre_output-baseline"
+        },
+        {
+          "check_id": "knowledge_collision",
+          "artifact_ids": [
+            "topic_plan",
+            "worldview",
+            "characters",
+            "outline",
+            "script"
+          ],
+          "stage_id": "collision_check",
+          "blocking_policy": "hard_block",
+          "validator": null
+        },
+        {
+          "check_id": "craft_benchmark",
+          "artifact_ids": [
+            "script"
+          ],
+          "stage_id": "qa",
+          "blocking_policy": "require_user_confirmation",
+          "validator": "craft-benchmark-check"
+        }
+      ],
+      "status": "active",
+      "legacy_aliases": [
+      "picturebook-screenwriter"
+      ],
+      "optional_workflows": [
+        {
+          "workflow_id": "illustration",
+          "trigger_intent": "illustration",
+          "inputs": [
+            {
+              "artifact_id": "script",
+              "required_status": "approved"
+            }
+          ],
+          "artifact_types": [
+            {
+              "artifact_id": "asset_registry",
+              "aliases": [
+                "assets"
+              ],
+              "delivery_forms": [
+                "asset_registry"
+              ],
+              "depends_on": [
+                "script"
+              ],
+              "origin": "workflow_output",
+              "input_stage": null,
+              "production_stage": "asset_extraction",
+              "validation_stages": [
+                "asset_confirmation"
+              ],
+              "validator": null,
+              "exporter": "illustration-export",
+              "status": "active"
+            },
+            {
+              "artifact_id": "illustration_prompt_payload",
+              "aliases": [
+                "illustration-prompts"
+              ],
+              "delivery_forms": [
+                "illustration_prompt_payload"
+              ],
+              "depends_on": [
+                "asset_registry",
+                "script"
+              ],
+              "origin": "workflow_output",
+              "input_stage": null,
+              "production_stage": "asset_preproduction",
+              "validation_stages": [
+                "asset_final_confirmation"
+              ],
+              "validator": "image-prompt-architect",
+              "exporter": null,
+              "status": "active"
+            },
+            {
+              "artifact_id": "image_asset",
+              "aliases": [
+                "illustration-assets"
+              ],
+              "delivery_forms": [
+                "image_asset"
+              ],
+              "depends_on": [
+                "illustration_prompt_payload"
+              ],
+              "origin": "workflow_output",
+              "input_stage": null,
+              "production_stage": "illustration_generation",
+              "validation_stages": [],
+              "validator": null,
+              "exporter": null,
+              "status": "active"
+            },
+            {
+              "artifact_id": "html_preview",
+              "aliases": [
+                "preview"
+              ],
+              "delivery_forms": [
+                "html_preview"
+              ],
+              "depends_on": [
+                "image_asset",
+                "asset_registry"
+              ],
+              "origin": "workflow_output",
+              "input_stage": null,
+              "production_stage": "html_export",
+              "validation_stages": [],
+              "validator": null,
+              "exporter": "illustration-export",
+              "status": "active"
+            }
+          ],
+          "stages": [
+            {
+              "stage_id": "illustration_init",
+              "aliases": [],
+              "depends_on": [],
+              "consumes_artifact_ids": [
+                "script"
+              ],
+              "produces_artifact_ids": [],
+              "validates_artifact_ids": [],
+              "confirmation_required": false,
+              "status": "active",
+              "stage_type": "session_init",
+              "owner": "intake",
+              "gate": "script-approved"
+            },
+            {
+              "stage_id": "asset_extraction",
+              "aliases": [],
+              "depends_on": [
+                "illustration_init"
+              ],
+              "consumes_artifact_ids": [
+                "script"
+              ],
+              "produces_artifact_ids": [
+                "asset_registry"
+              ],
+              "validates_artifact_ids": [],
+              "confirmation_required": false,
+              "status": "active",
+              "stage_type": "creation",
+              "owner": "picturebook-art-agent",
+              "gate": "none"
+            },
+            {
+              "stage_id": "asset_confirmation",
+              "aliases": [],
+              "depends_on": [
+                "asset_extraction"
+              ],
+              "consumes_artifact_ids": [
+                "asset_registry"
+              ],
+              "produces_artifact_ids": [],
+              "validates_artifact_ids": [
+                "asset_registry"
+              ],
+              "confirmation_required": true,
+              "status": "active",
+              "stage_type": "confirmation",
+              "owner": "general-screenwriter-team-lead",
+              "gate": "asset-list"
+            },
+            {
+              "stage_id": "asset_preproduction",
+              "aliases": [],
+              "depends_on": [
+                "asset_confirmation"
+              ],
+              "consumes_artifact_ids": [
+                "script",
+                "asset_registry"
+              ],
+              "produces_artifact_ids": [
+                "illustration_prompt_payload"
+              ],
+              "validates_artifact_ids": [],
+              "confirmation_required": false,
+              "status": "active",
+              "stage_type": "creation",
+              "owner": "picturebook-art-agent",
+              "gate": "none"
+            },
+            {
+              "stage_id": "asset_final_confirmation",
+              "aliases": [],
+              "depends_on": [
+                "asset_preproduction"
+              ],
+              "consumes_artifact_ids": [
+                "illustration_prompt_payload"
+              ],
+              "produces_artifact_ids": [],
+              "validates_artifact_ids": [
+                "illustration_prompt_payload"
+              ],
+              "confirmation_required": true,
+              "status": "active",
+              "stage_type": "confirmation",
+              "owner": "general-screenwriter-team-lead",
+              "gate": "asset-final"
+            },
+            {
+              "stage_id": "illustration_generation",
+              "aliases": [],
+              "depends_on": [
+                "asset_final_confirmation"
+              ],
+              "consumes_artifact_ids": [
+                "illustration_prompt_payload",
+                "asset_registry"
+              ],
+              "produces_artifact_ids": [
+                "image_asset"
+              ],
+              "validates_artifact_ids": [],
+              "confirmation_required": false,
+              "status": "active",
+              "stage_type": "creation",
+              "owner": "picturebook-art-agent",
+              "gate": "none"
+            },
+            {
+              "stage_id": "html_export",
+              "aliases": [],
+              "depends_on": [
+                "illustration_generation"
+              ],
+              "consumes_artifact_ids": [
+                "image_asset",
+                "asset_registry"
+              ],
+              "produces_artifact_ids": [
+                "html_preview"
+              ],
+              "validates_artifact_ids": [],
+              "confirmation_required": false,
+              "status": "active",
+              "stage_type": "export",
+              "owner": "picturebook-art-agent",
+              "gate": "none"
+            },
+            {
+              "stage_id": "illustration_delivery",
+              "aliases": [],
+              "depends_on": [
+                "html_export"
+              ],
+              "consumes_artifact_ids": [
+                "image_asset",
+                "html_preview",
+                "asset_registry"
+              ],
+              "produces_artifact_ids": [],
+              "validates_artifact_ids": [],
+              "confirmation_required": false,
+              "status": "active",
+              "stage_type": "delivery",
+              "owner": "general-screenwriter-team-lead",
+              "gate": "none"
+            }
+          ],
+          "required": false,
+          "blocks_core_completion": false
+        }
+      ]
+    },
+    {
+      "medium_id": "shortdrama",
+      "version": "shortdrama-v1",
+      "aliases": [
+        "short-drama",
+        "短剧"
+      ],
+      "delivery_forms": [
+        "episode_script"
+      ],
+      "artifact_types": [
+        {
+          "artifact_id": "positioning",
+          "aliases": ["sd-positioning"],
+          "delivery_forms": ["episode_script"],
+          "depends_on": [],
+          "origin": "user_input",
+          "input_stage": "brief_gate",
+          "production_stage": null,
+          "validation_stages": [],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "episode_outline",
+          "aliases": ["episode-outline"],
+          "delivery_forms": ["episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "episode_design",
+          "validation_stages": ["quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "hook_sheet",
+          "aliases": ["hook-sheet"],
+          "delivery_forms": ["episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "hook_design",
+          "validation_stages": ["hook_check", "quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "beat_sheet",
+          "aliases": ["beat-sheet"],
+          "delivery_forms": ["episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "beat_design",
+          "validation_stages": ["pacing_check", "quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "scene_table",
+          "aliases": ["scene-table"],
+          "delivery_forms": ["episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "scene_design",
+          "validation_stages": ["quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "episode_script",
+          "aliases": ["episode-script"],
+          "delivery_forms": ["episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "episode_script_delegate",
+          "validation_stages": ["hook_check", "pacing_check", "dialogue_check", "quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        }
+      ],
+      "stages": [
+        {
+          "stage_id": "session_init",
+          "aliases": [],
+          "depends_on": [],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "session_init",
+          "owner": "lead",
+          "gate": "none"
+        },
+        {
+          "stage_id": "brief_gate",
+          "aliases": [],
+          "depends_on": ["session_init"],
+          "consumes_artifact_ids": ["positioning"],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "brief_gate",
+          "owner": "lead",
+          "gate": "brief"
+        },
+        {
+          "stage_id": "knowledge_load",
+          "aliases": [],
+          "depends_on": ["brief_gate"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "knowledge_load",
+          "owner": "loader",
+          "gate": "authority"
+        },
+        {
+          "stage_id": "episode_design",
+          "aliases": [],
+          "depends_on": ["knowledge_load"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": ["episode_outline"],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "creation",
+          "owner": "writer",
+          "gate": "none"
+        },
+        {
+          "stage_id": "hook_design",
+          "aliases": [],
+          "depends_on": ["episode_design"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": ["hook_sheet"],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "creation",
+          "owner": "writer",
+          "gate": "none"
+        },
+        {
+          "stage_id": "beat_design",
+          "aliases": [],
+          "depends_on": ["hook_design"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": ["beat_sheet"],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "creation",
+          "owner": "writer",
+          "gate": "none"
+        },
+        {
+          "stage_id": "scene_design",
+          "aliases": [],
+          "depends_on": ["beat_design"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": ["scene_table"],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "creation",
+          "owner": "writer",
+          "gate": "none"
+        },
+        {
+          "stage_id": "episode_script_delegate",
+          "aliases": [],
+          "depends_on": ["scene_design"],
+          "consumes_artifact_ids": ["scene_table"],
+          "produces_artifact_ids": ["episode_script"],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "creation",
+          "owner": "writer",
+          "gate": "none"
+        },
+        {
+          "stage_id": "hook_check",
+          "aliases": [],
+          "depends_on": ["episode_script_delegate"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": ["episode_script", "hook_sheet"],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "validation",
+          "owner": "quality",
+          "gate": "none"
+        },
+        {
+          "stage_id": "pacing_check",
+          "aliases": [],
+          "depends_on": ["hook_check"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": ["episode_script", "beat_sheet"],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "validation",
+          "owner": "quality",
+          "gate": "none"
+        },
+        {
+          "stage_id": "dialogue_check",
+          "aliases": [],
+          "depends_on": ["pacing_check"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": ["episode_script"],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "validation",
+          "owner": "quality",
+          "gate": "none"
+        },
+        {
+          "stage_id": "quality_gate",
+          "aliases": [],
+          "depends_on": ["dialogue_check"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": ["episode_script", "episode_outline", "hook_sheet", "beat_sheet", "scene_table"],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "synthesis",
+          "owner": "quality",
+          "gate": "quality"
+        },
+        {
+          "stage_id": "confirmation_gate",
+          "aliases": [],
+          "depends_on": ["quality_gate"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": true,
+          "status": "active",
+          "stage_type": "confirmation",
+          "owner": "lead",
+          "gate": "confirmation"
+        },
+        {
+          "stage_id": "persistence",
+          "aliases": [],
+          "depends_on": ["confirmation_gate"],
+          "consumes_artifact_ids": ["episode_script"],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "persistence",
+          "owner": "persistence",
+          "gate": "none"
+        }
+      ],
+      "quality_rules": [
+        {
+          "check_id": "opening_hook",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "hook_check",
+          "blocking_policy": "require_user_confirmation",
+          "validator": null
+        },
+        {
+          "check_id": "turning_point",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "hook_check",
+          "blocking_policy": "require_user_confirmation",
+          "validator": null
+        },
+        {
+          "check_id": "closing_hook",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "hook_check",
+          "blocking_policy": "require_user_confirmation",
+          "validator": null
+        },
+        {
+          "check_id": "pacing_density",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "pacing_check",
+          "blocking_policy": "require_user_confirmation",
+          "validator": null
+        },
+        {
+          "check_id": "conflict_closure",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "pacing_check",
+          "blocking_policy": "require_user_confirmation",
+          "validator": null
+        },
+        {
+          "check_id": "duration",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "pacing_check",
+          "blocking_policy": "advisory",
+          "validator": null
+        },
+        {
+          "check_id": "character_state",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "quality_gate",
+          "blocking_policy": "hard_block",
+          "validator": null
+        },
+        {
+          "check_id": "format",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "quality_gate",
+          "blocking_policy": "hard_block",
+          "validator": null
+        }
+      ],
+      "workflow_policy": "shortdrama-v1",
+      "validators": [],
+      "exporters": [],
+      "capabilities": [],
+      "status": "active",
+      "legacy_aliases": [],
+      "optional_workflows": []
+    },
+    {
+      "medium_id": "tv_longform",
+      "version": "tv_longform-v1",
+      "aliases": [
+        "long-form-tv",
+        "长篇连续剧"
+      ],
+      "delivery_forms": [
+        "season_episode_script"
+      ],
+      "artifact_types": [
+        {
+          "artifact_id": "series_bible",
+          "aliases": ["series-bible"],
+          "delivery_forms": ["season_episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "series_load",
+          "validation_stages": ["quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "character_arc_map",
+          "aliases": ["character-arc-map"],
+          "delivery_forms": ["season_episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "series_load",
+          "validation_stages": ["quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "timeline_ledger",
+          "aliases": ["timeline-ledger"],
+          "delivery_forms": ["season_episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "series_load",
+          "validation_stages": ["quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "season_arc",
+          "aliases": ["season-arc"],
+          "delivery_forms": ["season_episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "season_design",
+          "validation_stages": ["quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "episode_list",
+          "aliases": ["episode-list"],
+          "delivery_forms": ["season_episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "episode_design",
+          "validation_stages": ["quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "episode_outline",
+          "aliases": ["tv-episode-outline"],
+          "delivery_forms": ["season_episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "episode_design",
+          "validation_stages": ["quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "scene_table",
+          "aliases": ["tv-scene-table"],
+          "delivery_forms": ["season_episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "scene_design",
+          "validation_stages": ["quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "episode_script",
+          "aliases": ["tv-episode-script"],
+          "delivery_forms": ["season_episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "episode_script_delegate",
+          "validation_stages": ["continuity_check", "foreshadow_check", "character_state_check", "quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        },
+        {
+          "artifact_id": "continuity_ledger",
+          "aliases": ["continuity-ledger"],
+          "delivery_forms": ["season_episode_script"],
+          "depends_on": [],
+          "origin": "workflow_output",
+          "input_stage": null,
+          "production_stage": "continuity_check",
+          "validation_stages": ["foreshadow_check", "quality_gate"],
+          "validator": null,
+          "exporter": null,
+          "status": "active"
+        }
+      ],
+      "stages": [
+        {
+          "stage_id": "session_init",
+          "aliases": [],
+          "depends_on": [],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "session_init",
+          "owner": "lead",
+          "gate": "none"
+        },
+        {
+          "stage_id": "brief_gate",
+          "aliases": [],
+          "depends_on": ["session_init"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "brief_gate",
+          "owner": "lead",
+          "gate": "brief"
+        },
+        {
+          "stage_id": "series_load",
+          "aliases": [],
+          "depends_on": ["brief_gate"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": ["series_bible", "character_arc_map", "timeline_ledger"],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "creation",
+          "owner": "writer",
+          "gate": "none"
+        },
+        {
+          "stage_id": "season_design",
+          "aliases": [],
+          "depends_on": ["series_load"],
+          "consumes_artifact_ids": ["series_bible"],
+          "produces_artifact_ids": ["season_arc"],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "creation",
+          "owner": "writer",
+          "gate": "none"
+        },
+        {
+          "stage_id": "episode_design",
+          "aliases": [],
+          "depends_on": ["season_design"],
+          "consumes_artifact_ids": ["season_arc"],
+          "produces_artifact_ids": ["episode_list", "episode_outline"],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "creation",
+          "owner": "writer",
+          "gate": "none"
+        },
+        {
+          "stage_id": "scene_design",
+          "aliases": [],
+          "depends_on": ["episode_design"],
+          "consumes_artifact_ids": ["episode_outline"],
+          "produces_artifact_ids": ["scene_table"],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "creation",
+          "owner": "writer",
+          "gate": "none"
+        },
+        {
+          "stage_id": "episode_script_delegate",
+          "aliases": [],
+          "depends_on": ["scene_design"],
+          "consumes_artifact_ids": ["scene_table"],
+          "produces_artifact_ids": ["episode_script"],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "creation",
+          "owner": "writer",
+          "gate": "none"
+        },
+        {
+          "stage_id": "continuity_check",
+          "aliases": [],
+          "depends_on": ["episode_script_delegate"],
+          "consumes_artifact_ids": ["timeline_ledger"],
+          "produces_artifact_ids": ["continuity_ledger"],
+          "validates_artifact_ids": ["episode_script"],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "validation",
+          "owner": "quality",
+          "gate": "none"
+        },
+        {
+          "stage_id": "foreshadow_check",
+          "aliases": [],
+          "depends_on": ["continuity_check"],
+          "consumes_artifact_ids": ["continuity_ledger"],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": ["episode_script", "continuity_ledger"],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "validation",
+          "owner": "quality",
+          "gate": "none"
+        },
+        {
+          "stage_id": "character_state_check",
+          "aliases": [],
+          "depends_on": ["foreshadow_check"],
+          "consumes_artifact_ids": ["character_arc_map"],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": ["episode_script"],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "validation",
+          "owner": "quality",
+          "gate": "none"
+        },
+        {
+          "stage_id": "quality_gate",
+          "aliases": [],
+          "depends_on": ["character_state_check"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": ["series_bible", "character_arc_map", "timeline_ledger", "season_arc", "episode_list", "episode_outline", "scene_table", "episode_script", "continuity_ledger"],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "synthesis",
+          "owner": "quality",
+          "gate": "quality"
+        },
+        {
+          "stage_id": "confirmation_gate",
+          "aliases": [],
+          "depends_on": ["quality_gate"],
+          "consumes_artifact_ids": [],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": true,
+          "status": "active",
+          "stage_type": "confirmation",
+          "owner": "lead",
+          "gate": "confirmation"
+        },
+        {
+          "stage_id": "persistence",
+          "aliases": [],
+          "depends_on": ["confirmation_gate"],
+          "consumes_artifact_ids": ["episode_script"],
+          "produces_artifact_ids": [],
+          "validates_artifact_ids": [],
+          "confirmation_required": false,
+          "status": "active",
+          "stage_type": "persistence",
+          "owner": "persistence",
+          "gate": "none"
+        }
+      ],
+      "quality_rules": [
+        {
+          "check_id": "season_arc",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "quality_gate",
+          "blocking_policy": "require_user_confirmation",
+          "validator": null
+        },
+        {
+          "check_id": "episode_function",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "quality_gate",
+          "blocking_policy": "require_user_confirmation",
+          "validator": null
+        },
+        {
+          "check_id": "timeline",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "continuity_check",
+          "blocking_policy": "require_user_confirmation",
+          "validator": null
+        },
+        {
+          "check_id": "foreshadow",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "foreshadow_check",
+          "blocking_policy": "require_user_confirmation",
+          "validator": null
+        },
+        {
+          "check_id": "payoff",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "foreshadow_check",
+          "blocking_policy": "require_user_confirmation",
+          "validator": null
+        },
+        {
+          "check_id": "scene_transition",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "continuity_check",
+          "blocking_policy": "require_user_confirmation",
+          "validator": null
+        },
+        {
+          "check_id": "character_state",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "character_state_check",
+          "blocking_policy": "hard_block",
+          "validator": null
+        },
+        {
+          "check_id": "series_constraint",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "quality_gate",
+          "blocking_policy": "hard_block",
+          "validator": null
+        },
+        {
+          "check_id": "continuity",
+          "artifact_ids": ["episode_script"],
+          "stage_id": "continuity_check",
+          "blocking_policy": "hard_block",
+          "validator": null
+        }
+      ],
+      "workflow_policy": "tv_longform-v1",
+      "validators": [],
+      "exporters": [],
+      "capabilities": [],
+      "status": "active",
+      "legacy_aliases": [],
+      "optional_workflows": []
+    }
+  ]
+}

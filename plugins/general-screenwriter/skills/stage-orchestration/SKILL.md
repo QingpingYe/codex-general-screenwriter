@@ -1,0 +1,139 @@
+---
+name: stage-orchestration
+description: "Codex-native conditional stage DAG orchestration. Validates v2 stage manifests, plans current dispatch batches via spawn_agent/wait_agent, and provides sequential fallback using the same decision engine."
+---
+
+# 阶段 DAG 编排
+
+本技能把 Codex 会话的任务编排升级为显式条件 DAG + 可选多 Agent 并行派发。
+当前会话仍是唯一用户入口；子 Agent 通过 `spawn_agent` 派发，结果通过
+`wait_agent` 等待，续跑通过 `send_input`。
+
+## 前置条件
+
+- Codex 配置 `config.toml` 中 `[features] multi_agent = true`。
+- 当前会话的工具列表中有 `spawn_agent`、`wait_agent`、`send_input`。
+- 如果没有这些工具，主编必须先向用户声明「顺序降级模式」。
+
+## 命令
+
+命令以插件 `scripts/` 目录为锚：
+
+```bash
+python plugins/general-screenwriter/scripts/stage_dag.py --action creation-template
+# revision-template 只用于查看结构；实际 revision run 必须调用 build_revision_manifest()
+python plugins/general-screenwriter/scripts/stage_dag.py --action revision-template
+python plugins/general-screenwriter/scripts/stage_dag.py --action illustration-template
+python plugins/general-screenwriter/scripts/stage_dag.py --manifest <path> --action validate
+python plugins/general-screenwriter/scripts/stage_dag.py --manifest <path> --action batches
+python plugins/general-screenwriter/scripts/stage_dag_codex.py --manifest <path> --action plan
+python plugins/general-screenwriter/scripts/stage_dag_codex.py --manifest <path> --action fallback
+```
+
+## 类型包执行前检查
+
+`validate_manifest()` 只负责**读取和结构校验**；它允许旧版本的类型快照。`ready_stages()`、`next_batches()`、`parallel_batches()`、`transition_stage()` 和 Codex 的 plan/fallback/task envelope 在显式 context 下才检查当前 active 类型、核心目标及其独立 DAG。历史快照只读：若 `resolution_snapshot.type_pack.version` 不等于当前类型包版本，先创建新 run、重新解析，不得沿用旧快照派发。没有 context 的旧绘本 manifest 继续兼容。
+
+显式 context 的独立插画 run 须先经主编核实获批脚本，或核实用户明确提供脚本并要求插画。记录 `resolution_snapshot.workflow_inputs`，例如：
+
+```json
+[{"artifact_id":"script","status":"approved","ref":"picturebook/script_v1.md"}]
+```
+
+用户明确提供时使用 `{"artifact_id":"script","status":"user_supplied","ref":"picturebook/user_script.md","user_confirmation":true}`。`ref` 是非空来源引用；这份结构化声明不等同于自动证明用户批准，主编仍须在对话中核实。未记录输入来源时不能派发 `illustration_init`。`build_resolution_snapshot(type_pack, artifact, workflow, workflow_inputs=[...])` 可构造并深拷贝该快照。插画的资产确认与最终确认门仍独立由主编处理，绝不与文字核心阶段混合。
+
+## Codex 派发流程
+
+creation、revision 和 illustration 模板均使用 `pb-stage-run-v2`。creation 模板
+不得包含 `revision_loop`；持久化阶段以 `confirmation_gate` 的 `approved`
+结果为条件。revision run 由 `build_revision_manifest()` 从已请求修订的父 run
+创建，并重新执行 preflight、collision_check、qa 和 qa_synthesis。
+
+1. 用 `creation-template` 或 `illustration-template` 生成初始 manifest JSON；
+   修订时用 `build_revision_manifest()` 创建 revision run。
+2. 用 `stage_dag_codex.py --action plan` 生成当前批次的派发计划。
+   计划基于条件决策引擎，只返回当前可执行的 `lead_actions` 和
+   `next_batches`；只有带 `when` 条件且尚未满足的后续阶段会进入
+   `deferred_stages`，仅因依赖尚未完成而等待的阶段不会列出。不得把计划
+   解释为未来无条件批次。
+3. 若计划状态为 `waiting_for_user`，当前待执行的门必须由主编直接向用户
+   呈现，不能派发子 Agent，也不能自动选择结果：
+   - `decision_required.stage_id` 为 `confirmation_gate` 时，按
+     `allowed_outcomes` 等待 `approved`、`revision_requested` 或
+     `cancelled`，再用 `stage_dag.transition_stage` 写入 `outcome`。
+   - `decision_required.stage_id` 为 `asset_confirmation` 或
+     `asset_final_confirmation` 时，payload 使用
+     `completion_mode: "acknowledge"` 且不得包含 `allowed_outcomes`。用户
+     确认资产后，主编用普通 `done` 状态迁移完成该阶段，不写 `outcome`。
+4. 若计划状态为 `ready`，按 `next_batches` 中每个批次的 stage 逐个调用
+   `spawn_agent`（同一批次可并行）。
+   - `fork_context: false` 给子 Agent 干净上下文。
+   - 把 task envelope 中的 stage 信息 + 对应技能（如 `text-craft`、`craft-benchmark-check`）注入 message。
+5. 用 `wait_agent` 等待当前批次完成。
+6. 检查每个子 Agent 回传的结果是否符合 `pb-stage-result-v1` 结构。
+7. 用 `stage_dag.transition_stage` 更新 manifest 状态。
+8. 每次状态变化后重新生成派发计划，直到 run 完成、取消或再次进入
+   `waiting_for_user`。
+
+## 阶段 → 技能映射
+
+Codex 没有 WorkBuddy 式的预定义角色文件。`assignee` 字段表示的是该阶段需要注入哪些技能：
+
+| assignee | 注入技能 |
+|---|---|
+| `pb-intake-agent` | 无（纯结构化准备） |
+| `pb-knowledge-steward` | `knowledge-loader`、`feishu-knowledge-store` |
+| `pb-screenwriter` | `text-craft`、对应产物类型技能 |
+| `pb-preflight-agent` | `craft-benchmark-check`、`pre_output-baseline` |
+| `pb-quality-reviewer` | `quality-baseline` |
+| `pb-persistence-agent` | 无（纯文件写入） |
+| `picturebook-art-agent` | `image-prompt-architect`、`image-generate`、`illustration-export` |
+| `general-screenwriter-team-lead` | 无（主编自己执行；`picturebook-screenwriter-team-lead` 是旧 run 兼容值） |
+
+子 Agent 的 `message` 应包含：
+
+1. Task envelope JSON。
+2. 上述映射表中列出的技能的完整内容（读取 SKILL.md 后注入）。
+3. 一句话说明"你不需要直接与用户交互，结果以 JSON 形式返回给主编"。
+
+## 确认门
+
+`confirmation_gate`、`asset_confirmation`、`asset_final_confirmation` 阶段的
+`assignee` 是 `general-screenwriter-team-lead`（即当前 Codex 会话自己）。
+这些 lead-owned gates 不得派发子 Agent，由主编直接向用户呈现并等待回复。
+即使 manifest 中的 assignee 被错误配置为非主编，适配层也必须返回
+`waiting_for_user`，不会把确认门放入派发批次。
+
+`confirmation_gate` 是唯一使用结构化确认结果的阶段，派发计划的
+`decision_required.allowed_outcomes` 只能是 `approved`、
+`revision_requested` 或 `cancelled`。
+
+`asset_confirmation` 和 `asset_final_confirmation` 分别使用 `asset-list`
+与 `asset-final` gate；派发计划的 `decision_required` 必须使用
+`completion_mode: "acknowledge"`，且不得暴露 `allowed_outcomes`。主编获得
+用户确认后用普通 `done` 状态迁移完成，不传 `outcome`，因为
+`transition_stage()` 不接受非 `confirmation` gate 的结果。
+
+`confirmation_gate` 的确认结果只能是 `approved`、`revision_requested`
+或 `cancelled`：
+
+- `approved`：确认阶段以 `approved` 完成后，计划才会解锁条件阶段
+  `persistence`；只有该阶段成功完成，run 才能持久化为 approved。
+- `revision_requested`：不得执行 `persistence` 或 `knowledge_reminder`；
+  `finalize_run()` 会根据该结果把这些阶段标记为终态 `skipped`。派发计划返回
+  `follow_up_action.create_revision_run`，主编再用
+  `build_revision_manifest(parent_run, feedback, artifact_ref, run_id)` 创建
+  新的 revision run。revision run 必须完整重跑 preflight、collision_check、
+  qa 和 qa_synthesis，再进入自己的确认门。
+- `cancelled`：run 终止，不创建 revision run，也不落盘未批准产物。
+
+条件不匹配而 `skip` 的阶段在本 run 内是终态；不得跳过确认门直接执行下游，
+也不得在 creation manifest 中补回 `revision_loop`。
+
+## 顺序降级
+
+当 `spawn_agent` 不可用时，用 `stage_dag_codex.py --action fallback` 输出顺序
+执行计划，然后主编按批次顺序逐个执行每个阶段的工作，不派发子 Agent。
+fallback 与并行模式使用同一个条件决策引擎，因此同样返回当前批次、
+`waiting_for_user` 确认门和 `revision_requested` 后续动作；顺序执行不得绕过
+任何确认结果或重新引入无条件 `revision_loop`。

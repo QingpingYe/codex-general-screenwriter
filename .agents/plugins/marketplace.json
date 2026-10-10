@@ -1,14 +1,14 @@
 {
-  "name": "picturebook-github",
+  "name": "general-screenwriter-github",
   "interface": {
-    "displayName": "Picturebook GitHub"
+    "displayName": "General Screenwriter"
   },
   "plugins": [
     {
-      "name": "picturebook-screenwriter",
+      "name": "general-screenwriter",
       "source": {
         "source": "local",
-        "path": "./plugins/picturebook-screenwriter"
+        "path": "./plugins/general-screenwriter"
       },
       "policy": {
         "installation": "AVAILABLE",

@@ -46,7 +46,7 @@ class ReleaseGateTests(unittest.TestCase):
     def test_contract_declares_release_gate(self):
         import json
         contract = json.loads(
-            (REPO_ROOT / "plugins" / "picturebook-screenwriter" / "config" / "plugin-contract.json")
+            (REPO_ROOT / "plugins" / "general-screenwriter" / "config" / "plugin-contract.json")
             .read_text(encoding="utf-8"))
         gate = contract["release_gate"]
         self.assertEqual(gate["schema_version"], "release-gate-v1")
