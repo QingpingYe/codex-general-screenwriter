@@ -1,0 +1,18 @@
+{
+  "medium": "picturebook",
+  "context": {"medium_id": "picturebook", "project_id": "p1"},
+  "target_artifact": "script",
+  "workflow_inputs": [],
+  "knowledge_scope": {"scope_type": "project", "scope_id": "p1"},
+  "quality_rules": [
+    {"check_id": "project_authority", "artifact_ids": ["topic_plan", "worldview", "characters", "outline", "script"], "stage_id": "preflight", "blocking_policy": "hard_block", "validator": "pre_output-baseline"},
+    {"check_id": "knowledge_collision", "artifact_ids": ["topic_plan", "worldview", "characters", "outline", "script"], "stage_id": "collision_check", "blocking_policy": "hard_block", "validator": null},
+    {"check_id": "craft_benchmark", "artifact_ids": ["script"], "stage_id": "qa", "blocking_policy": "require_user_confirmation", "validator": "craft-benchmark-check"}
+  ],
+  "expected_results": [
+    {"check_id": "project_authority", "status": "pass"},
+    {"check_id": "knowledge_collision", "status": "pass"},
+    {"check_id": "craft_benchmark", "status": "pass"}
+  ],
+  "failure_reason": null
+}

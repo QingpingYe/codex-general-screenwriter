@@ -15,17 +15,17 @@ description: Picture book screenwriting workshop entry workflow. Use when the us
 
 ## 类型能力包契约 v1
 
-`picturebook` 是当前唯一 active 且可执行的类型包；`shortdrama`、`tv_longform` 仍为 planned，只可展示/读取，不能派发创作流程。读取旧 run 保持兼容，不凭空补写 context 或解析快照。
+三个类型包（`picturebook`、`shortdrama`、`tv_longform`）均为 active 且可执行；短剧与长篇连续剧是最小可用契约，各自声明核心产物、阶段链与结构化质量检查。读取旧 run 保持兼容，不凭空补写 context 或解析快照。
 
 positioning 是简报输入，由 `brief_gate` 读取，不是该阶段生产的文件。一次 run 仅选择一个核心产出目标（`topic_plan`、`worldview`、`characters`、`outline` 或 `script`）；`preflight` 与 `qa` 是检查阶段，不能据此推定它们产出了这些文件。产物的 `depends_on` 是已声明的来源引用，不按列表顺序推断强制先后依赖。
 
 插画是独立可选工作流，以已批准脚本为输入；若用户明确提供脚本并要求插画，仍须遵守现有前置确认规则。`asset_registry`、`illustration_prompt_payload`、`image_asset`、`html_preview` 只属于插画工作流，不阻塞文字 run 的确认、持久化与完成。插画工作流中的资产确认和最终确认仍由主编持有，不得派发。
 
-后续专项为知识库 schema v2、作用域继承与 AuthorityQuery/page_codec 迁移，不把 planned 媒介描述为已实现的完整流程。
+后续专项为知识库 schema v2、作用域继承与 AuthorityQuery/page_codec 迁移；新增媒介必须先交付产物、阶段、质量规则与代表性样例，才能从 planned 激活。
 
 ## Creative Workflow and Quality Gate v1
 
-带 context 的新 run 使用 `creative-workflow-v1` 由 `scripts/creative_run_builder.py` 从当前类型包解析核心阶段、负责人、门和产物目标。旧无 context run 继续走 `legacy_no_context_runs=picturebook_compatible` 路径。`shortdrama` 与 `tv_longform` 仍是 planned，不能派发。
+带 context 的新 run 使用 `creative-workflow-v1` 由 `scripts/creative_run_builder.py` 从当前类型包解析核心阶段、负责人、门和产物目标。旧无 context run 继续走 `legacy_no_context_runs=picturebook_compatible` 路径。`shortdrama` 与 `tv_longform` 已按各自类型包经统一创作内核派发，派发前仍须通过类型包可执行性检查。
 
 `quality-gate-v1` 只记录结构化检查、`hard_block`、`require_user_confirmation`、`advisory` 和 `informational` 的策略结果。质量报告只提供结构化证据，不执行验证器、不写文件、不得替代确认门。`hard_block` 失败阻断确认；`require_user_confirmation` 失败必须获得用户明确接受；advisory 只显示。确认门仍由主编处理，结果只能是 `approved`、`revision_requested` 或 `cancelled`。
 

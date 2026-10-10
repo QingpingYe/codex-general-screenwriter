@@ -1012,7 +1012,7 @@
       "validators": [],
       "exporters": [],
       "capabilities": [],
-      "status": "planned",
+      "status": "active",
       "legacy_aliases": [],
       "optional_workflows": []
     },
@@ -1385,7 +1385,7 @@
       "validators": [],
       "exporters": [],
       "capabilities": [],
-      "status": "planned",
+      "status": "active",
       "legacy_aliases": [],
       "optional_workflows": []
     }

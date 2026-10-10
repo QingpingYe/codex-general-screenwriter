@@ -174,11 +174,11 @@
   "type_pack_contract": {
     "schema_version": "type-pack-contract-v1",
     "active_medium_ids": [
-      "picturebook"
-    ],
-    "planned_medium_ids": [
+      "picturebook",
       "shortdrama",
       "tv_longform"
+    ],
+    "planned_medium_ids": [
     ],
     "core_artifact_ids": [
       "positioning",
@@ -211,10 +211,7 @@
     "runtime_source": "scripts/stage_dag.py",
     "explicit_context_runs": "type_pack_resolved",
     "legacy_no_context_runs": "picturebook_compatible",
-    "planned_medium_ids": [
-      "shortdrama",
-      "tv_longform"
-    ]
+    "planned_medium_ids": []
   },
   "quality_gate_contract": {
     "schema_version": "quality-gate-v1",

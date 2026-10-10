@@ -41,9 +41,9 @@ class PluginContractTests(unittest.TestCase):
         contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
         type_contract = contract["type_pack_contract"]
         self.assertEqual(type_contract["schema_version"], "type-pack-contract-v1")
-        self.assertEqual(type_contract["active_medium_ids"], ["picturebook"])
-        self.assertEqual(set(type_contract["planned_medium_ids"]),
-                         {"shortdrama", "tv_longform"})
+        self.assertEqual(set(type_contract["active_medium_ids"]),
+                         {"picturebook", "shortdrama", "tv_longform"})
+        self.assertEqual(type_contract["planned_medium_ids"], [])
         self.assertNotIn("film", type_contract["planned_medium_ids"])
         self.assertEqual(type_contract["core_artifact_ids"],
                          ["positioning", "topic_plan", "worldview", "characters", "outline", "script"])
@@ -56,7 +56,7 @@ class PluginContractTests(unittest.TestCase):
 
     def test_plugin_readme_does_not_offer_planned_workflows(self):
         text = PLUGIN_README.read_text(encoding="utf-8")
-        self.assertIn("唯一可执行", text)
+        self.assertIn("均可通过类型包派发", text)
         self.assertIn("知识库 schema v2", text)
         self.assertIn("独立可选插画工作流", text)
 
@@ -217,7 +217,7 @@ class PluginContractTests(unittest.TestCase):
                 "runtime_source": "scripts/stage_dag.py",
                 "explicit_context_runs": "type_pack_resolved",
                 "legacy_no_context_runs": "picturebook_compatible",
-                "planned_medium_ids": ["shortdrama", "tv_longform"],
+                "planned_medium_ids": [],
             },
         )
         self.assertEqual(

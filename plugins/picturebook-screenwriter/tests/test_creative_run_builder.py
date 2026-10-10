@@ -150,7 +150,8 @@ class CreativeRunBuilderTests(unittest.TestCase):
         self.assertEqual(manifest["stages"][5]["gate"], "confirmation")
 
     def test_rejects_planned_pack_before_manifest_construction(self):
-        planned = resolve_type_pack(load_type_registry(), "shortdrama")
+        planned = replace(resolve_type_pack(load_type_registry(), "shortdrama"),
+                          status="planned")
         with self.assertRaises(stage_dag.StageDagError):
             build_creative_run(request(planned))
 

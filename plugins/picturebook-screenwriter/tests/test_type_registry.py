@@ -80,11 +80,12 @@ def valid_payload():
 
 
 class TypeRegistryTests(unittest.TestCase):
-    def test_loads_three_mediums_with_only_picturebook_active(self):
+    def test_loads_three_mediums_all_active(self):
         registry = tr.load_type_registry()
         self.assertEqual({p.medium_id for p in registry.packs},
                          {"picturebook", "shortdrama", "tv_longform"})
-        self.assertEqual({p.medium_id for p in registry.packs if p.status == "active"}, {"picturebook"})
+        self.assertEqual({p.medium_id for p in registry.packs if p.status == "active"},
+                         {"picturebook", "shortdrama", "tv_longform"})
         with self.assertRaises(tr.TypeRegistryError):
             tr.resolve_type_pack(registry, "film")
 
@@ -137,7 +138,7 @@ class TypeRegistryTests(unittest.TestCase):
     def test_planned_is_readable_but_never_executable(self):
         registry = tr.load_type_registry()
         for medium in ("shortdrama", "tv_longform"):
-            pack = tr.resolve_type_pack(registry, medium)
+            pack = replace(tr.resolve_type_pack(registry, medium), status="planned")
             with self.subTest(medium=medium), self.assertRaises(tr.TypePackNotExecutableError):
                 tr.assert_type_pack_executable(pack)
 

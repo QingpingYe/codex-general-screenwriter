@@ -106,18 +106,22 @@ class PicturebookMigrationMatrixTests(unittest.TestCase):
             ["project_authority", "knowledge_collision", "craft_benchmark"],
         )
 
-    def test_planned_media_are_not_dispatched(self):
-        for medium, version in (("shortdrama", "shortdrama-v1"),
-                                ("tv_longform", "tv_longform-v1")):
+    def test_new_media_dispatch_through_type_packs(self):
+        for medium, delivery, extra in (
+                ("shortdrama", "episode_script", {}),
+                ("tv_longform", "season_episode_script",
+                 {"series_id": "s1", "season_id": "season-1"})):
             with self.subTest(medium=medium):
-                manifest = stage_dag.attach_context(
-                    stage_dag._creation_template_manifest(),
-                    CreativeContext(medium, project_id="p1"),
-                    {"type_pack": {"medium_id": medium, "version": version}},
-                )
-                self.assertEqual(stage_dag.validate_manifest(manifest), manifest)
-                with self.assertRaises(tr.TypePackNotExecutableError):
-                    stage_dag_codex.build_dispatch_plan(manifest)
+                pack = tr.resolve_type_pack(tr.load_type_registry(), medium)
+                manifest = build_creative_run(CreativeRunRequest(
+                    type_pack=pack,
+                    context=CreativeContext(medium, project_id="p1",
+                                            delivery_form=delivery, **extra),
+                    intent="creation", target="episode_script",
+                    run_id=f"matrix-{medium}-1",
+                    project_root=str(REPO_ROOT),
+                ))
+                self.assertEqual(stage_dag_codex.build_dispatch_plan(manifest)["status"], "ready")
 
     def test_empty_active_picturebook_pack_is_rejected(self):
         payload = json.loads(

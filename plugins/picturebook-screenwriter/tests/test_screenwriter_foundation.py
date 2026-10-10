@@ -51,9 +51,9 @@ class ScreenwriterFoundationIntegrationTests(unittest.TestCase):
 
     def test_registry_context_dispatch_and_revision_compatibility(self):
         registry = load_type_registry(ROOT / "config" / "type-packs.json")
-        planned = resolve_type_pack(registry, "shortdrama")
-        self.assertEqual(planned.medium_id, "shortdrama")
-        self.assertEqual(planned.status, "planned")
+        pack = resolve_type_pack(registry, "shortdrama")
+        self.assertEqual(pack.medium_id, "shortdrama")
+        self.assertEqual(pack.status, "active")
 
         manifest = stage_dag._creation_template_manifest()
         manifest["project_root"] = str(REPO_ROOT)
@@ -63,11 +63,11 @@ class ScreenwriterFoundationIntegrationTests(unittest.TestCase):
             {"type_pack": {"medium_id": "shortdrama", "version": "shortdrama-v1"}},
         )
         stage_dag.validate_manifest(manifest)
-        with self.assertRaises(TypePackNotExecutableError):
+        with self.assertRaises(stage_dag.StageDagError):
             stage_dag_codex.build_dispatch_plan(manifest)
-        with self.assertRaises(TypePackNotExecutableError):
+        with self.assertRaises(stage_dag.StageDagError):
             stage_dag_codex.build_sequential_fallback(manifest)
-        with self.assertRaises(TypePackNotExecutableError):
+        with self.assertRaises(stage_dag.StageDagError):
             stage_dag_codex.format_task_envelope(manifest, manifest["stages"][1])
 
         # The old planned-medium manifest remains readable, but cannot advance.

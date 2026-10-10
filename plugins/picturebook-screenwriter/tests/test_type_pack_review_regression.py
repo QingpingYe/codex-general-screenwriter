@@ -22,12 +22,15 @@ class ReviewRegressionTests(unittest.TestCase):
         return dag.attach_context(m,CreativeContext(medium,project_id='p1'),snapshot)
 
     def test_planned_media_have_no_public_dag_execution_entry(self):
-        shortdrama=self.typed('shortdrama')
-        self.assertEqual(dag.validate_manifest(shortdrama),shortdrama)
-        for action in (dag.ready_stages,dag.next_batches,dag.parallel_batches,dag.resolve_stage_decisions,
-                       lambda m: dag.transition_stage(m,'session_init','ready')):
-            with self.subTest(action=action),self.assertRaises(tr.TypePackNotExecutableError):
-                action(shortdrama)
+        from dataclasses import replace
+        from creative_run_builder import CreativeRunRequest, build_creative_run
+        pack=replace(tr.resolve_type_pack(tr.load_type_registry(),'shortdrama'),status='planned')
+        with self.assertRaises(dag.StageDagError):
+            build_creative_run(CreativeRunRequest(
+                type_pack=pack,
+                context=CreativeContext('shortdrama',project_id='sd-p',delivery_form='episode_script'),
+                intent='creation',target='episode_script',run_id='review-planned-1',
+                project_root=str(ROOT.parents[1])))
 
     def test_historical_snapshots_are_readable_but_not_dispatchable(self):
         for snapshot in (

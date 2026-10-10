@@ -67,9 +67,9 @@ def episode(**overrides):
 
 
 class ConfigContractTests(unittest.TestCase):
-    def test_config_keeps_tv_longform_planned_with_full_contract(self):
+    def test_config_tv_longform_is_active_with_full_contract(self):
         pack = config_pack()
-        self.assertEqual(pack.status, "planned")
+        self.assertEqual(pack.status, "active")
         self.assertEqual(
             {item.artifact_id for item in pack.artifact_types},
             {"series_bible", "character_arc_map", "timeline_ledger", "season_arc",
@@ -85,19 +85,13 @@ class ConfigContractTests(unittest.TestCase):
         )
         self.assertEqual(validate_type_contract(pack), pack)
 
-    def test_config_pack_is_not_dispatchable(self):
-        manifest = stage_dag.attach_context(
-            stage_dag._creation_template_manifest(),
-            CreativeContext("tv_longform", project_id="p1",
-                            delivery_form="season_episode_script"),
-            {"type_pack": {"medium_id": "tv_longform", "version": "tv_longform-v1"}},
-        )
-        with self.assertRaises(tr.TypePackNotExecutableError):
-            stage_dag_codex.build_dispatch_plan(manifest)
+    def test_config_pack_is_dispatchable(self):
+        manifest = build_creative_run(request())
+        self.assertEqual(stage_dag_codex.build_dispatch_plan(manifest)["status"], "ready")
 
-    def test_contract_still_reports_tv_longform_planned(self):
+    def test_contract_reports_tv_longform_active(self):
         contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
-        self.assertIn("tv_longform", contract["type_pack_contract"]["planned_medium_ids"])
+        self.assertIn("tv_longform", contract["type_pack_contract"]["active_medium_ids"])
 
 
 class CoreRunTests(unittest.TestCase):

@@ -1,0 +1,28 @@
+{
+  "medium": "shortdrama",
+  "context": {"medium_id": "shortdrama", "project_id": "p1", "delivery_form": "episode_script"},
+  "target_artifact": "episode_script",
+  "workflow_inputs": [],
+  "knowledge_scope": {"scope_type": "project", "scope_id": "p1"},
+  "quality_rules": [
+    {"check_id": "opening_hook", "artifact_ids": ["episode_script"], "stage_id": "hook_check", "blocking_policy": "require_user_confirmation", "validator": null},
+    {"check_id": "turning_point", "artifact_ids": ["episode_script"], "stage_id": "hook_check", "blocking_policy": "require_user_confirmation", "validator": null},
+    {"check_id": "closing_hook", "artifact_ids": ["episode_script"], "stage_id": "hook_check", "blocking_policy": "require_user_confirmation", "validator": null},
+    {"check_id": "pacing_density", "artifact_ids": ["episode_script"], "stage_id": "pacing_check", "blocking_policy": "require_user_confirmation", "validator": null},
+    {"check_id": "conflict_closure", "artifact_ids": ["episode_script"], "stage_id": "pacing_check", "blocking_policy": "require_user_confirmation", "validator": null},
+    {"check_id": "duration", "artifact_ids": ["episode_script"], "stage_id": "pacing_check", "blocking_policy": "advisory", "validator": null},
+    {"check_id": "character_state", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "hard_block", "validator": null},
+    {"check_id": "format", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "hard_block", "validator": null}
+  ],
+  "expected_results": [
+    {"check_id": "opening_hook", "status": "pass"},
+    {"check_id": "turning_point", "status": "pass"},
+    {"check_id": "closing_hook", "status": "pass"},
+    {"check_id": "pacing_density", "status": "pass"},
+    {"check_id": "conflict_closure", "status": "pass"},
+    {"check_id": "duration", "status": "pass"},
+    {"check_id": "character_state", "status": "pass"},
+    {"check_id": "format", "status": "pass"}
+  ],
+  "failure_reason": null
+}

@@ -86,7 +86,7 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("一次 run 仅选择一个核心产出目标", text)
         self.assertIn("已批准脚本", text)
         self.assertIn("不阻塞文字 run", text)
-        self.assertIn("planned", text)
+        self.assertIn("active 且可执行", text)
 
     def test_entry_documents_type_pack_runs_and_quality_contract(self):
         text = ENTRY_SKILL.read_text(encoding="utf-8")

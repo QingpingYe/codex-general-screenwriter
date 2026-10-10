@@ -1,0 +1,30 @@
+{
+  "medium": "tv_longform",
+  "context": {"medium_id": "tv_longform", "project_id": "p1", "series_id": "s1", "season_id": "season-1", "delivery_form": "season_episode_script"},
+  "target_artifact": "episode_script",
+  "workflow_inputs": [],
+  "knowledge_scope": {"scope_type": "series", "scope_id": "s1"},
+  "quality_rules": [
+    {"check_id": "season_arc", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "require_user_confirmation", "validator": null},
+    {"check_id": "episode_function", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "require_user_confirmation", "validator": null},
+    {"check_id": "timeline", "artifact_ids": ["episode_script"], "stage_id": "continuity_check", "blocking_policy": "require_user_confirmation", "validator": null},
+    {"check_id": "foreshadow", "artifact_ids": ["episode_script"], "stage_id": "foreshadow_check", "blocking_policy": "require_user_confirmation", "validator": null},
+    {"check_id": "payoff", "artifact_ids": ["episode_script"], "stage_id": "foreshadow_check", "blocking_policy": "require_user_confirmation", "validator": null},
+    {"check_id": "scene_transition", "artifact_ids": ["episode_script"], "stage_id": "continuity_check", "blocking_policy": "require_user_confirmation", "validator": null},
+    {"check_id": "character_state", "artifact_ids": ["episode_script"], "stage_id": "character_state_check", "blocking_policy": "hard_block", "validator": null},
+    {"check_id": "series_constraint", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "hard_block", "validator": null},
+    {"check_id": "continuity", "artifact_ids": ["episode_script"], "stage_id": "continuity_check", "blocking_policy": "hard_block", "validator": null}
+  ],
+  "expected_results": [
+    {"check_id": "season_arc", "status": "pass"},
+    {"check_id": "episode_function", "status": "pass"},
+    {"check_id": "timeline", "status": "pass"},
+    {"check_id": "foreshadow", "status": "pass"},
+    {"check_id": "payoff", "status": "pass"},
+    {"check_id": "scene_transition", "status": "pass"},
+    {"check_id": "character_state", "status": "fail"},
+    {"check_id": "series_constraint", "status": "pass"},
+    {"check_id": "continuity", "status": "pass"}
+  ],
+  "failure_reason": "character_state 硬约束失败：人物状态与上一集冲突，阻断确认"
+}
