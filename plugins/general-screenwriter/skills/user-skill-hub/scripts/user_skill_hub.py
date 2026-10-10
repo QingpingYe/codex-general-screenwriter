@@ -1,4 +1,4 @@
-"""Validation for lightweight user skill packs."""
+"""Validation for system skill metadata and lightweight user skill packs."""
 from __future__ import annotations
 
 import json
@@ -19,6 +19,7 @@ _MANIFEST_FIELDS = {
     "schema_version", "skill_id", "title", "description", "user_name",
     "skill_type", "supports", "content", "updated_at",
 }
+_METADATA_FIELDS = {"schema_version", "skill_id", "visibility", "supports"}
 _REQUIRED_TEXT_FIELDS = ("skill_id", "title", "description", "user_name", "content")
 _CONTENT_FILE = "SKILL.md"
 
@@ -32,6 +33,12 @@ class UserSkill:
     directory: Path
     manifest: dict[str, Any]
     content: str
+
+
+@dataclass(frozen=True)
+class SystemSkill:
+    directory: Path
+    metadata: dict[str, Any]
 
 
 def _load_type_registry(plugin_root: Path) -> TypeRegistry:
@@ -51,6 +58,19 @@ def _load_manifest(directory: Path) -> dict[str, Any]:
         raise UserSkillHubError(f"{directory}: manifest.json 不是有效 JSON") from error
     if not isinstance(payload, dict):
         raise UserSkillHubError(f"{directory}: manifest.json 必须是对象")
+    return payload
+
+
+def _load_metadata(directory: Path) -> dict[str, Any]:
+    path = directory / "skill-meta.json"
+    if not path.is_file():
+        raise UserSkillHubError(f"{directory}: 缺少 skill-meta.json")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise UserSkillHubError(f"{directory}: skill-meta.json 不是有效 JSON") from error
+    if not isinstance(payload, dict):
+        raise UserSkillHubError(f"{directory}: skill-meta.json 必须是对象")
     return payload
 
 
@@ -159,6 +179,17 @@ def _validate_content(directory: Path, value: Any, label: str) -> str:
     return value
 
 
+def _validate_skill_document(directory: Path, label: str) -> None:
+    path = directory / _CONTENT_FILE
+    if not path.is_file() or path.is_symlink():
+        raise UserSkillHubError(f"{label}: 缺少 {_CONTENT_FILE}")
+    try:
+        if not path.read_text(encoding="utf-8-sig").strip():
+            raise UserSkillHubError(f"{label}: {_CONTENT_FILE} 不得为空")
+    except (OSError, UnicodeError) as error:
+        raise UserSkillHubError(f"{label}: {_CONTENT_FILE} 无法读取") from error
+
+
 def _reject_extra_files(directory: Path, label: str) -> None:
     allowed_files = {directory / "manifest.json", directory / _CONTENT_FILE}
     for path in directory.rglob("*"):
@@ -239,5 +270,70 @@ def validate_user_skill_tree(plugin_root: Path) -> tuple[UserSkill, ...]:
             seen_skill_ids[skill_id] = directory
     return tuple(
         _validate_user_skill(directory, registry)
+        for directory in directories
+    )
+
+
+def _validate_system_skill(
+    directory: Path, registry: TypeRegistry
+) -> SystemSkill:
+    directory = directory.resolve()
+    if not directory.is_dir():
+        raise UserSkillHubError(f"系统技能目录不存在：{directory}")
+    label = directory.name
+    metadata = _load_metadata(directory)
+    if set(metadata) != _METADATA_FIELDS:
+        missing = sorted(_METADATA_FIELDS - set(metadata))
+        unknown = sorted(set(metadata) - _METADATA_FIELDS)
+        details = []
+        if missing:
+            details.append(f"缺少字段：{', '.join(missing)}")
+        if unknown:
+            details.append(f"未知字段：{', '.join(unknown)}")
+        raise UserSkillHubError(f"{label}: {'；'.join(details)}")
+
+    if type(metadata["schema_version"]) is not int or metadata["schema_version"] != 1:
+        raise UserSkillHubError(f"{label}: schema_version 必须是 1")
+    skill_id = metadata["skill_id"]
+    if not isinstance(skill_id, str) or not skill_id.strip():
+        raise UserSkillHubError(f"{label}.skill_id 必须是非空字符串")
+    if skill_id != label:
+        raise UserSkillHubError(
+            f"{label}: skill_id 必须与目录名一致，当前为 {skill_id}"
+        )
+    if metadata["visibility"] != "system":
+        raise UserSkillHubError(f"{label}: visibility 必须是 system")
+
+    supports = _validate_supports(metadata, label)
+    packs = _selected_type_packs(registry, supports["medium_ids"], label)
+    _validate_type_references(
+        packs, supports["stage_ids"], supports["artifact_ids"], label
+    )
+    _validate_skill_document(directory, label)
+    return SystemSkill(directory=directory, metadata=metadata)
+
+
+def validate_system_skill(skill_dir: Path, plugin_root: Path) -> SystemSkill:
+    registry = _load_type_registry(Path(plugin_root).resolve())
+    return _validate_system_skill(Path(skill_dir), registry)
+
+
+def validate_system_skill_tree(plugin_root: Path) -> tuple[SystemSkill, ...]:
+    root = Path(plugin_root).resolve()
+    registry = _load_type_registry(root)
+    skills_root = root / "skills"
+    if not skills_root.exists():
+        raise UserSkillHubError(f"系统技能目录不存在：{skills_root}")
+    if not skills_root.is_dir():
+        raise UserSkillHubError(f"系统技能目录必须是目录：{skills_root}")
+    directories = sorted(
+        directory
+        for directory in skills_root.iterdir()
+        if directory.is_dir()
+        and directory.name != "user-skills"
+        and (directory / _CONTENT_FILE).is_file()
+    )
+    return tuple(
+        _validate_system_skill(directory, registry)
         for directory in directories
     )

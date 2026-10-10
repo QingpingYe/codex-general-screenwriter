@@ -14,7 +14,14 @@ for path in (
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from user_skill_hub import SUPPORT_FIELDS, UserSkillHubError, validate_user_skill, validate_user_skill_tree
+from user_skill_hub import (
+    SUPPORT_FIELDS,
+    UserSkillHubError,
+    validate_system_skill,
+    validate_system_skill_tree,
+    validate_user_skill,
+    validate_user_skill_tree,
+)
 
 
 MISSING = object()
@@ -39,6 +46,46 @@ def valid_manifest(skill_id="test-skill", content="SKILL.md"):
         "content": content,
         "updated_at": "2026-10-10T00:00:00+08:00",
     }
+
+
+def system_metadata(skill_id, medium_id="all"):
+    return {
+        "schema_version": 1,
+        "skill_id": skill_id,
+        "visibility": "system",
+        "supports": {
+            "medium_ids": [medium_id],
+            "genre_ids": ["all"],
+            "series_ids": ["all"],
+            "project_ids": ["all"],
+            "stage_ids": ["all"],
+            "artifact_ids": ["all"],
+        },
+    }
+
+
+SYSTEM_METADATA_SCOPES = {
+    "general-screenwriter": "all",
+    "stage-orchestration": "all",
+    "wiki-ingest": "all",
+    "feishu-knowledge-store": "all",
+    "knowledge-loader": "all",
+    "lexile-check": "all",
+    "story-planning": "all",
+    "pre_create-baseline": "all",
+    "in_create-baseline": "all",
+    "post_create-baseline": "all",
+    "pre_output-baseline": "all",
+    "quality-baseline": "all",
+    "session-export": "all",
+    "user-skill-hub": "all",
+    "text-craft": "picturebook",
+    "craft-benchmark-check": "picturebook",
+    "staging-planner": "picturebook",
+    "image-prompt-architect": "picturebook",
+    "image-generate": "picturebook",
+    "illustration-export": "picturebook",
+}
 
 
 class UserSkillHubTestCase(unittest.TestCase):
@@ -239,6 +286,174 @@ class ValidateUserSkillTreeTests(UserSkillHubTestCase):
             (directory / "SKILL.md").write_text("Use this.", encoding="utf-8")
         with self.assertRaisesRegex(UserSkillHubError, "重复 skill_id"):
             validate_user_skill_tree(plugin_root)
+
+
+class SystemSkillMetadataTests(unittest.TestCase):
+    def test_required_metadata_files_use_shared_scopes(self):
+        for skill_id, medium_id in SYSTEM_METADATA_SCOPES.items():
+            with self.subTest(skill_id=skill_id):
+                path = ROOT / "skills" / skill_id / "skill-meta.json"
+                self.assertTrue(path.is_file(), f"缺少 {path}")
+                metadata = json.loads(path.read_text(encoding="utf-8-sig"))
+                self.assertEqual(metadata, system_metadata(skill_id, medium_id))
+
+    def test_installed_system_skills_validate_against_plugin_root(self):
+        installed = [
+            path
+            for path in (ROOT / "skills").iterdir()
+            if path.is_dir()
+            and path.name != "user-skills"
+            and (path / "SKILL.md").is_file()
+        ]
+        self.assertGreater(len(installed), 0)
+        for directory in installed:
+            with self.subTest(skill_id=directory.name):
+                result = validate_system_skill(directory, ROOT)
+                self.assertEqual(result.directory, directory.resolve())
+                self.assertEqual(
+                    result.metadata,
+                    system_metadata(
+                        directory.name, SYSTEM_METADATA_SCOPES[directory.name]
+                    ),
+                )
+
+
+class ValidateSystemSkillTests(UserSkillHubTestCase):
+    def setUp(self):
+        super().setUp()
+        self._system_skill_counter = 0
+
+    def make_plugin_root(self):
+        plugin_root = self.temp_path / "plugin-root"
+        (plugin_root / "config").mkdir(parents=True)
+        shutil.copy2(
+            ROOT / "config" / "type-packs.json",
+            plugin_root / "config" / "type-packs.json",
+        )
+        return plugin_root
+
+    def make_system_skill(self, skill_id=None, metadata_overrides=None,
+                          omit_metadata=False, include_skill_md=True):
+        if skill_id is None:
+            self._system_skill_counter += 1
+            skill_id = f"system-skill-{self._system_skill_counter}"
+        directory = self.temp_path / skill_id
+        directory.mkdir(parents=True)
+        metadata = system_metadata(skill_id)
+        for key, value in (metadata_overrides or {}).items():
+            if value is MISSING:
+                metadata.pop(key, None)
+            else:
+                metadata[key] = value
+        if not omit_metadata:
+            (directory / "skill-meta.json").write_text(
+                json.dumps(metadata, ensure_ascii=False), encoding="utf-8"
+            )
+        if include_skill_md:
+            (directory / "SKILL.md").write_text("Use this system skill.", encoding="utf-8")
+        return directory
+
+    def assert_invalid(self, directory):
+        with self.assertRaises(UserSkillHubError):
+            validate_system_skill(directory, ROOT)
+
+    def test_accepts_valid_system_skill(self):
+        directory = self.make_system_skill(skill_id="system-skill")
+        result = validate_system_skill(directory, ROOT)
+        self.assertEqual(result.directory, directory.resolve())
+        self.assertEqual(result.metadata["skill_id"], "system-skill")
+
+    def test_missing_fields_are_rejected(self):
+        for field in ("schema_version", "skill_id", "visibility", "supports"):
+            with self.subTest(field=field):
+                directory = self.make_system_skill(
+                    metadata_overrides={field: MISSING}
+                )
+                self.assert_invalid(directory)
+
+    def test_unknown_fields_are_rejected(self):
+        directory = self.make_system_skill(metadata_overrides={"title": "System"})
+        self.assert_invalid(directory)
+
+    def test_visibility_must_be_system(self):
+        for value in ("user", "public", 1):
+            with self.subTest(visibility=value):
+                directory = self.make_system_skill(
+                    metadata_overrides={"visibility": value}
+                )
+                self.assert_invalid(directory)
+
+    def test_skill_id_must_match_directory_name(self):
+        directory = self.make_system_skill(skill_id="system-skill")
+        metadata = system_metadata("different-id")
+        (directory / "skill-meta.json").write_text(
+            json.dumps(metadata, ensure_ascii=False), encoding="utf-8"
+        )
+        self.assert_invalid(directory)
+
+    def test_support_fields_and_nonempty_arrays_are_required(self):
+        for field in SUPPORT_FIELDS:
+            with self.subTest(field=field):
+                metadata = system_metadata("system-skill")
+                metadata["supports"][field] = []
+                directory = self.make_system_skill(
+                    metadata_overrides={"supports": metadata["supports"]}
+                )
+                self.assert_invalid(directory)
+
+    def test_unknown_support_fields_are_rejected(self):
+        metadata = system_metadata("system-skill")
+        metadata["supports"]["role_ids"] = ["all"]
+        directory = self.make_system_skill(
+            metadata_overrides={"supports": metadata["supports"]}
+        )
+        self.assert_invalid(directory)
+
+    def test_concrete_stage_and_artifact_are_validated(self):
+        metadata = system_metadata("system-skill")
+        metadata["supports"]["medium_ids"] = ["picturebook"]
+        metadata["supports"]["stage_ids"] = ["episode_design"]
+        metadata["supports"]["artifact_ids"] = ["episode_outline"]
+        directory = self.make_system_skill(
+            metadata_overrides={"supports": metadata["supports"]}
+        )
+        self.assert_invalid(directory)
+
+    def test_missing_skill_md_is_rejected(self):
+        directory = self.make_system_skill(include_skill_md=False)
+        self.assert_invalid(directory)
+
+    def test_tree_validates_only_immediate_skill_directories(self):
+        plugin_root = self.make_plugin_root()
+        skills_root = plugin_root / "skills"
+        valid = skills_root / "valid-skill"
+        valid.mkdir(parents=True)
+        (valid / "skill-meta.json").write_text(
+            json.dumps(system_metadata("valid-skill"), ensure_ascii=False),
+            encoding="utf-8",
+        )
+        (valid / "SKILL.md").write_text("Use this.", encoding="utf-8")
+        ignored = skills_root / "not-a-skill"
+        ignored.mkdir()
+        (ignored / "skill-meta.json").write_text(
+            json.dumps(system_metadata("ignored"), ensure_ascii=False),
+            encoding="utf-8",
+        )
+        user_skills = skills_root / "user-skills"
+        user_skills.mkdir()
+        (user_skills / "SKILL.md").write_text("not system", encoding="utf-8")
+        result = validate_system_skill_tree(plugin_root)
+        self.assertEqual(
+            [item.metadata["skill_id"] for item in result], ["valid-skill"]
+        )
+
+    def test_tree_rejects_installed_system_skill_without_metadata(self):
+        plugin_root = self.make_plugin_root()
+        directory = plugin_root / "skills" / "invalid-skill"
+        directory.mkdir(parents=True)
+        (directory / "SKILL.md").write_text("Use this.", encoding="utf-8")
+        with self.assertRaises(UserSkillHubError):
+            validate_system_skill_tree(plugin_root)
 
 
 if __name__ == "__main__":

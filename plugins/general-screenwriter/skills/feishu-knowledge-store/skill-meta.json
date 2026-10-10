@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "skill_id": "feishu-knowledge-store",
+  "visibility": "system",
+  "supports": {
+    "medium_ids": ["all"],
+    "genre_ids": ["all"],
+    "series_ids": ["all"],
+    "project_ids": ["all"],
+    "stage_ids": ["all"],
+    "artifact_ids": ["all"]
+  }
+}
