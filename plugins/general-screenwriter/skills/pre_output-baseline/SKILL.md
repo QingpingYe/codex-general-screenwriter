@@ -5,9 +5,15 @@ description: pre_output 槽位的全产物类型兜底技能，先做廉价代�
 
 # Pre Output Baseline
 
-## Stage 1: Cheap Proxy
+## Medium Routing
+
+### picturebook
 
 使用 `../craft-benchmark-check/SKILL.md` 获取确定性指标，并对权威红线、禁忌词、称呼一致性和插画描述做零假阴性扫描。
+
+### shortdrama / tv_longform
+
+运行选中类型包声明的廉价代理与结构化检查；不调用绘本工艺基准，也不扫描插画描述，除非选中类型包显式声明可选插画工作流。
 
 ## Stage 2: Semantic Review
 

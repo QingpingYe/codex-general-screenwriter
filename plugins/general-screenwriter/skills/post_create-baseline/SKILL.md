@@ -9,6 +9,16 @@ description: post_create 槽位的全产物类型兜底技能，对完整草稿�
 
 作用于完整草稿，只做打磨。不得新增角色、场景、道具、情节转折或未经确认的数值约束。
 
+## Medium Routing
+
+### picturebook
+
+保留页数、朗读节奏和目标年龄段约束；表达层修改不得破坏绘本 `content-spec`。
+
+### shortdrama / tv_longform
+
+按选中类型包检查 episode/hook/scene 的节奏、对白表现力和跨场连续性；不套用绘本页数或翻页约束。
+
 ## Checks
 
 1. 语言密度：删冗余、去重复。
