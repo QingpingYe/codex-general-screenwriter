@@ -82,7 +82,7 @@ Define the canonical IDs and aliases in one place. Normalize `picture-book` and 
 - [x] **Step 4: Write the failing registry tests**
 
 ```python
-def test_loads_four_initial_mediums(self):
+def test_loads_three_mediums_with_only_picturebook_active(self):
     registry = load_type_registry(CONFIG)
     self.assertEqual(
         {pack.medium_id for pack in registry.packs},
@@ -283,7 +283,7 @@ git commit -m "feat: propagate creative context through dispatch"
 - Modify: `plugins/picturebook-screenwriter/README.md`
 
 **Interfaces:**
-- Contract field `creative_context` declares `schema_version: "screenwriter-context-v1"`, the four initial `medium_ids`, scope levels, and `legacy_default_medium: "picturebook"`.
+- Contract field `creative_context` declares `schema_version: "screenwriter-context-v1"`, the three initial `medium_ids`, scope levels, and `legacy_default_medium: "picturebook"`.
 - Contract field `type_registry` points to `config/type-packs.json`.
 - Contract field `compatibility` declares `legacy_entry_skill`, `legacy_run_schema`, `legacy_task_schema`, and `legacy_knowledge_key_shape`.
 - Entry skill documents collecting medium, genre, series and project context, with legacy picturebook inference when an old project has no medium field.

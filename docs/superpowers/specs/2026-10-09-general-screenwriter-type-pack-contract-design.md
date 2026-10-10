@@ -157,7 +157,7 @@ snapshot 由 revision 深拷贝继承；dispatch plan/task envelope 只携带已
 ## 8. 测试设计
 
 1. 旧字符串产物列表仍能兼容读取，完整 v1 契约规范化为不可变对象。
-2. 空 active 类型包加载失败；四种首批媒介中仅绘本 active，其余 planned 且不可执行。
+2. 空 active 类型包加载失败；三种首批媒介中仅绘本 active，其余 planned 且不可执行。
 3. 六类绘本核心产物均被声明；`positioning` 是 brief 输入，不是 `brief_gate` 输出；creation_delegate 每 run 输出由 manifest 指定的单个目标，preflight/qa 是校验者。
 4. 四个插画/导出 artifact 只存在于独立的 optional illustration workflow；该 workflow 不阻塞无插画的文本 run 完成。
 5. 插画 workflow input requirement 明确 `script` 必须为 `approved`；仍保留资产确认和最终确认门。
