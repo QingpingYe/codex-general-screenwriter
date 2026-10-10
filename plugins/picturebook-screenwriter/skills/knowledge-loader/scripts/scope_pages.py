@@ -43,6 +43,7 @@ class ScopeEnvelope:
     version: int = 1
     depends_on: tuple[str, ...] = ()
     source_refs: tuple[str, ...] = ()
+    supersedes: tuple[str, ...] = ()
     built_against: dict = field(default_factory=dict)
 
 
@@ -68,6 +69,7 @@ def parse_scope_envelope(body: str):
         "depends_on",
         "source_refs",
         "built_against",
+    "supersedes",
     }
     if not required <= set(payload) or not set(payload) <= required | optional:
         raise ScopeEnvelopeError("scope envelope has missing or unknown fields")
@@ -94,6 +96,9 @@ def parse_scope_envelope(body: str):
         raise ScopeEnvelopeError("depends_on must be a list of non-empty strings")
     if not isinstance(source_refs, list) or any(not isinstance(item, str) or not item.strip() for item in source_refs):
         raise ScopeEnvelopeError("source_refs must be a list of non-empty strings")
+    supersedes = payload.get("supersedes", [])
+    if not isinstance(supersedes, list) or any(not isinstance(item, str) or not item.strip() for item in supersedes):
+        raise ScopeEnvelopeError("supersedes must be a list of non-empty strings")
     built_against = payload.get("built_against", {})
     if not isinstance(built_against, dict):
         raise ScopeEnvelopeError("built_against must be an object")
@@ -107,5 +112,6 @@ def parse_scope_envelope(body: str):
         version=version,
         depends_on=tuple(depends_on),
         source_refs=tuple(source_refs),
+        supersedes=tuple(supersedes),
         built_against=built_against,
     )
