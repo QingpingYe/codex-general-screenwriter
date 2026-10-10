@@ -76,7 +76,7 @@ class PicturebookMigrationMatrixTests(unittest.TestCase):
 
     def test_new_picturebook_revision_inherits_isolated_snapshot(self):
         manifest = stage_dag._creation_template_manifest()
-        manifest["project_root"] = str(REPO_ROOT)
+        manifest["project_root"] = str(ROOT)
         manifest = stage_dag.attach_context(
             manifest,
             CreativeContext("picturebook", project_id="p1"),
@@ -92,7 +92,7 @@ class PicturebookMigrationMatrixTests(unittest.TestCase):
         revision = stage_dag.build_revision_manifest(
             parent,
             feedback=[{"issue": "hook", "instruction": "strengthen"}],
-            artifact_ref="plugins/general-screenwriter/config/type-packs.json",
+            artifact_ref="config/type-packs.json",
             run_id="matrix-revision-0002",
         )
         self.assertEqual(revision["revision_of_run_id"], parent["run_id"])
