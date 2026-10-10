@@ -7,6 +7,8 @@
 - Executable picturebook migration compatibility matrix (legacy entry, run/task schemas, artifacts, knowledge keys, planned-media gates).
 - Cross-media representative pass/fail samples with type-pack rule drift checks.
 - shortdrama and tv_longform minimal type packs (artifacts, stage chains, structural checks) activated after sample coverage.
+- Read-only migration report and unified release gate (nine ordered checks, stop-on-first-failure).
+- Fail-closed exporter contract with explicit destination and overwrite policy.
 - Codex-native picture-book editorial workflow and baseline slots.
 - Feishu authoritative knowledge synchronization and retrieval.
 - Craft benchmark, project red lines, Wiki lint, and optional Lexile gates.

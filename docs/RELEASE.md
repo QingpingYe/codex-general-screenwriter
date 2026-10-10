@@ -32,3 +32,13 @@
 3. Confirm no key appears in command history, logs, metadata, or exports.
 4. Install from the published Git ref in a clean Codex profile.
 5. Record acceptance results and blockers before publishing to the marketplace.
+
+## Unified release gate
+
+Run `python scripts/release_gate.py` before any release. The gate runs the nine
+ordered checks (registry contract, knowledge adapter, skill registry, DAG
+scheduler, quality gate, exporter contract, offline regression, governance
+check, packaging check), stops on the first failure, and exits nonzero. A
+failed run must not be released. Migration status is reported with
+`plugins/picturebook-screenwriter/scripts/migration_report.py`, which is
+read-only: it never rewrites run manifests, knowledge keys, or user artifacts.

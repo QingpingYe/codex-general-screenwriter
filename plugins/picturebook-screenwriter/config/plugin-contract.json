@@ -266,5 +266,21 @@
       "pb-screenwriter",
       "illustration-template"
     ]
+  },
+  "release_gate": {
+    "schema_version": "release-gate-v1",
+    "script": "scripts/release_gate.py",
+    "migration_report": "scripts/migration_report.py",
+    "steps": [
+      "registry_contract",
+      "knowledge_adapter",
+      "skill_registry",
+      "dag_scheduler",
+      "quality_gate",
+      "exporter_contract",
+      "offline_regression",
+      "governance_check",
+      "packaging_check"
+    ]
   }
 }
