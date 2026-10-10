@@ -19,6 +19,14 @@ BASELINE_SKILLS = (
     "quality-baseline",
 )
 PICTUREBOOK_ONLY_DEPENDENCIES = ("text-craft", "craft-benchmark-check")
+PICTUREBOOK_ONLY_BRIEFING_FIELDS = ("目标年龄段", "页数预期")
+NONPICTUREBOOK_BRIEFING_FIELDS = (
+    "目标格式",
+    "预期集数",
+    "单集时长",
+    "hook节奏",
+    "系列连续性",
+)
 
 
 class StoryPlanningTests(unittest.TestCase):
@@ -108,6 +116,24 @@ class BaselineMediumScopeTests(unittest.TestCase):
                         picturebook.count(dependency),
                         f"{skill_id} mentions {dependency} outside picturebook routing",
                     )
+
+    def test_pre_create_briefing_fields_are_medium_conditional(self):
+        text = self.text("pre_create-baseline")
+        picturebook = text.split(
+            "### picturebook", 1
+        )[1].split("### shortdrama / tv_longform", 1)[0]
+        nonpicturebook = text.split(
+            "### shortdrama / tv_longform", 1
+        )[1].split("## ", 1)[0]
+        for field in PICTUREBOOK_ONLY_BRIEFING_FIELDS:
+            self.assertIn(field, picturebook)
+            self.assertEqual(
+                text.count(field),
+                picturebook.count(field),
+                f"pre_create-baseline mentions {field} outside picturebook routing",
+            )
+        for field in NONPICTUREBOOK_BRIEFING_FIELDS:
+            self.assertIn(field, nonpicturebook)
 
 
 if __name__ == "__main__":
