@@ -52,7 +52,7 @@
 
 **Ruling:** 采用 `latest.episode_id: null` + `states: []` 作为显式“无前序状态”表示，不新增 `has_prior_episode` — 复用现有 `latest` 容器，改动面最小 — 代价：未来若消费者需要布尔标记，需要迁移或同时接受两种表示。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `test_tv_longform_type_pack.py` 的 `ContentCheckTests` 中加入：
 
@@ -135,32 +135,32 @@ def test_malformed_banned_terms_fails_closed(self):
 
 `test_character_state_explicit_no_prior_state_passes` 是契约锁：当前实现已会通过，它防的是后续收紧误杀首集。
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `python plugins\general-screenwriter\tests\test_tv_longform_type_pack.py`
 Expected: 7 条新增用例中，6 条缺失/畸形用例 FAIL；显式无前序契约锁 PASS。
 
-- [ ] **Step 3: 实现失败关闭校验**
+- [x] **Step 3: 实现失败关闭校验**
 
 `_character_state`：要求 `arc_map.latest` 为对象；按 `episode_id` 为 `None`、合法非空字符串、非法值三分支处理；`None` 分支要求 `states == []`；合法前序分支要求 `states` 为数组、条目 `name`/`state` 非空且角色名唯一，并据此构造 `previous_states`。
 
 `_series_constraint`：`series_bible.series_id` 必须非空且与集稿一致；`characters` 必须是非空数组且每个条目带非空 `name`；`banned_terms` 若不是数组则记违规；剧本行文本命中逻辑保持不变。
 
-- [ ] **Step 4: 运行任务测试**
+- [x] **Step 4: 运行任务测试**
 
 Run: `python plugins\general-screenwriter\tests\test_tv_longform_type_pack.py`
 Expected: OK。
 
-- [ ] **Step 5: 全量回归**
+- [x] **Step 5: 全量回归**
 
 Run: `python .\scripts\run_plugin_tests.py`
 Expected: `OK: 86 offline commands passed`。
 
-- [ ] **Step 6: 同步计划措辞**
+- [x] **Step 6: 同步计划措辞**
 
 把 `2026-10-12-general-screenwriter-media-content-completion.md` 的 `character_state` 与 `series_constraint` 两条检查语义更新为本任务契约。
 
-- [ ] **Step 7: 提交**
+- [x] **Step 7: 提交**
 
 ```powershell
 git add plugins/general-screenwriter/scripts/tv_longform_checks.py plugins/general-screenwriter/tests/test_tv_longform_type_pack.py docs/superpowers/plans/2026-10-12-general-screenwriter-media-content-completion.md
@@ -182,7 +182,7 @@ git commit -m "fix: fail closed on malformed tv longform references"
   - `_screenplay_text(payload) -> str` 使用 parsed scenes 渲染，不再伪造 heading。
   - `_render_production_checklist` 缺 `scene_id` 时按计划输出 `-`，不再生成 `SN`。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 在 `RenderTests` / `RunExportTests` 中加入：
 
@@ -215,26 +215,26 @@ def test_production_checklist_missing_scene_id_renders_dash(self):
     self.assertNotIn("| S1 |", text)
 ```
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `python plugins\general-screenwriter\tests\test_export_run.py`
 Expected: 新增用例 FAIL（heading/scene 字段缺失仍渲染成功；checklist 伪造 `S1`）。
 
-- [ ] **Step 3: 实现必填校验**
+- [x] **Step 3: 实现必填校验**
 
 `export_run.py` 引入 `parse_episode_script` 与 `ScriptContentError`；新增 `_validated_episode_script`；`_screenplay_text` 先解析再按 `ParsedScript.scenes` 渲染；checklist 的 `scene_id` 改走统一的 `cell(...)`，缺省输出 `-`。
 
-- [ ] **Step 4: 运行任务测试**
+- [x] **Step 4: 运行任务测试**
 
 Run: `python plugins\general-screenwriter\tests\test_export_run.py`
 Expected: OK。
 
-- [ ] **Step 5: 全量回归**
+- [x] **Step 5: 全量回归**
 
 Run: `python .\scripts\run_plugin_tests.py`
 Expected: `OK: 86 offline commands passed`，六个代表样例的导出预览保持通过。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```powershell
 git add plugins/general-screenwriter/scripts/export_run.py plugins/general-screenwriter/tests/test_export_run.py
@@ -254,7 +254,7 @@ git commit -m "fix: validate required exporter payload fields"
 - `write_export`：`mkdir`、`mkstemp`、写入、`os.replace` 的所有 `OSError` 统一转 `ExportRunnerError`，临时文件清理语义不变。
 - `export_cli.main`：在解析参数前把 `sys.stdout` / `sys.stderr` 重设为 UTF-8（流不支持 `reconfigure` 时跳过）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 ```python
 def test_output_directory_creation_failure_raises_runner_error(self):
@@ -325,21 +325,21 @@ def test_cli_output_is_utf8_with_chinese_filename(self):
         )
 ```
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `python plugins\general-screenwriter\tests\test_export_run.py`
 Expected: 目录创建用例抛 `FileExistsError`；CLI traceback 用例发现 `Traceback`；中文 filename 用例 stdout 匹配不到中文。
 
-- [ ] **Step 3: 实现错误包装与 UTF-8 输出**
+- [x] **Step 3: 实现错误包装与 UTF-8 输出**
 
 `write_export` 把 `path.parent.mkdir(...)` 移入现有 `try`；`export_cli.main` 开头对 stdout/stderr 调用 `reconfigure(encoding="utf-8")`。
 
-- [ ] **Step 4: 运行任务测试**
+- [x] **Step 4: 运行任务测试**
 
 Run: `python plugins\general-screenwriter\tests\test_export_run.py`
 Expected: OK。
 
-- [ ] **Step 5: 全量回归与发布门**
+- [x] **Step 5: 全量回归与发布门**
 
 Run: `python .\scripts\run_plugin_tests.py`
 Expected: `OK: 86 offline commands passed`。
@@ -347,7 +347,7 @@ Expected: `OK: 86 offline commands passed`。
 Run: `python scripts\release_gate.py`
 Expected: `all checks passed`。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```powershell
 git add plugins/general-screenwriter/scripts/export_run.py plugins/general-screenwriter/scripts/export_cli.py plugins/general-screenwriter/tests/test_export_run.py
@@ -356,12 +356,12 @@ git commit -m "fix: harden export failure surface"
 
 ## Completion Checklist
 
-- [ ] 5 项复查问题都有对应测试，且测试先失败后通过。
-- [ ] `latest: {"episode_id": null, "states": []}` 首集语义与失败关闭语义同时成立。
-- [ ] 导出器不再伪造 heading/scene_id，缺字段失败或按计划显示 `-`。
-- [ ] 目录创建失败统一为 `ExportRunnerError`，CLI 无 traceback、stdout/stderr 为 UTF-8。
-- [ ] `python .\scripts\run_plugin_tests.py` 与 `python scripts\release_gate.py` 全绿。
-- [ ] 全分支自审完成；无可用子代理工具时在最终消息说明降级。
+- [x] 5 项复查问题都有对应测试，且测试先失败后通过。
+- [x] `latest: {"episode_id": null, "states": []}` 首集语义与失败关闭语义同时成立。
+- [x] 导出器不再伪造 heading/scene_id，缺字段失败或按计划显示 `-`。
+- [x] 目录创建失败统一为 `ExportRunnerError`，CLI 无 traceback、stdout/stderr 为 UTF-8。
+- [x] `python .\scripts\run_plugin_tests.py` 与 `python scripts\release_gate.py` 全绿。
+- [x] 全分支自审完成；无可用子代理工具时在最终消息说明降级。
 
 ## Plan Self-Review
 
