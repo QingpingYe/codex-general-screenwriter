@@ -956,60 +956,60 @@
           "artifact_ids": ["episode_script"],
           "stage_id": "hook_check",
           "blocking_policy": "require_user_confirmation",
-          "validator": null
+          "validator": "shortdrama-checks"
         },
         {
           "check_id": "turning_point",
           "artifact_ids": ["episode_script"],
           "stage_id": "hook_check",
           "blocking_policy": "require_user_confirmation",
-          "validator": null
+          "validator": "shortdrama-checks"
         },
         {
           "check_id": "closing_hook",
           "artifact_ids": ["episode_script"],
           "stage_id": "hook_check",
           "blocking_policy": "require_user_confirmation",
-          "validator": null
+          "validator": "shortdrama-checks"
         },
         {
           "check_id": "pacing_density",
           "artifact_ids": ["episode_script"],
           "stage_id": "pacing_check",
           "blocking_policy": "require_user_confirmation",
-          "validator": null
+          "validator": "shortdrama-checks"
         },
         {
           "check_id": "conflict_closure",
           "artifact_ids": ["episode_script"],
           "stage_id": "pacing_check",
           "blocking_policy": "require_user_confirmation",
-          "validator": null
+          "validator": "shortdrama-checks"
         },
         {
           "check_id": "duration",
           "artifact_ids": ["episode_script"],
           "stage_id": "pacing_check",
           "blocking_policy": "advisory",
-          "validator": null
+          "validator": "shortdrama-checks"
         },
         {
           "check_id": "character_state",
           "artifact_ids": ["episode_script"],
           "stage_id": "quality_gate",
           "blocking_policy": "hard_block",
-          "validator": null
+          "validator": "shortdrama-checks"
         },
         {
           "check_id": "format",
           "artifact_ids": ["episode_script"],
           "stage_id": "quality_gate",
           "blocking_policy": "hard_block",
-          "validator": null
+          "validator": "shortdrama-checks"
         }
       ],
       "workflow_policy": "shortdrama-v1",
-      "validators": [],
+      "validators": ["shortdrama-checks"],
       "exporters": [],
       "capabilities": [],
       "status": "active",

@@ -1,4 +1,3 @@
-import copy
 import json
 import sys
 import unittest
@@ -15,7 +14,6 @@ from creative_run_builder import CreativeRunRequest, build_creative_run
 from quality_gate_contract import build_quality_gate_report
 from screenwriter_context import CreativeContext
 from shortdrama_checks import SHORTDRAMA_CHECK_IDS, validate_shortdrama_rules
-import type_registry as tr
 from type_registry import (
     load_type_registry,
     resolve_type_pack,
@@ -46,23 +44,94 @@ def request(**overrides):
     return CreativeRunRequest(**values)
 
 
-def episode(**overrides):
-    artifact = {
-        "artifact_id": "episode_script",
-        "opening_hook": "前3秒：她推开天台的门，风把 Evidence 吹散。",
-        "closing_hook": "他回头，手机屏幕亮起：定位已共享。",
-        "turning_point": "替身身份在直播中被揭穿。",
-        "beats": [
-            {"beat": 1, "conflict": "对峙"},
-            {"beat": 2, "conflict": "反转"},
-        ],
-        "conflict": {"goal": "夺回证据", "closed": True},
-        "characters": [{"name": "林一", "state": "calm"}],
-        "format": "episode_script",
-        "duration_seconds": 120,
+def action(text):
+    return {"kind": "action", "text": text}
+
+
+def dialogue(speaker, text):
+    return {"kind": "dialogue", "speaker": speaker, "text": text}
+
+
+def scene(scene_id, location, time_of_day, lines, transition=""):
+    return {
+        "scene_id": scene_id,
+        "heading": f"场{scene_id[1:]} {location} {time_of_day}",
+        "location": location,
+        "time_of_day": time_of_day,
+        "lines": list(lines),
+        "transition": transition,
     }
-    artifact.update(overrides)
-    return artifact
+
+
+def scenes():
+    return [
+        scene("S1", "天台", "夜",
+              [action("风把证物袋吹散。"), dialogue("林一", "谁动了我的证据？")],
+              "切至走廊"),
+        scene("S2", "走廊", "夜",
+              [dialogue("林一", "监控少了一段。"), dialogue("陈默", "是人为删的。")],
+              "切至会议室"),
+        scene("S3", "会议室", "夜",
+              [dialogue("陈默", "你替别人背了锅。"), dialogue("林一", "那就摊牌。")],
+              "切至直播间"),
+        scene("S4", "直播间", "夜",
+              [dialogue("林一", "替身身份，今天我亲自揭。"), action("灯灭，屏幕亮起。")],
+              "切回天台"),
+        scene("S5", "天台", "夜",
+              [dialogue("林一", "证据我拿到了。"), action("手机屏幕亮起：定位已共享。")],
+              ""),
+    ]
+
+
+def beats():
+    return [
+        {"beat_id": "b1", "function": "hook", "scene_id": "S1"},
+        {"beat_id": "b2", "function": "escalation", "scene_id": "S2"},
+        {"beat_id": "b3", "function": "turn", "scene_id": "S3"},
+        {"beat_id": "b4", "function": "closure", "scene_id": "S4"},
+        {"beat_id": "b5", "function": "closing_hook", "scene_id": "S5"},
+    ]
+
+
+def characters():
+    return [
+        {"name": "林一", "states": [
+            {"beat_id": "b1", "state": "calm"},
+            {"beat_id": "b3", "state": "resolute"},
+            {"beat_id": "b5", "state": "in_control"},
+        ]},
+        {"name": "陈默", "states": [{"beat_id": "b2", "state": "guarded"}]},
+    ]
+
+
+def episode(**overrides):
+    payload = {
+        "artifact_id": "episode_script",
+        "format": "episode_script",
+        "duration_seconds": 55,
+        "scenes": scenes(),
+        "beats": beats(),
+        "conflict": {
+            "goal": "夺回证据",
+            "escalation_beat_ids": ["b2"],
+            "closure_beat_id": "b4",
+            "closed": True,
+        },
+        "characters": characters(),
+    }
+    payload.update(overrides)
+    return payload
+
+
+def episode_without_closing_hook():
+    items = beats()
+    items[-1] = {"beat_id": "b5", "function": "closure", "scene_id": "S5"}
+    return episode(beats=items)
+
+
+def context():
+    return CreativeContext("shortdrama", project_id="p1",
+                           delivery_form="episode_script")
 
 
 class ConfigContractTests(unittest.TestCase):
@@ -112,12 +181,13 @@ class CoreRunTests(unittest.TestCase):
             build_creative_run(request(target="positioning"))
 
     def test_planned_pack_is_rejected_before_manifest_construction(self):
-        from dataclasses import replace as _replace
         with self.assertRaises(Exception):
-            build_creative_run(request(type_pack=_replace(config_pack(), status="planned")))
+            build_creative_run(
+                request(type_pack=replace(config_pack(), status="planned"))
+            )
 
 
-class StructuralCheckTests(unittest.TestCase):
+class ContentCheckTests(unittest.TestCase):
     def test_all_eight_checks_are_declared(self):
         self.assertEqual(
             set(SHORTDRAMA_CHECK_IDS),
@@ -126,18 +196,50 @@ class StructuralCheckTests(unittest.TestCase):
         )
 
     def test_well_formed_episode_passes_every_check(self):
-        context = CreativeContext("shortdrama", project_id="p1",
-                                  delivery_form="episode_script")
         for check_id in SHORTDRAMA_CHECK_IDS:
             with self.subTest(check_id=check_id):
-                result = validate_shortdrama_rules(check_id, episode(), context)
+                result = validate_shortdrama_rules(check_id, episode(), context())
                 self.assertEqual(result.status, "pass")
+                self.assertEqual(result.evidence["source"], "content")
+
+    def test_hollow_script_content_fails_even_with_all_fields(self):
+        items = scenes()
+        items[0]["lines"] = [action("走。"), action("站住。")]
+        result = validate_shortdrama_rules(
+            "opening_hook", episode(scenes=items), context())
+        self.assertEqual(result.status, "fail")
+
+    def test_turn_must_sit_in_middle_band(self):
+        items = beats()
+        turn = items.pop(2)
+        items.append(turn)
+        result = validate_shortdrama_rules(
+            "turning_point", episode(beats=items), context())
+        self.assertEqual(result.status, "fail")
+
+    def test_duration_mismatch_with_content_is_reported(self):
+        result = validate_shortdrama_rules(
+            "duration", episode(duration_seconds=600), context())
+        self.assertEqual(result.status, "fail")
+        self.assertIn("estimated_seconds", result.evidence)
+
+    def test_unregistered_speaker_fails_character_state(self):
+        items = scenes()
+        items[1]["lines"].append(dialogue("神秘人", "东西在我这。"))
+        result = validate_shortdrama_rules(
+            "character_state", episode(scenes=items), context())
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.evidence["unknown_speakers"], ["神秘人"])
+
+    def test_parse_failure_returns_fail_with_errors(self):
+        result = validate_shortdrama_rules(
+            "format", episode(scenes=[]), context())
+        self.assertEqual(result.status, "fail")
+        self.assertTrue(result.evidence["errors"])
 
     def test_missing_closing_hook_fails_user_confirmation_risk(self):
-        context = CreativeContext("shortdrama", project_id="p1",
-                                  delivery_form="episode_script")
         result = validate_shortdrama_rules(
-            "closing_hook", episode(closing_hook=""), context)
+            "closing_hook", episode_without_closing_hook(), context())
         self.assertEqual(result.status, "fail")
         rule = next(rule for rule in config_pack().quality_rules
                     if rule.check_id == "closing_hook")
@@ -150,14 +252,19 @@ class StructuralCheckTests(unittest.TestCase):
         self.assertTrue(report.passed)
         self.assertFalse(report.confirmation_ready)
 
-    def test_each_check_fails_on_missing_field(self):
-        context = CreativeContext("shortdrama", project_id="p1",
-                                  delivery_form="episode_script")
+    def test_each_check_fails_on_broken_content(self):
         cases = {
-            "opening_hook": {"opening_hook": ""},
-            "turning_point": {"turning_point": None},
-            "pacing_density": {"beats": []},
-            "conflict_closure": {"conflict": {"goal": "x", "closed": False}},
+            "opening_hook": {"beats": []},
+            "turning_point": {
+                "beats": [item for item in beats()
+                          if item["function"] != "turn"]
+            },
+            "closing_hook": {"beats": beats()[:-1]},
+            "pacing_density": {"duration_seconds": None},
+            "conflict_closure": {
+                "conflict": {"goal": "夺回证据", "escalation_beat_ids": ["b2"],
+                             "closure_beat_id": "b4", "closed": False}
+            },
             "character_state": {"characters": []},
             "format": {"format": "screenplay"},
             "duration": {"duration_seconds": 0},
@@ -165,14 +272,12 @@ class StructuralCheckTests(unittest.TestCase):
         for check_id, overrides in cases.items():
             with self.subTest(check_id=check_id):
                 result = validate_shortdrama_rules(
-                    check_id, episode(**overrides), context)
+                    check_id, episode(**overrides), context())
                 self.assertEqual(result.status, "fail")
 
     def test_unknown_check_id_is_rejected(self):
-        context = CreativeContext("shortdrama", project_id="p1",
-                                  delivery_form="episode_script")
         with self.assertRaises(ValueError):
-            validate_shortdrama_rules("nonexistent", episode(), context)
+            validate_shortdrama_rules("nonexistent", episode(), context())
 
 
 if __name__ == "__main__":
