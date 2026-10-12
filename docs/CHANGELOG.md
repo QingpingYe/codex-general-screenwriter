@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Removed
+
+- Legacy `user-skill-contract-v1` registry modules (`scripts/user_skill_contract.py`, `scripts/user_skill_resolver.py`), the `config/user-skills.example.json` template, and their tests. Historical `resolution_snapshot.skills` fields remain readable; `config/user-skills.json` is no longer read by any code path.
+
 ## [0.6.1] - 2026-10-10
 
 ### Added
