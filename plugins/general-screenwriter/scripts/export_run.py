@@ -61,9 +61,9 @@ def write_export(destination, content, overwrite_allowed=False) -> Path:
     check_export_destination(path, overwrite_allowed=overwrite_allowed)
     if not isinstance(content, str):
         raise ExportRunnerError("导出内容必须是文本")
-    path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = None
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         descriptor, tmp_name = tempfile.mkstemp(
             prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent),
         )

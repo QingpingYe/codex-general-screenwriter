@@ -176,6 +176,15 @@ class WriteExportTests(unittest.TestCase):
                     write_export(target, "content")
             self.assertEqual(list(Path(tmp).iterdir()), [])
 
+    def test_output_directory_creation_failure_raises_runner_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            blocker = Path(tmp) / "blocker"
+            blocker.write_text("keep", encoding="utf-8")
+            with self.assertRaises(ExportRunnerError):
+                write_export(blocker / "sub" / "out.txt", "content")
+            self.assertEqual(blocker.read_text(encoding="utf-8"), "keep")
+            self.assertEqual(list(Path(tmp).iterdir()), [blocker])
+
     def test_existing_file_is_not_overwritten_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "out.txt"
@@ -313,6 +322,77 @@ class ExportCliTests(unittest.TestCase):
                 capture_output=True, text=True, encoding="utf-8",
             )
             self.assertEqual(third.returncode, 0, third.stderr)
+
+    def test_cli_directory_failure_has_no_traceback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            blocker = tmp_path / "blocker"
+            blocker.write_text("keep", encoding="utf-8")
+            refs_file = tmp_path / "refs.json"
+            payloads_file = tmp_path / "payloads.json"
+            params_file = tmp_path / "params.json"
+            refs_file.write_text(
+                json.dumps(artifact_refs(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            payloads_file.write_text(
+                json.dumps({"episode_script": episode_payload()},
+                           ensure_ascii=False),
+                encoding="utf-8",
+            )
+            params_file.write_text(
+                json.dumps({"output_directory": str(blocker / "sub"),
+                            "filename": "e2.txt"},
+                           ensure_ascii=False),
+                encoding="utf-8",
+            )
+            result = subprocess.run([
+                sys.executable, str(CLI),
+                "--exporter-id", "shortdrama_episode_script",
+                "--artifact-refs", str(refs_file),
+                "--payloads", str(payloads_file),
+                "--params", str(params_file),
+            ], capture_output=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(b"[export_cli]", result.stderr)
+            self.assertNotIn(b"Traceback", result.stderr)
+
+    def test_cli_output_is_utf8_with_chinese_filename(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            refs_file = tmp_path / "refs.json"
+            payloads_file = tmp_path / "payloads.json"
+            params_file = tmp_path / "params.json"
+            refs_file.write_text(
+                json.dumps(artifact_refs(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            payloads_file.write_text(
+                json.dumps({"episode_script": episode_payload()},
+                           ensure_ascii=False),
+                encoding="utf-8",
+            )
+            params_file.write_text(
+                json.dumps({"output_directory": tmp,
+                            "filename": "第一集.txt"},
+                           ensure_ascii=False),
+                encoding="utf-8",
+            )
+            result = subprocess.run([
+                sys.executable, str(CLI),
+                "--exporter-id", "shortdrama_episode_script",
+                "--artifact-refs", str(refs_file),
+                "--payloads", str(payloads_file),
+                "--params", str(params_file),
+            ], capture_output=True, text=True, encoding="utf-8",
+                errors="replace")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("第一集.txt", result.stdout)
+            written = tmp_path / "第一集.txt"
+            self.assertIn(
+                "林一：谁动了我的证据？",
+                written.read_text(encoding="utf-8"),
+            )
 
 
 if __name__ == "__main__":

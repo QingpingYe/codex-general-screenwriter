@@ -20,6 +20,10 @@ def _read_json(path, label):
 
 
 def main(argv=None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="通用编剧导出器（内部工具）")
     parser.add_argument("--exporter-id", required=True)
     parser.add_argument("--artifact-refs", required=True)
