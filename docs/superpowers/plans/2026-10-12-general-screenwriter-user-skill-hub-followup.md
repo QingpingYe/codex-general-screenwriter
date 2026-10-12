@@ -1,5 +1,7 @@
 # User Skill Hub Follow-up Implementation Plan
 
+**状态：** 已完成（2026-10-12）
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 按复盘整改设计关闭用户技能中心的链接语义、根目录白名单、写入原子性、旧系统退休、字段命名与系统元数据接线六类问题。
@@ -41,7 +43,7 @@
 - Consumes: 现有 `UserSkillHubError`、`_CONTENT_FILE`、`_validate_user_skill`、`_validate_system_skill`、`_reject_extra_files`、`validate_user_skill_tree`。
 - Produces: 模块内 `_is_link_like(path: Path) -> bool`、`_require_plain_entry(path: Path, label: str) -> None`（命中链接类抛 `UserSkillHubError`，消息同时含"符号链接"与"junction"）。
 
-- [ ] **Step 1: 写入失败测试与用例调整（RED）**
+- [x] **Step 1: 写入失败测试与用例调整（RED）**
 
 在 `ValidateUserSkillTests` 增加：
 
@@ -84,12 +86,12 @@
 
 同时调整 `test_tree_validates_only_immediate_skill_directories`：`not-a-skill` 目录不再写入 `skill-meta.json`（保持"两者皆无则跳过"的语义），其余断言不变。
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `python plugins\general-screenwriter\tests\test_user_skill_hub.py`
 Expected: 3 个新用例失败（两个 junction 用例因未抛错而失败；半安装用例因树校验返回空而失败），其余通过。
 
-- [ ] **Step 3: 实现链接语义与半安装检测（GREEN）**
+- [x] **Step 3: 实现链接语义与半安装检测（GREEN）**
 
 在 `user_skill_hub.py` 顶部增加 `import os`，新增：
 
@@ -127,17 +129,17 @@ def _require_plain_entry(path: Path, label: str) -> None:
 4. `_reject_extra_files`：循环体先判 `_is_link_like(path)` 并抛错，再判白名单（原 `not path.is_symlink()` 条件删除）。
 5. `validate_system_skill_tree` 候选过滤改为 `(directory / _CONTENT_FILE).is_file() or (directory / "skill-meta.json").is_file()`。
 
-- [ ] **Step 4: 运行并确认通过**
+- [x] **Step 4: 运行并确认通过**
 
 Run: `python plugins\general-screenwriter\tests\test_user_skill_hub.py`
 Expected: 全部通过（win32 上无 skip 的 junction 用例）。
 
-- [ ] **Step 5: 全量回归**
+- [x] **Step 5: 全量回归**
 
 Run: `python .\scripts\run_plugin_tests.py`
 Expected: `OK: 79 offline commands passed`（后续任务会追加命令数）。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add plugins/general-screenwriter/skills/user-skill-hub/scripts/user_skill_hub.py plugins/general-screenwriter/tests/test_user_skill_hub.py
@@ -159,18 +161,18 @@ git commit -m "fix: unify skill tree link and completeness checks"
 - Consumes: Task 1 的 `_require_plain_entry`；hub 的 `validate_user_skill_tree(plugin_root)`、`validate_system_skill_tree(plugin_root)`。
 - Produces: `scripts.user_skill_gate.check_plugin_skill_trees(plugin_root: Path) -> tuple[str, ...]`；CLI `python scripts\user_skill_gate.py` 退出码 0/1。
 
-- [ ] **Step 1: 写入失败测试（RED）**
+- [x] **Step 1: 写入失败测试（RED）**
 
 `test_user_skill_hub.py` 的 `ValidateUserSkillTreeTests` 增加 `test_loose_files_in_user_skills_root_are_rejected`：在合法树根放入 `notes.md` 与 `tool.exe`，断言 `validate_user_skill_tree` 抛 `UserSkillHubError` 且消息含文件名字。
 
 新增 `scripts/test_user_skill_gate.py`：用例一断言 `check_plugin_skill_trees(真实插件根) == ()`；用例二在临时插件根（复制 `config/type-packs.json`，建 `skills/user-skills/` 与一个合法包，再加散落文件）断言返回非空且消息含散落文件名。
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `python plugins\general-screenwriter\tests\test_user_skill_hub.py -k loose` 与 `python scripts\test_user_skill_gate.py`（脚本尚不存在时按 import 失败判断）
 Expected: 前者失败（散落文件被静默忽略）；后者因模块不存在失败。
 
-- [ ] **Step 3: 实现白名单与门禁（GREEN）**
+- [x] **Step 3: 实现白名单与门禁（GREEN）**
 
 `validate_user_skill_tree` 改为逐条目分类：先 `_require_plain_entry(entry, "用户技能目录")` 处理链接类；非目录条目抛 `UserSkillHubError(f"用户技能根目录只允许技能目录：{entry.name}")`；目录条目进入原有包校验。
 
@@ -178,12 +180,12 @@ Expected: 前者失败（散落文件被静默忽略）；后者因模块不存�
 
 接线：`run_plugin_tests.build_commands` 追加 `[sys.executable, str(repo_root / "scripts" / "user_skill_gate.py")]`；`release_gate.GATE_STEPS` 在 `knowledge_adapter` 后插入 `("user_skill_trees", "scripts/user_skill_gate.py")`；`test_release_gate.py` 期望列表同步，并把 `test_declares_nine_gate_steps` 更名为 `test_declares_gate_steps`。
 
-- [ ] **Step 4: 运行并确认通过**
+- [x] **Step 4: 运行并确认通过**
 
 Run: `python scripts\test_user_skill_gate.py; python scripts\test_release_gate.py; python .\scripts\run_plugin_tests.py`
 Expected: 全部通过，命令数变为 80。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add plugins/general-screenwriter/skills/user-skill-hub/scripts/user_skill_hub.py plugins/general-screenwriter/tests/test_user_skill_hub.py scripts/user_skill_gate.py scripts/test_user_skill_gate.py scripts/run_plugin_tests.py scripts/release_gate.py scripts/test_release_gate.py
@@ -202,7 +204,7 @@ git commit -m "feat: guard user skill tree roots in release gates"
 - Consumes: Task 1 的链接语义、Task 2 的根白名单、`validate_user_skill`、`validate_user_skill_tree`。
 - Produces: `install_user_skill_pack(staged_dir: Path, plugin_root: Path, *, overwrite: bool = False) -> UserSkill`；`main(argv: Sequence[str] | None = None) -> int`（子命令 `validate`、`validate-tree`、`preview`、`install`）。
 
-- [ ] **Step 1: 写入失败测试（RED）**
+- [x] **Step 1: 写入失败测试（RED）**
 
 新增 `test_user_skill_install.py`（沿用 hub 测试的 `sys.path` 与临时插件根辅助模式）：
 
@@ -213,25 +215,25 @@ git commit -m "feat: guard user skill tree roots in release gates"
 5. `test_install_leaves_tree_untouched_when_staged_pack_invalid`：暂存包缺 `SKILL.md` → 抛错且目标目录不存在。
 6. `test_cli_install_roundtrip`：`subprocess` 调用 `python <hub脚本> install --staging <dir> --plugin-root <root>` 退出码 0；再次无 `--overwrite` 调用退出码 1。
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `python plugins\general-screenwriter\tests\test_user_skill_install.py`
 Expected: 因 `install_user_skill_pack` 与 CLI 不存在而失败/import error。
 
-- [ ] **Step 3: 实现安装协议与 CLI（GREEN）**
+- [x] **Step 3: 实现安装协议与 CLI（GREEN）**
 
 按 spec 第 5 节的六步协议实现：单包校验 → 目标冲突检查 → 同卷 `.tmp` 工作副本（`copytree` + 复核）→ 备份改名 → 换入改名（失败回滚）→ 换入后树校验（失败回滚）→ 清理备份。CLI 用 `argparse` 实现四个子命令，`UserSkillHubError` 打印到 stderr 返回 1，用法错误返回 2。
 
-- [ ] **Step 4: 更新 SKILL.md 与 .gitignore**
+- [x] **Step 4: 更新 SKILL.md 与 .gitignore**
 
 `SKILL.md`"校验与写入"一节改写为暂存流程（暂存目录由工作流在仓库外或 `.tmp` 创建、先单包校验、预览、用户确认后 `install`、覆盖需显式标志、最后树校验）；保持"不得把内部命令作为用户界面"的既有句子。`.gitignore` 增加一行 `.tmp/`。
 
-- [ ] **Step 5: 运行并确认通过**
+- [x] **Step 5: 运行并确认通过**
 
 Run: `python plugins\general-screenwriter\tests\test_user_skill_install.py; python plugins\general-screenwriter\tests\test_user_skill_hub.py; python .\scripts\run_plugin_tests.py`
 Expected: 全部通过，命令数变为 81。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add .gitignore plugins/general-screenwriter/skills/user-skill-hub/SKILL.md plugins/general-screenwriter/skills/user-skill-hub/scripts/user_skill_hub.py plugins/general-screenwriter/tests/test_user_skill_install.py
@@ -251,23 +253,23 @@ git commit -m "feat: install user skill packs atomically"
 - Consumes: Task 2 的门禁步骤表结构。
 - Produces: `GATE_STEPS` 中 `skill_registry` 被 `user_skill_hub` 与 `user_skill_runtime` 替换；`plugin-contract.json` 不再声明 `user_skill_contract`。
 
-- [ ] **Step 1: 先改期望测试（RED）**
+- [x] **Step 1: 先改期望测试（RED）**
 
 `test_release_gate.test_declares_gate_steps` 期望列表改为：`registry_contract`、`knowledge_adapter`、`user_skill_trees`、`user_skill_hub`、`user_skill_runtime`、`dag_scheduler`、`quality_gate`、`exporter_contract`、`offline_regression`、`governance_check`、`packaging_check`。
 
 Run: `python scripts\test_release_gate.py`
 Expected: 失败（当前列表仍是 `skill_registry` 单步）。
 
-- [ ] **Step 2: 改实现（GREEN）**
+- [x] **Step 2: 改实现（GREEN）**
 
 `release_gate.py` 以 `("user_skill_hub", "plugins/general-screenwriter/tests/test_user_skill_hub.py")` 与 `("user_skill_runtime", "plugins/general-screenwriter/tests/test_user_skill_run_integration.py")` 替换 `skill_registry` 行；`plugin-contract.json` 删除 `user_skill_contract` 块（保留 `user_skill_hub`）；两个旧模块文件头加一行弃用说明（将在 Task 6 删除）。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 Run: `python scripts\test_release_gate.py; python .\scripts\run_plugin_tests.py`
 Expected: 全部通过。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add plugins/general-screenwriter/config/plugin-contract.json plugins/general-screenwriter/scripts/user_skill_contract.py plugins/general-screenwriter/scripts/user_skill_resolver.py scripts/release_gate.py scripts/test_release_gate.py
@@ -284,7 +286,7 @@ git commit -m "chore: retire legacy user skill contract from release gates"
 - Consumes: `SkillsSnapshotTests._skills_snapshot()` 与 `assert_manifest_type_executable`。
 - Produces: 执行路径不再访问 `_load_skill_registry`（该函数随后由 Task 6 删除）。
 
-- [ ] **Step 1: 写入失败测试（RED）**
+- [x] **Step 1: 写入失败测试（RED）**
 
 在 `SkillsSnapshotTests` 增加（并补 `from unittest import mock`）：
 
@@ -308,16 +310,16 @@ git commit -m "chore: retire legacy user skill contract from release gates"
 Run: `python plugins\general-screenwriter\tests\test_stage_dag_context.py -k registry`
 Expected: 失败（`AssertionError: legacy registry consulted`）。
 
-- [ ] **Step 2: 删除旧路径（GREEN）**
+- [x] **Step 2: 删除旧路径（GREEN）**
 
 删除 `stage_dag.py` 中 `_load_skill_registry`、`_validate_skills_against_registry` 两函数及 `assert_manifest_type_executable` 内的调用块（`skills = snapshot.get("skills")` 起的三行）；保留 `_validate_compact_skills` 与旧快照字段校验。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 Run: `python plugins\general-screenwriter\tests\test_stage_dag_context.py; python .\scripts\run_plugin_tests.py`
 Expected: 全部通过（含 `test_revision_manifest_inherits_skills_snapshot`）。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add plugins/general-screenwriter/scripts/stage_dag.py plugins/general-screenwriter/tests/test_stage_dag_context.py
@@ -338,21 +340,21 @@ git commit -m "refactor: decouple stage dag from legacy user skill registry"
 - Consumes: Task 4/5 已切断全部生产引用。
 - Produces: 仓库内仅剩轻量用户技能一套契约。
 
-- [ ] **Step 1: 确认零引用**
+- [x] **Step 1: 确认零引用**
 
 Run: `rg -n "user_skill_contract|user_skill_resolver|user-skills.example" --glob "!.git" .`
 Expected: 仅命中文档归档与即将删除的文件本身。
 
-- [ ] **Step 2: 删除并更新 CHANGELOG**
+- [x] **Step 2: 删除并更新 CHANGELOG**
 
 删除五个文件；`docs/CHANGELOG.md` 顶部区块新增 Removed 条目：旧版 `user-skill-contract-v1` 注册表与解析器已移除，历史 `resolution_snapshot.skills` 字段仍然可读，`config/user-skills.json` 不再被读取。
 
-- [ ] **Step 3: 验证**
+- [x] **Step 3: 验证**
 
 Run: `python .\scripts\run_plugin_tests.py; python .\scripts\release_gate.py`
 Expected: 全绿。
 
-- [ ] **Step 4: 提交**
+- [x] **Step 4: 提交**
 
 ```bash
 git add -A plugins/general-screenwriter/scripts/user_skill_contract.py plugins/general-screenwriter/scripts/user_skill_resolver.py plugins/general-screenwriter/config/user-skills.example.json plugins/general-screenwriter/tests/test_user_skill_contract.py plugins/general-screenwriter/tests/test_user_skill_resolver.py docs/CHANGELOG.md
@@ -371,27 +373,27 @@ git commit -m "chore: remove legacy user skill registry"
 - Consumes: 现有 `user_skill_hub` 契约块与 `package_check` 密钥扫描。
 - Produces: 契约块 `schema_version="user-skill-hub-v2"`、字段 `wildcard_value`（`wildcard_token` 仍以 `token` 结尾，会命中密钥扫描启发式）；`package_check` 无白名单例外。
 
-- [ ] **Step 1: 先改期望测试（RED）**
+- [x] **Step 1: 先改期望测试（RED）**
 
 `test_user_skill_hub.py` 两处断言（契约整字典与 `hub_contract["all_token"]`）改为 `wildcard_value` 与 `user-skill-hub-v2`。
 
 Run: `python plugins\general-screenwriter\tests\test_user_skill_hub.py -k contract`
 Expected: 失败。
 
-- [ ] **Step 2: 改契约实现（GREEN）**
+- [x] **Step 2: 改契约实现（GREEN）**
 
 `plugin-contract.json` 字段更名并升级 `schema_version`；验证单测通过。
 
-- [ ] **Step 3: 清理 package_check 白名单**
+- [x] **Step 3: 清理 package_check 白名单**
 
 `package_check.py` 删除 `_ALLOWED_JSON_CREDENTIALS` 常量与 `visit()` 中的例外分支；`test_package_check.py` 的 `test_contract_all_token_is_not_treated_as_secret` 改为 `test_contract_wildcard_value_is_not_treated_as_secret`（`wildcard_value` 不误报，`legacy.all_token` 与 `root_token` 均被拦截）。
 
-- [ ] **Step 4: 验证**
+- [x] **Step 4: 验证**
 
 Run: `python scripts\test_package_check.py; python .\scripts\run_plugin_tests.py`
 Expected: 全绿。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```bash
 git add plugins/general-screenwriter/config/plugin-contract.json plugins/general-screenwriter/tests/test_user_skill_hub.py scripts/package_check.py scripts/test_package_check.py
@@ -412,28 +414,28 @@ git commit -m "refactor: rename user skill hub wildcard contract field"
 - Consumes: 系统 `skills/*/skill-meta.json`、用户 `skills/user-skills/*/manifest.json`。
 - Produces: `build_skill_index.build_index(plugin_root: Path) -> dict`；`config/skill-index.json`。
 
-- [ ] **Step 1: 写入失败测试（RED）**
+- [x] **Step 1: 写入失败测试（RED）**
 
 `scripts/test_skill_index.py`：用例一断言 `build_index(真实插件根)` 序列化结果与已提交 `config/skill-index.json` 一致（文件不存在时先失败）；用例二在临时插件根增删一个技能包后断言索引 entries 集合随之变化；用例三断言重复构建输出逐字节一致。
 
-- [ ] **Step 2: 实现构建器并生成索引（GREEN）**
+- [x] **Step 2: 实现构建器并生成索引（GREEN）**
 
 实现 `build_index`（entries 按 `skill_id` 排序；每条含 `skill_id`、`layer`、`supports`；无时间戳），用 CLI 生成 `config/skill-index.json` 并提交。
 
-- [ ] **Step 3: 治理漂移检查**
+- [x] **Step 3: 治理漂移检查**
 
 `governance_check.py` 增加：重建索引并与 `config/skill-index.json` 逐字节比较，不一致追加快错误"skill-index.json 过期，运行 scripts/build_skill_index.py"；`test_governance_check.py` 增加篡改后报错的用例。
 
-- [ ] **Step 4: 入口路由步骤**
+- [x] **Step 4: 入口路由步骤**
 
 `skills/general-screenwriter/SKILL.md` 增加一句：加载媒介专属系统技能前，先确认 `config/skill-index.json` 中该技能的 `supports` 覆盖当前 `medium_id`。
 
-- [ ] **Step 5: 验证**
+- [x] **Step 5: 验证**
 
 Run: `python scripts\test_skill_index.py; python .\scripts\run_plugin_tests.py; python .\scripts\release_gate.py`
 Expected: 全绿。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```bash
 git add scripts/build_skill_index.py scripts/test_skill_index.py plugins/general-screenwriter/config/skill-index.json scripts/governance_check.py scripts/test_governance_check.py plugins/general-screenwriter/skills/general-screenwriter/SKILL.md

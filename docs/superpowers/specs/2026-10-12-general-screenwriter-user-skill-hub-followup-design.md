@@ -1,6 +1,6 @@
 # 通用编剧插件：用户技能中心复盘整改设计
 
-**状态：** 设计草案
+**状态：** 已完成（2026-10-12）
 **日期：** 2026-10-12
 **关联设计：** `docs/superpowers/specs/2026-10-10-general-screenwriter-user-skill-hub-design.md`
 **关联实施计划：** `docs/superpowers/plans/2026-10-12-general-screenwriter-user-skill-hub-followup.md`

@@ -1,5 +1,7 @@
 # User Skill Hub Implementation Plan
 
+**状态：** 已完成（2026-10-12）
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a natural-language user-skill hub that validates, matches, overwrites, and shares lightweight skill packs through the plugin repository.
@@ -47,7 +49,7 @@
   - `validate_user_skill_tree(plugin_root: Path) -> tuple[UserSkill, ...]`
   - `SUPPORT_FIELDS: tuple[str, ...] = ("medium_ids", "genre_ids", "series_ids", "project_ids", "stage_ids", "artifact_ids")`
 
-- [ ] **Step 1: Write failing validator tests**
+- [x] **Step 1: Write failing validator tests**
 
 Create `test_user_skill_hub.py` with the project's existing `sys.path` pattern and cover:
 
@@ -77,21 +79,21 @@ Tests must assert rejection of: missing fields, empty support arrays, `["all", "
 
 Also assert that `medium_ids=["all"]` with `stage_ids=["all"]` and `artifact_ids=["all"]` passes when all other required fields are valid.
 
-- [ ] **Step 2: Run the new test file**
+- [x] **Step 2: Run the new test file**
 
 Run: `python plugins/general-screenwriter/tests/test_user_skill_hub.py -v`  
 Expected: FAIL because `user_skill_hub` does not exist.
 
-- [ ] **Step 3: Implement manifest loading and validation**
+- [x] **Step 3: Implement manifest loading and validation**
 
 Implement `UserSkill`, `validate_user_skill`, and `validate_user_skill_tree`. Use standard-library JSON, `datetime.fromisoformat`, `pathlib`, and `hashlib` if needed. Reject unknown fields and executable files. Validate concrete `stage_ids` and `artifact_ids` against the active type packs selected by `medium_ids`; `all` matches every active type pack.
 
-- [ ] **Step 4: Run validator tests**
+- [x] **Step 4: Run validator tests**
 
 Run: `python plugins/general-screenwriter/tests/test_user_skill_hub.py -v`  
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add plugins/general-screenwriter/skills/user-skill-hub/scripts/user_skill_hub.py plugins/general-screenwriter/tests/test_user_skill_hub.py
@@ -111,7 +113,7 @@ git commit -m "feat: validate lightweight user skill packs"
   - `validate_system_skill(skill_dir: Path, plugin_root: Path) -> SystemSkill`
   - `validate_system_skill_tree(plugin_root: Path) -> tuple[SystemSkill, ...]`
 
-- [ ] **Step 1: Add failing system-metadata tests**
+- [x] **Step 1: Add failing system-metadata tests**
 
 Add tests that iterate every immediate child of `plugins/general-screenwriter/skills/` containing `SKILL.md` and assert:
 
@@ -123,16 +125,16 @@ Add tests that iterate every immediate child of `plugins/general-screenwriter/sk
 6. `text-craft`, `craft-benchmark-check`, `staging-planner`, `image-prompt-architect`, `image-generate`, and `illustration-export` use `medium_ids=["picturebook"]`, not `all`;
 7. all `skill-meta.json` files use the shared `supports` field names.
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 Run: `python plugins/general-screenwriter/tests/test_user_skill_hub.py -v`  
 Expected: FAIL because system metadata is missing.
 
-- [ ] **Step 3: Implement system metadata validation**
+- [x] **Step 3: Implement system metadata validation**
 
 Validate the same schema shape as user skills, but require `visibility == "system"` and omit `user_name` for system metadata. Reuse type-pack validation for concrete stage/artifact IDs.
 
-- [ ] **Step 4: Create metadata files**
+- [x] **Step 4: Create metadata files**
 
 Create `skill-meta.json` for:
 
@@ -170,7 +172,7 @@ image-prompt-architect, image-generate, illustration-export
 
 using the same shape, except `medium_ids: ["picturebook"]`. Before marking `lexile-check` or another skill `all`, verify its method truly applies across media; if uncertain, leave it scoped and record the reason in the PR description.
 
-- [ ] **Step 5: Defer plugin contract registration**
+- [x] **Step 5: Defer plugin contract registration**
 
 Do not add `user-skill-hub` to `config/plugin-contract.json` in this task; its `SKILL.md` is created in Task 4, and adding the contract entry now would fail governance with a contract-only skill. Do not add ignored, repository-local skills such as `jev-decision-runtime`. Task 4 will add the contract entry and object:
 
@@ -184,12 +186,12 @@ Do not add `user-skill-hub` to `config/plugin-contract.json` in this task; its `
 }
 ```
 
-- [ ] **Step 6: Run tests and governance**
+- [x] **Step 6: Run tests and governance**
 
 Run: `python plugins/general-screenwriter/tests/test_user_skill_hub.py -v; python scripts/governance_check.py; python scripts/package_check.py`  
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add plugins/general-screenwriter/skills plugins/general-screenwriter/tests/test_user_skill_hub.py
@@ -209,7 +211,7 @@ git commit -m "feat: add system skill scope metadata"
   - `format_user_skills(skills: Sequence[UserSkill]) -> str`
   - `used_user_skill_record(skill: UserSkill) -> dict[str, str]`
 
-- [ ] **Step 1: Write failing matcher tests**
+- [x] **Step 1: Write failing matcher tests**
 
 Using temporary skill packs, assert:
 
@@ -221,21 +223,21 @@ Using temporary skill packs, assert:
 6. `format_user_skills` includes title, `user_name`, description, and content;
 7. `used_user_skill_record` returns exactly `skill_id`, `title`, `user_name`, `updated_at`, and `content_hash`, with `content_hash` prefixed by `sha256:`.
 
-- [ ] **Step 2: Run matcher tests**
+- [x] **Step 2: Run matcher tests**
 
 Run: `python plugins/general-screenwriter/tests/test_user_skill_hub.py -v`  
 Expected: FAIL because the three functions are absent.
 
-- [ ] **Step 3: Implement matching, formatting, and run-record conversion**
+- [x] **Step 3: Implement matching, formatting, and run-record conversion**
 
 Compute specificity as project, series, genre, medium, then zero for `all`; sort descending and tie-break by `title`. `format_user_skills` must be plain text suitable for injection. Hash the exact bytes of `SKILL.md`.
 
-- [ ] **Step 4: Run matcher tests**
+- [x] **Step 4: Run matcher tests**
 
 Run: `python plugins/general-screenwriter/tests/test_user_skill_hub.py -v`  
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add plugins/general-screenwriter/skills/user-skill-hub/scripts/user_skill_hub.py plugins/general-screenwriter/tests/test_user_skill_hub.py
@@ -256,7 +258,7 @@ git commit -m "feat: match user skills by creative context"
 - Consumes: `validate_user_skill_tree`, `validate_system_skill_tree`, and `load_matching_user_skills`.
 - Produces: a real shared skill with `skill_id="novel-to-shortdrama-adaptation"`, `user_name="QingpingYe"`, `medium_ids=["shortdrama"]`, `series_ids=["all"]`, `project_ids=["all"]`, and a hub skill instructing the natural-language workflow.
 
-- [ ] **Step 1: Write failing hub and sample tests**
+- [x] **Step 1: Write failing hub and sample tests**
 
 Add tests asserting:
 
@@ -268,31 +270,31 @@ Add tests asserting:
 6. it describes the GitHub repository and mechanical plugin patch bump;
 7. `plugin-contract.json.skills` contains `user-skill-hub` and its `user_skill_hub` object declares `schema_version="user-skill-hub-v1"`, `all_token="all"`, `required_user_field="user_name"`, `skill_types=["prompt_skill","checklist_skill","reference_skill","exporter_skill"]`, and `allow_executable_files=false`.
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 Run: `python plugins/general-screenwriter/tests/test_user_skill_hub.py -v`  
 Expected: FAIL because the hub skill and sample pack are absent.
 
-- [ ] **Step 3: Implement the hub workflow document**
+- [x] **Step 3: Implement the hub workflow document**
 
 Write `SKILL.md` with three modes: create, import/adapt, and update/overwrite. Define the required questions, preview format, overwrite warning, validation step, patch-bump step, Git pull/rebase behavior, push confirmation, and failure handling. Do not require the screenwriter to run commands.
 
-- [ ] **Step 4: Create the sample skill**
+- [x] **Step 4: Create the sample skill**
 
 Write the manifest using `skill_type="prompt_skill"` and canonical shortdrama stages `brief_gate`, `knowledge_load`, `episode_design`, `hook_design`, `beat_design`, `scene_design`, `episode_script_delegate`, `hook_check`, `pacing_check`, `dialogue_check`, and `quality_gate`. Declare artifacts `episode_outline`, `hook_sheet`, `beat_sheet`, `scene_table`, and `episode_script`. Write `SKILL.md` as a practical novel-to-shortdrama adaptation methodology with input, method, episode/hook structure, output format, and checkpoints.
 
-- [ ] **Step 5: Register the hub contract and bump the plugin release cursor**
+- [x] **Step 5: Register the hub contract and bump the plugin release cursor**
 
 Add `user-skill-hub` to `config/plugin-contract.json.skills` and add the contract object declared above. Do not add ignored, repository-local skills such as `jev-decision-runtime`.
 
 Increment the patch component of `version` in `.codex-plugin/plugin.json`.
 
-- [ ] **Step 6: Run validation**
+- [x] **Step 6: Run validation**
 
 Run: `python plugins/general-screenwriter/tests/test_user_skill_hub.py -v; python scripts/governance_check.py; python scripts/package_check.py`  
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add plugins/general-screenwriter/skills/user-skill-hub/SKILL.md plugins/general-screenwriter/skills/user-skills plugins/general-screenwriter/config/plugin-contract.json plugins/general-screenwriter/.codex-plugin/plugin.json plugins/general-screenwriter/tests/test_user_skill_hub.py
@@ -315,25 +317,25 @@ git commit -m "feat: add user skill hub and shortdrama sample"
   - `build_resolution_snapshot(..., used_user_skills: list[dict[str, str]] | None = None)`
   - snapshot field `used_user_skills` with entries containing exactly `skill_id`, `title`, `user_name`, `updated_at`, and `content_hash`
 
-- [ ] **Step 1: Write failing integration tests**
+- [x] **Step 1: Write failing integration tests**
 
 Create `test_user_skill_run_integration.py`. Assert that a new typed run with one valid record contains the record under `resolution_snapshot.used_user_skills`, dispatch-plan and task-envelope copies are isolated deep copies, a legacy manifest without the field remains valid and is not modified, and an invalid record (missing `user_name`, unknown extra field, or non-SHA-256 `content_hash`) fails validation.
 
-- [ ] **Step 2: Run integration tests**
+- [x] **Step 2: Run integration tests**
 
 Run: `python plugins/general-screenwriter/tests/test_user_skill_run_integration.py -v`  
 Expected: FAIL because the field is not accepted.
 
-- [ ] **Step 3: Extend snapshot validation and builder**
+- [x] **Step 3: Extend snapshot validation and builder**
 
 Add `used_user_skills` to the allowed snapshot fields, validate exact entry fields, and carry deep copies through `CreativeRunRequest`, `_snapshot`, and revision construction. Preserve `skills_resolution` unchanged for old manifests.
 
-- [ ] **Step 4: Run related tests**
+- [x] **Step 4: Run related tests**
 
 Run: `python plugins/general-screenwriter/tests/test_user_skill_run_integration.py -v; python plugins/general-screenwriter/tests/test_creative_run_builder.py -v; python plugins/general-screenwriter/tests/test_picturebook_migration_matrix.py -v`  
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add plugins/general-screenwriter/scripts/stage_dag.py plugins/general-screenwriter/scripts/creative_run_builder.py plugins/general-screenwriter/tests/test_user_skill_run_integration.py
@@ -351,30 +353,30 @@ git commit -m "feat: record used user skills in run snapshots"
 - Consumes: all implemented hub behavior.
 - Produces: user-facing documentation and a passing release gate.
 
-- [ ] **Step 1: Add failing contract/doc assertions**
+- [x] **Step 1: Add failing contract/doc assertions**
 
 Extend `test_user_skill_hub.py` to assert `plugin-contract.json` declares `user-skill-hub` and `README.md` contains a short Chinese explanation that users can add skills through natural conversation and that applicable dimensions use `all` instead of empty arrays.
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 Run: `python plugins/general-screenwriter/tests/test_user_skill_hub.py -v`  
 Expected: FAIL until README is updated.
 
-- [ ] **Step 3: Update user-facing docs**
+- [x] **Step 3: Update user-facing docs**
 
 Document the natural-language flow, required user name, `all` rule, overwrite confirmation, plugin-market update behavior, and system-vs-user skill boundary. Update `docs/CHANGELOG.md`.
 
-- [ ] **Step 4: Run the full offline regression**
+- [x] **Step 4: Run the full offline regression**
 
 Run: `python .\scripts\run_plugin_tests.py`  
 Expected: PASS with no failed commands.
 
-- [ ] **Step 5: Run release checks**
+- [x] **Step 5: Run release checks**
 
 Run: `python .\scripts\governance_check.py; python .\scripts\package_check.py; python .\scripts\release_gate.py`  
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add README.md docs/CHANGELOG.md plugins/general-screenwriter/tests/test_user_skill_hub.py
