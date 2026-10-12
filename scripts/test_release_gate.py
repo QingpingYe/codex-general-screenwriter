@@ -52,6 +52,9 @@ class ReleaseGateTests(unittest.TestCase):
         gate = contract["release_gate"]
         self.assertEqual(gate["schema_version"], "release-gate-v1")
         self.assertEqual(gate["script"], "scripts/release_gate.py")
+        self.assertEqual(
+            gate["steps"], [name for name, _ in release_gate.GATE_STEPS]
+        )
 
 
 def run_release_gate(**kwargs):

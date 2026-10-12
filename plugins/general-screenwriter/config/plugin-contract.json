@@ -264,7 +264,9 @@
     "steps": [
       "registry_contract",
       "knowledge_adapter",
-      "skill_registry",
+      "user_skill_trees",
+      "user_skill_hub",
+      "user_skill_runtime",
       "dag_scheduler",
       "quality_gate",
       "exporter_contract",
