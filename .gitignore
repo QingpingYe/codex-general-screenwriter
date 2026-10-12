@@ -4,3 +4,4 @@ node_modules/
 .worktrees/
 .superpowers/
 .sdd-review-fix-stage/
+.tmp/

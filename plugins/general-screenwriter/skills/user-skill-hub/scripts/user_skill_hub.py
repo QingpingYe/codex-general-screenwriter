@@ -1,16 +1,24 @@
 """Validation for system skill metadata and lightweight user skill packs."""
 from __future__ import annotations
 
+import argparse
 import json
 import hashlib
 import os
 import re
+import shutil
+import sys
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 from collections.abc import Sequence
+
+_PLUGIN_SCRIPTS = Path(__file__).resolve().parents[3] / "scripts"
+if str(_PLUGIN_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_PLUGIN_SCRIPTS))
 
 from type_registry import TypeRegistry, load_type_registry
 
@@ -420,6 +428,59 @@ def used_user_skill_record(skill: UserSkill) -> dict[str, str]:
     }
 
 
+def install_user_skill_pack(
+    staged_dir: Path, plugin_root: Path, *, overwrite: bool = False
+) -> UserSkill:
+    """Validate a staged pack and swap it into skills/user-skills atomically."""
+    root = Path(plugin_root).resolve()
+    staged = Path(staged_dir)
+    skill = validate_user_skill(staged, root)
+    skill_id = skill.manifest["skill_id"]
+
+    user_skills = root / "skills" / "user-skills"
+    if user_skills.exists():
+        _require_plain_entry(user_skills, "用户技能目录")
+    else:
+        user_skills.mkdir(parents=True)
+    target = user_skills / skill_id
+    if target.exists() and not overwrite:
+        raise UserSkillHubError(f"目标技能已存在，覆盖需要显式确认：{skill_id}")
+
+    staging_root = root.parent / ".tmp" / "user-skill-hub"
+    staging_root.mkdir(parents=True, exist_ok=True)
+    token = uuid.uuid4().hex[:8]
+    work_root = staging_root / token
+    work = work_root / skill_id
+    backup_root = staging_root / f"{token}-backup"
+    backup = backup_root / skill_id
+
+    shutil.copytree(staged, work)
+    try:
+        validate_user_skill(work, root)
+    except UserSkillHubError:
+        shutil.rmtree(work_root, ignore_errors=True)
+        raise
+
+    had_target = target.exists()
+    try:
+        if had_target:
+            backup_root.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(target), str(backup))
+        shutil.move(str(work), str(target))
+        validate_user_skill_tree(root)
+    except Exception:
+        if target.exists():
+            shutil.rmtree(target, ignore_errors=True)
+        if had_target and backup.exists():
+            shutil.move(str(backup), str(target))
+        shutil.rmtree(work_root, ignore_errors=True)
+        shutil.rmtree(backup_root, ignore_errors=True)
+        raise
+    shutil.rmtree(work_root, ignore_errors=True)
+    shutil.rmtree(backup_root, ignore_errors=True)
+    return validate_user_skill(target, root)
+
+
 def _has_method_section(content: str, terms: Sequence[str]) -> bool:
     return any(
         term in line.lstrip("#").strip().casefold()
@@ -550,3 +611,57 @@ def validate_system_skill_tree(plugin_root: Path) -> tuple[SystemSkill, ...]:
         _validate_system_skill(directory, registry)
         for directory in directories
     )
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="用户技能内部校验与安装工具")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    validate_parser = subparsers.add_parser("validate")
+    validate_parser.add_argument("--skill-dir", required=True)
+    validate_parser.add_argument("--plugin-root", required=True)
+
+    tree_parser = subparsers.add_parser("validate-tree")
+    tree_parser.add_argument("--plugin-root", required=True)
+
+    preview_parser = subparsers.add_parser("preview")
+    preview_parser.add_argument("--skill-dir", required=True)
+    preview_parser.add_argument("--plugin-root", required=True)
+
+    install_parser = subparsers.add_parser("install")
+    install_parser.add_argument("--staging", required=True)
+    install_parser.add_argument("--plugin-root", required=True)
+    install_parser.add_argument("--overwrite", action="store_true")
+
+    args = parser.parse_args(list(argv) if argv is not None else None)
+    try:
+        if args.command == "validate":
+            skill = validate_user_skill(
+                Path(args.skill_dir), Path(args.plugin_root)
+            )
+            print(f"OK {skill.manifest['skill_id']}")
+        elif args.command == "validate-tree":
+            skills = validate_user_skill_tree(Path(args.plugin_root))
+            print(f"OK {len(skills)}")
+        elif args.command == "preview":
+            skill = validate_user_skill(
+                Path(args.skill_dir), Path(args.plugin_root)
+            )
+            for warning in preview_user_skill_warnings(skill):
+                print(warning)
+            print(f"OK {skill.manifest['skill_id']}")
+        else:
+            skill = install_user_skill_pack(
+                Path(args.staging),
+                Path(args.plugin_root),
+                overwrite=args.overwrite,
+            )
+            print(f"OK {skill.manifest['skill_id']}")
+    except UserSkillHubError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
