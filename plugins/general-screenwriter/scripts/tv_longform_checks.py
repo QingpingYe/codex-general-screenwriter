@@ -95,20 +95,39 @@ def _episode_function(artifact, parsed: ParsedScript, references: Mapping):
             "episode_function": function,
         }
     function = function.strip()
-    episode_list = _reference(references, "episode_list")
     episode_id = artifact.get("episode_id")
-    if episode_list is not None:
-        episodes = episode_list.get("episodes")
-        if isinstance(episodes, Mapping):
-            entry = episodes.get(episode_id)
-            if isinstance(entry, Mapping):
-                expected = entry.get("function")
-                if expected != function:
-                    return "fail", "episode_function 与集列表不一致", {
-                        "expected": expected,
-                        "actual": function,
-                    }
-    return "pass", "", {"episode_function": function}
+    if not _nonempty_text(episode_id):
+        return "fail", "episode_id 必须是非空字符串", {
+            "episode_id": episode_id,
+            "reference": "episode_list",
+        }
+    episode_id = episode_id.strip()
+    episode_list = _reference(references, "episode_list")
+    if episode_list is None:
+        return "fail", "缺少集列表引用", {"reference": "episode_list"}
+    episodes = episode_list.get("episodes")
+    if not isinstance(episodes, Mapping):
+        return "fail", "集列表缺少 episodes 映射", {
+            "reference": "episode_list",
+            "episodes": episodes,
+        }
+    entry = episodes.get(episode_id)
+    if not isinstance(entry, Mapping):
+        return "fail", "集列表缺少当前剧集", {
+            "episode_id": episode_id,
+            "reference": "episode_list",
+        }
+    expected = entry.get("function")
+    if not _nonempty_text(expected) or expected.strip() != function:
+        return "fail", "episode_function 与集列表不一致", {
+            "episode_id": episode_id,
+            "expected": expected,
+            "actual": function,
+        }
+    return "pass", "", {
+        "episode_function": function,
+        "episode_id": episode_id,
+    }
 
 
 def _timeline(artifact, parsed: ParsedScript, references: Mapping):
@@ -116,10 +135,19 @@ def _timeline(artifact, parsed: ParsedScript, references: Mapping):
     if not isinstance(timeline, list) or not timeline:
         return "fail", "时间线缺失或为空", {"timeline": timeline}
     ledger = _reference(references, "timeline_ledger")
-    last_order = ledger.get("last_order") if ledger is not None else None
-    has_last_order = isinstance(last_order, int) and not isinstance(last_order, bool)
-    episode_id = artifact.get("episode_id", "e1")
+    last_order = None
     violations, regressions, flashbacks = [], [], []
+    if ledger is None:
+        violations.append("缺少 timeline_ledger 引用产物")
+    else:
+        raw_last_order = ledger.get("last_order")
+        if (not isinstance(raw_last_order, int)
+                or isinstance(raw_last_order, bool)
+                or raw_last_order < 0):
+            violations.append("timeline_ledger.last_order 必须是非负整数")
+        else:
+            last_order = raw_last_order
+    episode_id = artifact.get("episode_id", "e1")
     previous_order = None
     for index, event in enumerate(timeline):
         label = f"timeline[{index}]"
@@ -139,9 +167,11 @@ def _timeline(artifact, parsed: ParsedScript, references: Mapping):
         if event.get("flashback") is True:
             flashbacks.append(f"{episode_id}:order-{order}")
             continue
-        if has_last_order and order <= last_order:
+        if last_order is not None and order <= last_order:
             regressions.append(f"{episode_id}:order-{order}")
     evidence = {
+        "reference": "timeline_ledger",
+        "last_order": last_order,
         "regressions": regressions,
         "flashbacks": flashbacks,
         "violations": violations,
@@ -265,16 +295,48 @@ def _character_state(artifact, parsed: ParsedScript, references: Mapping):
     if not isinstance(states, list) or not states:
         return "fail", "人物状态台账缺失或为空", {"character_states": states}
     arc_map = _reference(references, "character_arc_map")
-    previous_states = {}
-    if arc_map is not None:
-        latest = arc_map.get("latest")
-        if isinstance(latest, Mapping) and isinstance(latest.get("states"), list):
-            for entry in latest["states"]:
-                if isinstance(entry, Mapping) and _nonempty_text(entry.get("name")):
-                    previous_states[entry["name"].strip()] = entry.get("state")
     series_id = artifact.get("series_id", "s1")
     episode_id = artifact.get("episode_id", "e1")
     violations, conflicts, registered = [], [], []
+    previous_states = {}
+    if arc_map is None:
+        violations.append("缺少上一集角色状态引用")
+    else:
+        latest = arc_map.get("latest")
+        if not isinstance(latest, Mapping):
+            violations.append("character_arc_map.latest 必须是对象")
+        else:
+            prior_episode_id = latest.get("episode_id")
+            prior_states = latest.get("states")
+            prior_id_valid = (
+                prior_episode_id is None or _nonempty_text(prior_episode_id)
+            )
+            if not prior_id_valid:
+                violations.append(
+                    "character_arc_map.latest.episode_id 必须是 null 或非空字符串"
+                )
+            if not isinstance(prior_states, list):
+                violations.append("character_arc_map.latest.states 必须是数组")
+            elif prior_episode_id is None:
+                if prior_states:
+                    violations.append(
+                        "无前序剧集时 character_arc_map.latest.states 必须为空数组"
+                    )
+            elif prior_id_valid:
+                for index, entry in enumerate(prior_states):
+                    label = f"character_arc_map.latest.states[{index}]"
+                    if (not isinstance(entry, Mapping)
+                            or not _nonempty_text(entry.get("name"))
+                            or not _nonempty_text(entry.get("state"))):
+                        violations.append(f"{label} 必须包含非空 name/state")
+                        continue
+                    name = entry["name"].strip()
+                    if name in previous_states:
+                        violations.append(
+                            f"character_arc_map.latest.states 角色重复：{name}"
+                        )
+                        continue
+                    previous_states[name] = entry["state"].strip()
     for index, item in enumerate(states):
         label = f"character_states[{index}]"
         if not isinstance(item, Mapping):
@@ -309,8 +371,6 @@ def _character_state(artifact, parsed: ParsedScript, references: Mapping):
             recorded = previous_states[name]
             if _nonempty_text(recorded) and recorded.strip() != prior.strip():
                 conflicts.append(f"{series_id}:{episode_id}:character-state")
-    if arc_map is None:
-        violations.append("缺少上一集角色状态引用")
     unknown = sorted(parsed.speakers - set(registered))
     if unknown:
         violations.append(f"未登记角色出现在台词中：{', '.join(unknown)}")
@@ -335,19 +395,30 @@ def _series_constraint(artifact, parsed: ParsedScript, references: Mapping):
     bible_series_id = bible.get("series_id")
     if not _nonempty_text(series_id):
         violations.append("series_id 不能为空")
-    elif _nonempty_text(bible_series_id) and series_id.strip() != bible_series_id.strip():
+    elif not _nonempty_text(bible_series_id):
+        violations.append("series_bible.series_id 必须是非空字符串")
+    elif series_id.strip() != bible_series_id.strip():
         violations.append("series_id 与系列圣经不一致")
     bible_characters = set()
-    if isinstance(bible.get("characters"), list):
-        for item in bible["characters"]:
-            if isinstance(item, Mapping) and _nonempty_text(item.get("name")):
-                bible_characters.add(item["name"].strip())
+    raw_characters = bible.get("characters")
+    if not isinstance(raw_characters, list) or not raw_characters:
+        violations.append("series_bible.characters 必须是非空数组")
+    else:
+        for index, item in enumerate(raw_characters):
+            if not isinstance(item, Mapping) or not _nonempty_text(item.get("name")):
+                violations.append(
+                    f"series_bible.characters[{index}] 缺少角色名"
+                )
+                continue
+            bible_characters.add(item["name"].strip())
     unknown = sorted(parsed.speakers - bible_characters)
     if unknown:
         violations.append(f"台词角色不在系列圣经中：{', '.join(unknown)}")
     banned_hits = []
-    banned_terms = bible.get("banned_terms")
-    if isinstance(banned_terms, list):
+    banned_terms = bible.get("banned_terms", [])
+    if not isinstance(banned_terms, list):
+        violations.append("series_bible.banned_terms 必须是数组")
+    else:
         texts = [line.text for scene in parsed.scenes for line in scene.lines]
         for term in banned_terms:
             if _nonempty_text(term) and any(term.strip() in text for text in texts):
@@ -395,7 +466,9 @@ def _continuity(artifact, parsed: ParsedScript, references: Mapping):
                     or not _nonempty_text(entry.get("value"))):
                 violations.append(f"entries[{index}] 字段或值缺失")
     conflicts = ledger.get("conflicts")
-    if conflicts:
+    if not isinstance(conflicts, list):
+        violations.append("conflicts 必须是数组")
+    elif conflicts:
         violations.append(f"台账冲突未解决：{conflicts}")
     evidence = {
         "ledger": ledger_ref,

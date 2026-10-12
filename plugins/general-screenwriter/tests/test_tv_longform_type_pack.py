@@ -255,6 +255,139 @@ class ContentCheckTests(unittest.TestCase):
         self.assertEqual(result.status, "fail")
         self.assertEqual(result.evidence["conflicts"], ["s1:e2:character-state"])
 
+    def test_missing_timeline_ledger_fails_closed(self):
+        references = longform_references()
+        del references["timeline_ledger"]
+        result = validate_tv_longform_rules(
+            "timeline", episode(), context(), references)
+        self.assertEqual(result.status, "fail")
+        self.assertTrue(result.evidence["violations"])
+
+    def test_malformed_timeline_last_order_fails_closed(self):
+        references = longform_references(timeline_last_order="10")
+        result = validate_tv_longform_rules(
+            "timeline", episode(), context(), references)
+        self.assertEqual(result.status, "fail")
+        self.assertTrue(any(
+            "last_order" in item for item in result.evidence["violations"]))
+
+    def test_first_episode_timeline_uses_zero_last_order(self):
+        references = longform_references(timeline_last_order=0)
+        result = validate_tv_longform_rules(
+            "timeline", episode(), context(), references)
+        self.assertEqual(result.status, "pass")
+
+    def test_missing_episode_list_fails_closed(self):
+        references = longform_references()
+        del references["episode_list"]
+        result = validate_tv_longform_rules(
+            "episode_function", episode(), context(), references)
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.evidence.get("reference"), "episode_list")
+
+    def test_episode_list_without_current_episode_fails_closed(self):
+        references = longform_references()
+        references["episode_list"] = {
+            "artifact_id": "episode_list",
+            "episodes": {"e9": {"function": "其他集功能"}},
+        }
+        result = validate_tv_longform_rules(
+            "episode_function", episode(), context(), references)
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.evidence.get("episode_id"), "e2")
+
+    def test_continuity_requires_explicit_empty_conflicts(self):
+        references = longform_references()
+        del references["continuity_ledger"]["conflicts"]
+        result = validate_tv_longform_rules(
+            "continuity", episode(), context(), references)
+        self.assertEqual(result.status, "fail")
+        self.assertTrue(any(
+            "conflicts" in item for item in result.evidence["violations"]))
+
+    def test_character_state_explicit_no_prior_state_passes(self):
+        references = longform_references()
+        references["character_arc_map"] = {
+            "artifact_id": "character_arc_map",
+            "latest": {"episode_id": None, "states": []},
+        }
+        result = validate_tv_longform_rules(
+            "character_state", episode(), context(), references)
+        self.assertEqual(result.status, "pass")
+
+    def test_character_state_missing_latest_fails_closed(self):
+        references = longform_references()
+        references["character_arc_map"] = {"artifact_id": "character_arc_map"}
+        result = validate_tv_longform_rules(
+            "character_state", episode(), context(), references)
+        self.assertEqual(result.status, "fail")
+        self.assertTrue(result.evidence["violations"])
+
+    def test_character_state_no_prior_with_states_fails_closed(self):
+        references = longform_references()
+        references["character_arc_map"] = {
+            "artifact_id": "character_arc_map",
+            "latest": {
+                "episode_id": None,
+                "states": [{"name": "林一", "state": "calm"}],
+            },
+        }
+        result = validate_tv_longform_rules(
+            "character_state", episode(), context(), references)
+        self.assertEqual(result.status, "fail")
+
+    def test_character_state_malformed_prior_entry_fails_closed(self):
+        references = longform_references()
+        references["character_arc_map"] = {
+            "artifact_id": "character_arc_map",
+            "latest": {"episode_id": "e1", "states": [{"name": "林一"}]},
+        }
+        result = validate_tv_longform_rules(
+            "character_state", episode(), context(), references)
+        self.assertEqual(result.status, "fail")
+
+    def test_missing_bible_series_id_fails_closed(self):
+        references = longform_references()
+        references["series_bible"] = {
+            "artifact_id": "series_bible",
+            "characters": [{"name": "林一"}, {"name": "陈默"}],
+        }
+        result = validate_tv_longform_rules(
+            "series_constraint", episode(), context(), references)
+        self.assertEqual(result.status, "fail")
+        self.assertTrue(any(
+            "series_id" in item for item in result.evidence["violations"]))
+
+    def test_empty_bible_characters_fails_closed(self):
+        references = longform_references()
+        references["series_bible"] = {
+            "artifact_id": "series_bible",
+            "series_id": "s1",
+            "characters": [],
+        }
+        items = scenes()
+        for item in items:
+            item["lines"] = [action("只有动作，没有台词。")]
+        result = validate_tv_longform_rules(
+            "series_constraint", episode(scenes=items), context(), references)
+        self.assertEqual(result.status, "fail")
+
+    def test_malformed_banned_terms_fails_closed(self):
+        references = longform_references()
+        references["series_bible"] = dict(
+            references["series_bible"], banned_terms="穿越")
+        result = validate_tv_longform_rules(
+            "series_constraint", episode(), context(), references)
+        self.assertEqual(result.status, "fail")
+
+    def test_banned_terms_scope_is_script_line_text(self):
+        items = scenes()
+        items[0]["heading"] = "场1 穿越 天台 夜"
+        result = validate_tv_longform_rules(
+            "series_constraint", episode(scenes=items), context(),
+            longform_references())
+        self.assertEqual(result.status, "pass")
+
     def test_unregistered_speaker_fails_series_constraint(self):
         items = scenes()
         items[2]["lines"].append(dialogue("神秘人", "别查了。"))

@@ -33,7 +33,7 @@
 ## Review Focus
 
 1. **空洞内容不得通过**：字段齐全但开头钩子空行、全程动作无台词、结尾无钩子的剧本必须失败——Task 1/2 的"空洞内容"用例覆盖。
-2. **跨集引用缺失失败关闭**：没有 `series_bible` / `character_arc_map` 引用时 `series_constraint`、`character_state` 必须失败而不是跳过或通过——Task 2 用例覆盖。
+2. **跨集引用缺失失败关闭**：没有 `series_bible` / `character_arc_map` 引用时 `series_constraint`、`character_state` 必须失败而不是跳过或通过；`timeline_ledger` / `episode_list` 的引用或其必需字段缺失、类型错误同样必须失败关闭——Task 2 用例覆盖。
 3. **导出失败零残留**：目标已存在、渲染失败、非法文件名（路径穿越）时不得写文件、不得留 `.tmp`；写入必须原子——Task 3 用例覆盖。
 4. **样例不得再伪造结果**：确定性样例的每条结果必须来自真实校验器（evidence 标记来源），fixture 不得携带 `expected_results` 兜底——Task 5 用例覆盖。
 5. **阶段链必须真实可达**：代表性工作流声明的阶段序列必须在当前类型包中拓扑有序、目标产物由链中阶段产出——Task 5 用例覆盖。
@@ -203,14 +203,14 @@ git commit -m "feat: add content-level shortdrama validation"
 检查语义（全部 9 条规则 `validator` 改为 `"tv-longform-checks"`，pack `validators` 加 `"tv-longform-checks"`；阻断策略保持现状）：
 
 - `season_arc`：`references["season_arc"].beats` 非空；`arc_beat_ref` 解析到 beat；evidence 记 `beat_id`/`goal`。
-- `episode_function`：`episode_function` 至少 6 字；若有 `references["episode_list"]` 且含当前 `episode_id`，功能描述必须一致。
-- `timeline`：`timeline` 非空；`order` 严格递增且为整数；每条事件 `scene_id` 可解析；有 `references["timeline_ledger"].last_order` 时，非闪回事件 `order` 必须大于它；闪回条目不参与但记录在 evidence。
+- `episode_function`：`episode_function` 至少 6 字；必须提供 `references["episode_list"]`，其 `episodes` 必须是含当前 `episode_id` 的映射，功能描述必须一致；引用缺失、`episodes` 类型错误或缺少当前集条目一律失败关闭。
+- `timeline`：`timeline` 非空；`order` 严格递增且为整数；每条事件 `scene_id` 可解析；必须提供 `references["timeline_ledger"]` 且 `last_order` 为非负整数（`0` 表示无前置事件），非闪回事件 `order` 必须大于它；引用缺失或 `last_order` 类型/取值非法一律失败关闭；闪回条目不参与但记录在 evidence。
 - `foreshadow`：伏笔 id 唯一；`source` 场景可解析；`purpose` 非空；本集未回收的伏笔必须有非空 `planned_payoff`。
 - `payoff`：每条回收必须指向本集伏笔或 `references["continuity_ledger"].open_foreshadows` 中已登记的 id；场景可解析；同集回收场景索引不得早于伏笔场景；同一伏笔不得重复回收。
 - `scene_transition`：相邻场景地点或时段变化时，前一场景 `transition` 必须非空；违反对的 scene_id 进 evidence。
-- `character_state`：条目字段非空、`transition_scene_id` 可解析；状态变化场景必须含该角色台词；有 `references["character_arc_map"].latest.states` 时 `prior_state` 必须与上一集记录一致，否则以 `{series_id}:{episode_id}:character-state` 记入 `evidence["conflicts"]` 并失败；台词角色必须全部登记。
-- `series_constraint`：必须有 `references["series_bible"]`；台词角色必须是圣经角色；`banned_terms` 出现在任何文本中即失败并列出命中；`series_id` 与圣经的 `series_id` 一致。
-- `continuity`：`continuity_ledger_ref` 非空；`continuity_ledger.linked_artifacts` 非空且全部存在于 references；`entries` 非空且值非空；`conflicts` 必须为空，非空则失败并列出。
+- `character_state`：`references["character_arc_map"].latest` 必须存在且为对象；`latest.episode_id` 为 `null` 表示无前序剧集，此时 `states` 必须为空数组；`episode_id` 为非空字符串时 `states` 必须为数组且条目 `name`/`state` 非空、角色名唯一；有前序记录时 `prior_state` 必须与上一集一致，否则以 `{series_id}:{episode_id}:character-state` 记入 `evidence["conflicts"]` 并失败；缺失或畸形一律失败关闭；条目字段非空、`transition_scene_id` 可解析、状态变化场景必须含该角色台词、台词角色必须全部登记。
+- `series_constraint`：必须有 `references["series_bible"]`；`series_bible.series_id` 必须是非空字符串且与集稿一致；`characters` 必须是非空数组且条目带非空 `name`；台词角色必须是圣经角色；`banned_terms` 若存在必须是数组，命中剧本行的动作/台词文本即失败并列出，标题、集功能、时间线等非台词字段不在扫描范围。
+- `continuity`：`continuity_ledger_ref` 非空；`continuity_ledger.linked_artifacts` 非空且全部存在于 references；`entries` 非空且值非空；`conflicts` 必须存在且为空数组，字段缺失、类型错误或非空均失败并列出。
 
 - [x] **Step 1: 写失败测试**
 
