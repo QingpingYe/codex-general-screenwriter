@@ -81,7 +81,7 @@ preview:
 
 如果用户要求同步远端，先确认当前分支和未提交工作，再执行 pull/rebase；存在冲突时停止并让用户选择保留方向。推送前必须获得用户明确确认，禁止自动 push。失败或网络不可用时保留本地文件和未提交变更，说明下一步选项。
 
-提交时只暂存目标技能目录和 `.codex-plugin/plugin.json`，不要暂存无关的工作区变更，并保留这些无关变更不变。即使远端落后，也禁止 force push；先按普通 pull/rebase 处理，冲突必须由用户决定。
+提交前重新生成 `config/skill-index.json`（运行 `scripts/build_skill_index.py`），保证索引与技能包一致；提交时只暂存目标技能目录、`config/skill-index.json` 和 `.codex-plugin/plugin.json`，不要暂存无关的工作区变更，并保留这些无关变更不变。即使远端落后，也禁止 force push；先按普通 pull/rebase 处理，冲突必须由用户决定。
 
 ## 失败处理
 

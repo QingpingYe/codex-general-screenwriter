@@ -988,9 +988,10 @@ class HubSkillAndSampleTests(unittest.TestCase):
 
     def test_publishing_workflow_limits_staging_and_forbids_force_push(self):
         self.assertIn(
-            "只暂存目标技能目录和 `.codex-plugin/plugin.json`",
+            "只暂存目标技能目录、`config/skill-index.json` 和 `.codex-plugin/plugin.json`",
             self.hub_skill,
         )
+        self.assertIn("重新生成 `config/skill-index.json`", self.hub_skill)
         self.assertIn("不要暂存无关的工作区变更", self.hub_skill)
         self.assertIn("禁止 force push", self.hub_skill)
 
