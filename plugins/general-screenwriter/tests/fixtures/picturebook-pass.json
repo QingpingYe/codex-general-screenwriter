@@ -1,7 +1,9 @@
 {
   "medium": "picturebook",
+  "execution": "declarative",
   "context": {"medium_id": "picturebook", "project_id": "p1"},
   "target_artifact": "script",
+  "pipeline_stages": ["session_init", "brief_gate", "knowledge_load", "creation_delegate", "preflight", "collision_check", "qa", "qa_synthesis", "confirmation_gate"],
   "workflow_inputs": [],
   "knowledge_scope": {"scope_type": "project", "scope_id": "p1"},
   "quality_rules": [
@@ -14,5 +16,7 @@
     {"check_id": "knowledge_collision", "status": "pass"},
     {"check_id": "craft_benchmark", "status": "pass"}
   ],
+  "exports": [],
+  "expected": {"confirmation_ready": true, "blocker_ids": [], "user_confirmation_ids": []},
   "failure_reason": null
 }

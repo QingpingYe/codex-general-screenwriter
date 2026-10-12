@@ -1,8 +1,93 @@
 {
   "medium": "tv_longform",
+  "execution": "deterministic",
   "context": {"medium_id": "tv_longform", "project_id": "p1", "series_id": "s1", "season_id": "season-1", "delivery_form": "season_episode_script"},
   "target_artifact": "episode_script",
-  "workflow_inputs": [],
+  "pipeline_stages": ["session_init", "brief_gate", "series_load", "season_design", "episode_design", "scene_design", "episode_script_delegate", "continuity_check", "foreshadow_check", "character_state_check", "quality_gate", "confirmation_gate"],
+  "workflow_inputs": [
+    {
+      "artifact_id": "episode_script",
+      "format": "episode_script",
+      "series_id": "s1",
+      "season_id": "season-1",
+      "episode_id": "e2",
+      "episode_function": "推进主线：揭露内鬼线索。",
+      "arc_beat_ref": "arc-b2",
+      "scenes": [
+        {"scene_id": "S1", "heading": "场1 天台 夜", "location": "天台", "time_of_day": "夜",
+         "lines": [{"kind": "dialogue", "speaker": "林一", "text": "内鬼就在我们中间。"},
+                   {"kind": "dialogue", "speaker": "陈默", "text": "先别下结论。"}],
+         "transition": "切至走廊"},
+        {"scene_id": "S2", "heading": "场2 走廊 夜", "location": "走廊", "time_of_day": "夜",
+         "lines": [{"kind": "dialogue", "speaker": "林一", "text": "怀表指向密室。"},
+                   {"kind": "action", "text": "灯闪了两下。"}],
+         "transition": "切回天台"},
+        {"scene_id": "S3", "heading": "场3 天台 夜", "location": "天台", "time_of_day": "夜",
+         "lines": [{"kind": "dialogue", "speaker": "陈默", "text": "你在怀疑我？"},
+                   {"kind": "dialogue", "speaker": "林一", "text": "我只信证据。"}],
+         "transition": "切至会议室"},
+        {"scene_id": "S4", "heading": "场4 会议室 夜", "location": "会议室", "time_of_day": "夜",
+         "lines": [{"kind": "dialogue", "speaker": "林一", "text": "明早对质。"},
+                   {"kind": "action", "text": "窗外天色泛白。"}],
+         "transition": ""}
+      ],
+      "timeline": [
+        {"order": 11, "event": "夜谈", "scene_id": "S1"},
+        {"order": 12, "event": "对峙", "scene_id": "S2"}
+      ],
+      "foreshadows": [
+        {"id": "f2", "source": "旧怀表", "purpose": "指向密室", "scene_id": "S1", "planned_payoff": "本季末揭晓"}
+      ],
+      "payoffs": [
+        {"foreshadow_id": "f1", "resolution": "怀表指向密室", "scene_id": "S2"}
+      ],
+      "character_states": [
+        {"name": "林一", "prior_state": "calm", "state": "shaken", "transition_scene_id": "S2"},
+        {"name": "陈默", "prior_state": "guarded", "state": "guarded", "transition_scene_id": "S1"}
+      ],
+      "continuity_ledger_ref": "series/s1/continuity/e2"
+    },
+    {
+      "artifact_id": "season_arc",
+      "beats": [
+        {"beat_id": "arc-b1", "goal": "铺垫内鬼疑云"},
+        {"beat_id": "arc-b2", "goal": "揭露内鬼线索"}
+      ]
+    },
+    {
+      "artifact_id": "series_bible",
+      "series_id": "s1",
+      "characters": [{"name": "林一"}, {"name": "陈默"}],
+      "banned_terms": ["穿越"]
+    },
+    {
+      "artifact_id": "character_arc_map",
+      "latest": {
+        "episode_id": "e1",
+        "states": [
+          {"name": "林一", "state": "asleep"},
+          {"name": "陈默", "state": "guarded"}
+        ]
+      }
+    },
+    {"artifact_id": "timeline_ledger", "last_order": 10},
+    {
+      "artifact_id": "episode_list",
+      "episodes": {"e2": {"function": "推进主线：揭露内鬼线索。"}}
+    },
+    {
+      "artifact_id": "continuity_ledger",
+      "linked_artifacts": ["episode_script", "season_arc", "character_arc_map"],
+      "entries": [
+        {"field": "character_states", "value": "林一: calm -> shaken"},
+        {"field": "timeline", "value": "order 11-12"}
+      ],
+      "conflicts": [],
+      "open_foreshadows": [
+        {"id": "f1", "source": "门缝里的信", "purpose": "指向内鬼"}
+      ]
+    }
+  ],
   "knowledge_scope": {"scope_type": "series", "scope_id": "s1"},
   "quality_rules": [
     {"check_id": "season_arc", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "require_user_confirmation", "validator": "tv-longform-checks"},
@@ -15,16 +100,10 @@
     {"check_id": "series_constraint", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "hard_block", "validator": "tv-longform-checks"},
     {"check_id": "continuity", "artifact_ids": ["episode_script"], "stage_id": "continuity_check", "blocking_policy": "hard_block", "validator": "tv-longform-checks"}
   ],
-  "expected_results": [
-    {"check_id": "season_arc", "status": "pass"},
-    {"check_id": "episode_function", "status": "pass"},
-    {"check_id": "timeline", "status": "pass"},
-    {"check_id": "foreshadow", "status": "pass"},
-    {"check_id": "payoff", "status": "pass"},
-    {"check_id": "scene_transition", "status": "pass"},
-    {"check_id": "character_state", "status": "fail"},
-    {"check_id": "series_constraint", "status": "pass"},
-    {"check_id": "continuity", "status": "pass"}
+  "expected": {"confirmation_ready": false, "blocker_ids": ["character_state"], "user_confirmation_ids": []},
+  "exports": [
+    {"exporter_id": "tv_season_package",
+     "user_params": {"output_directory": "out", "filename": "s1-e2.md"}}
   ],
-  "failure_reason": "character_state 硬约束失败：人物状态与上一集冲突，阻断确认"
+  "failure_reason": "character_state 与上一集冲突：已报告不合并，确认被硬阻断"
 }

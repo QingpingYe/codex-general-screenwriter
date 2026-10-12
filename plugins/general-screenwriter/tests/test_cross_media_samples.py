@@ -1,9 +1,7 @@
 import json
 import sys
 import unittest
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
 
 ROOT = Path(__file__).parents[1]
 REPO_ROOT = ROOT.parents[1]
@@ -11,168 +9,55 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import stage_dag
 import stage_dag_codex
-from quality_gate_contract import QualityCheckResult, build_quality_gate_report
+from sample_workflow import load_sample, run_sample_workflow
 from screenwriter_context import CreativeContext
-from type_registry import (
-    QualityRuleDescriptor,
-    load_type_registry,
-    resolve_artifact,
-    resolve_type_pack,
-)
+from type_registry import load_type_registry, resolve_type_pack
 
 
 FIXTURES = ROOT / "tests" / "fixtures"
 CONTRACT = ROOT / "config" / "plugin-contract.json"
 
-_SAMPLE_REQUIRED = {
-    "medium", "context", "target_artifact", "workflow_inputs",
-    "knowledge_scope", "quality_rules", "expected_results", "failure_reason",
-}
-
-
-@dataclass(frozen=True)
-class SampleContract:
-    medium: str
-    context: Mapping[str, Any]
-    target_artifact: str
-    workflow_inputs: tuple[Mapping[str, Any], ...]
-    knowledge_scope: Mapping[str, Any]
-    quality_rules: tuple[Mapping[str, Any], ...]
-    expected_results: tuple[Mapping[str, Any], ...]
-    failure_reason: str | None
-
-
-def load_sample(path: Path) -> SampleContract:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    if not _SAMPLE_REQUIRED <= set(payload) or set(payload) != _SAMPLE_REQUIRED:
-        raise ValueError(f"sample fixture fields invalid: {path.name}")
-    for rule in payload["quality_rules"]:
-        if set(rule) != {"check_id", "artifact_ids", "stage_id", "blocking_policy", "validator"}:
-            raise ValueError(f"sample fixture rule fields invalid: {path.name}")
-    for expected in payload["expected_results"]:
-        if set(expected) != {"check_id", "status"}:
-            raise ValueError(f"sample fixture expected fields invalid: {path.name}")
-    return SampleContract(
-        medium=payload["medium"],
-        context=dict(payload["context"]),
-        target_artifact=payload["target_artifact"],
-        workflow_inputs=tuple(dict(item) for item in payload["workflow_inputs"]),
-        knowledge_scope=dict(payload["knowledge_scope"]),
-        quality_rules=tuple(dict(item) for item in payload["quality_rules"]),
-        expected_results=tuple(dict(item) for item in payload["expected_results"]),
-        failure_reason=payload["failure_reason"],
-    )
-
-
-def _canonical_rule(rule: Mapping[str, Any]) -> dict:
-    return {
-        "check_id": rule["check_id"],
-        "artifact_ids": list(rule["artifact_ids"]),
-        "stage_id": rule["stage_id"],
-        "blocking_policy": rule["blocking_policy"],
-        "validator": rule["validator"],
-    }
-
-
-def evaluate_sample(sample: SampleContract):
-    pack = resolve_type_pack(load_type_registry(), sample.medium)
-    artifact = resolve_artifact(pack, sample.target_artifact)
-    pack_rules = sorted(
-        (_canonical_rule(vars(rule)) for rule in pack.quality_rules
-         if sample.target_artifact in rule.artifact_ids),
-        key=lambda rule: rule["check_id"],
-    )
-    fixture_rules = sorted(
-        (_canonical_rule(rule) for rule in sample.quality_rules),
-        key=lambda rule: rule["check_id"],
-    )
-    if pack_rules != fixture_rules:
-        raise AssertionError(
-            f"sample rules drift from current {sample.medium} pack for {sample.target_artifact}"
-        )
-    descriptors = {
-        rule["check_id"]: QualityRuleDescriptor(
-            check_id=rule["check_id"],
-            artifact_ids=tuple(rule["artifact_ids"]),
-            stage_id=rule["stage_id"],
-            blocking_policy=rule["blocking_policy"],
-            validator=rule["validator"],
-        )
-        for rule in sample.quality_rules
-    }
-    expected = {item["check_id"]: item["status"] for item in sample.expected_results}
-    if set(expected) != set(descriptors):
-        raise AssertionError("sample expected_results must cover every declared rule")
-    results = [
-        QualityCheckResult(
-            check_id=rule["check_id"],
-            artifact_id=sample.target_artifact,
-            stage_id=rule["stage_id"],
-            blocking_policy=rule["blocking_policy"],
-            status=expected[rule["check_id"]],
-            evidence={"source": "fixture", "knowledge_scope": dict(sample.knowledge_scope)},
-        )
-        for rule in sorted(sample.quality_rules, key=lambda item: item["check_id"])
-    ]
-    return build_quality_gate_report(
-        descriptors.values(),
-        results,
-        gate_id=f"{sample.medium}-sample",
-        scope="sample",
-    )
-
-
-def sample_path(name: str) -> Path:
-    return FIXTURES / name
-
 
 class CrossMediaSampleTests(unittest.TestCase):
     def test_picturebook_pass_sample_confirms(self):
-        sample = load_sample(sample_path("picturebook-pass.json"))
-        report = evaluate_sample(sample)
-        self.assertTrue(report.passed)
-        self.assertTrue(report.confirmation_ready)
+        result = run_sample_workflow(load_sample(FIXTURES / "picturebook-pass.json"))
+        self.assertTrue(result.confirmation_ready)
 
     def test_picturebook_fail_sample_is_confirmation_blocked(self):
-        sample = load_sample(sample_path("picturebook-fail.json"))
-        report = evaluate_sample(sample)
-        self.assertTrue(report.passed)
-        self.assertFalse(report.confirmation_ready)
-        self.assertTrue(report.requires_user_confirmation)
-        self.assertIsNotNone(sample.failure_reason)
+        result = run_sample_workflow(load_sample(FIXTURES / "picturebook-fail.json"))
+        self.assertTrue(result.report.passed)
+        self.assertFalse(result.confirmation_ready)
+        self.assertTrue(result.report.requires_user_confirmation)
+        self.assertIsNotNone(result.failure_reason)
 
     def test_shortdrama_pass_sample_confirms(self):
-        sample = load_sample(sample_path("shortdrama-pass.json"))
-        report = evaluate_sample(sample)
-        self.assertTrue(report.passed)
-        self.assertTrue(report.confirmation_ready)
+        result = run_sample_workflow(load_sample(FIXTURES / "shortdrama-pass.json"))
+        self.assertTrue(result.report.passed)
+        self.assertTrue(result.confirmation_ready)
 
     def test_shortdrama_fail_sample_is_confirmation_blocked(self):
-        sample = load_sample(sample_path("shortdrama-fail.json"))
-        report = evaluate_sample(sample)
-        self.assertTrue(report.passed)
-        self.assertFalse(report.confirmation_ready)
-        self.assertIsNotNone(sample.failure_reason)
+        result = run_sample_workflow(load_sample(FIXTURES / "shortdrama-fail.json"))
+        self.assertTrue(result.report.passed)
+        self.assertFalse(result.confirmation_ready)
+        self.assertIsNotNone(result.failure_reason)
 
     def test_tv_longform_pass_sample_confirms(self):
-        sample = load_sample(sample_path("tv-longform-pass.json"))
-        report = evaluate_sample(sample)
-        self.assertTrue(report.passed)
-        self.assertTrue(report.confirmation_ready)
+        result = run_sample_workflow(load_sample(FIXTURES / "tv-longform-pass.json"))
+        self.assertTrue(result.report.passed)
+        self.assertTrue(result.confirmation_ready)
 
     def test_tv_longform_fail_sample_is_hard_blocked(self):
-        sample = load_sample(sample_path("tv-longform-fail.json"))
-        report = evaluate_sample(sample)
-        self.assertFalse(report.passed)
-        self.assertFalse(report.confirmation_ready)
+        result = run_sample_workflow(load_sample(FIXTURES / "tv-longform-fail.json"))
+        self.assertFalse(result.report.passed)
+        self.assertFalse(result.confirmation_ready)
         self.assertEqual(
-            [item.check_id for item in report.blockers],
+            [item.check_id for item in result.report.blockers],
             ["character_state"],
         )
 
     def test_sample_contexts_match_current_packs(self):
         for name in ("picturebook-pass.json", "shortdrama-pass.json", "tv-longform-pass.json"):
-            sample = load_sample(sample_path(name))
+            sample = load_sample(FIXTURES / name)
             pack = resolve_type_pack(load_type_registry(), sample.medium)
             with self.subTest(name=name):
                 self.assertEqual(sample.context["medium_id"], pack.medium_id)

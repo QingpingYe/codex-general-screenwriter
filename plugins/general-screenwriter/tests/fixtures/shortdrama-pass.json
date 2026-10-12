@@ -1,8 +1,54 @@
 {
   "medium": "shortdrama",
+  "execution": "deterministic",
   "context": {"medium_id": "shortdrama", "project_id": "p1", "delivery_form": "episode_script"},
   "target_artifact": "episode_script",
-  "workflow_inputs": [],
+  "pipeline_stages": ["session_init", "brief_gate", "knowledge_load", "episode_design", "hook_design", "beat_design", "scene_design", "episode_script_delegate", "hook_check", "pacing_check", "dialogue_check", "quality_gate", "confirmation_gate"],
+  "workflow_inputs": [
+    {
+      "artifact_id": "episode_script",
+      "format": "episode_script",
+      "duration_seconds": 55,
+      "scenes": [
+        {"scene_id": "S1", "heading": "场1 天台 夜", "location": "天台", "time_of_day": "夜",
+         "lines": [{"kind": "action", "text": "风把证物袋吹散。"},
+                   {"kind": "dialogue", "speaker": "林一", "text": "谁动了我的证据？"}],
+         "transition": "切至走廊"},
+        {"scene_id": "S2", "heading": "场2 走廊 夜", "location": "走廊", "time_of_day": "夜",
+         "lines": [{"kind": "dialogue", "speaker": "林一", "text": "监控少了一段。"},
+                   {"kind": "dialogue", "speaker": "陈默", "text": "是人为删的。"}],
+         "transition": "切至会议室"},
+        {"scene_id": "S3", "heading": "场3 会议室 夜", "location": "会议室", "time_of_day": "夜",
+         "lines": [{"kind": "dialogue", "speaker": "陈默", "text": "你替别人背了锅。"},
+                   {"kind": "dialogue", "speaker": "林一", "text": "那就摊牌。"}],
+         "transition": "切至直播间"},
+        {"scene_id": "S4", "heading": "场4 直播间 夜", "location": "直播间", "time_of_day": "夜",
+         "lines": [{"kind": "dialogue", "speaker": "林一", "text": "替身身份，今天我亲自揭。"},
+                   {"kind": "action", "text": "灯灭，屏幕亮起。"}],
+         "transition": "切回天台"},
+        {"scene_id": "S5", "heading": "场5 天台 夜", "location": "天台", "time_of_day": "夜",
+         "lines": [{"kind": "dialogue", "speaker": "林一", "text": "证据我拿到了。"},
+                   {"kind": "action", "text": "手机屏幕亮起：定位已共享。"}],
+         "transition": ""}
+      ],
+      "beats": [
+        {"beat_id": "b1", "function": "hook", "scene_id": "S1"},
+        {"beat_id": "b2", "function": "escalation", "scene_id": "S2"},
+        {"beat_id": "b3", "function": "turn", "scene_id": "S3"},
+        {"beat_id": "b4", "function": "closure", "scene_id": "S4"},
+        {"beat_id": "b5", "function": "closing_hook", "scene_id": "S5"}
+      ],
+      "conflict": {"goal": "夺回证据", "escalation_beat_ids": ["b2"], "closure_beat_id": "b4", "closed": true},
+      "characters": [
+        {"name": "林一", "states": [
+          {"beat_id": "b1", "state": "calm"},
+          {"beat_id": "b3", "state": "resolute"},
+          {"beat_id": "b5", "state": "in_control"}
+        ]},
+        {"name": "陈默", "states": [{"beat_id": "b2", "state": "guarded"}]}
+      ]
+    }
+  ],
   "knowledge_scope": {"scope_type": "project", "scope_id": "p1"},
   "quality_rules": [
     {"check_id": "opening_hook", "artifact_ids": ["episode_script"], "stage_id": "hook_check", "blocking_policy": "require_user_confirmation", "validator": "shortdrama-checks"},
@@ -14,15 +60,10 @@
     {"check_id": "character_state", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "hard_block", "validator": "shortdrama-checks"},
     {"check_id": "format", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "hard_block", "validator": "shortdrama-checks"}
   ],
-  "expected_results": [
-    {"check_id": "opening_hook", "status": "pass"},
-    {"check_id": "turning_point", "status": "pass"},
-    {"check_id": "closing_hook", "status": "pass"},
-    {"check_id": "pacing_density", "status": "pass"},
-    {"check_id": "conflict_closure", "status": "pass"},
-    {"check_id": "duration", "status": "pass"},
-    {"check_id": "character_state", "status": "pass"},
-    {"check_id": "format", "status": "pass"}
+  "expected": {"confirmation_ready": true, "blocker_ids": [], "user_confirmation_ids": []},
+  "exports": [
+    {"exporter_id": "shortdrama_episode_script",
+     "user_params": {"output_directory": "out", "filename": "e1.txt"}}
   ],
   "failure_reason": null
 }

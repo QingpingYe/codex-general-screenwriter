@@ -369,9 +369,11 @@ def _continuity(artifact, parsed: ParsedScript, references: Mapping):
     ledger_ref = artifact.get("continuity_ledger_ref")
     if not _nonempty_text(ledger_ref):
         return "fail", "缺少连续性台账引用", {"continuity_ledger_ref": ledger_ref}
-    ledger = artifact.get("continuity_ledger")
-    if not isinstance(ledger, Mapping):
-        return "fail", "连续性台账内容缺失", {"continuity_ledger_ref": ledger_ref}
+    ledger = _reference(references, "continuity_ledger")
+    if ledger is None:
+        return "fail", "缺少连续性台账引用产物", {
+            "continuity_ledger_ref": ledger_ref,
+        }
     violations = []
     linked = ledger.get("linked_artifacts")
     if not isinstance(linked, list) or not linked:

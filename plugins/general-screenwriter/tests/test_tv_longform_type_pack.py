@@ -101,14 +101,6 @@ def episode(**overrides):
              "transition_scene_id": "S1"},
         ],
         "continuity_ledger_ref": "series/s1/continuity/e2",
-        "continuity_ledger": {
-            "linked_artifacts": ["episode_script", "season_arc"],
-            "entries": [
-                {"field": "character_states", "value": "林一: calm -> shaken"},
-                {"field": "timeline", "value": "order 11-12"},
-            ],
-            "conflicts": [],
-        },
     }
     payload.update(overrides)
     return payload
@@ -146,6 +138,14 @@ def longform_references(**overrides):
         },
         "continuity_ledger": {
             "artifact_id": "continuity_ledger",
+            "linked_artifacts": [
+                "episode_script", "season_arc", "character_arc_map",
+            ],
+            "entries": [
+                {"field": "character_states", "value": "林一: calm -> shaken"},
+                {"field": "timeline", "value": "order 11-12"},
+            ],
+            "conflicts": [],
             "open_foreshadows": [
                 {"id": "f1", "source": "门缝里的信", "purpose": "指向内鬼"},
             ],
