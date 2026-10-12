@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from build_skill_index import build_index, render_index
+
 
 @dataclass(frozen=True)
 class GovernanceReport:
@@ -60,6 +62,18 @@ def check_repo(root: Path) -> GovernanceReport:
         if entry_skill not in installed:
             errors.append(f"entry skill is not installed: {entry_skill}")
 
+    index_path = plugin / "config" / "skill-index.json"
+    try:
+        index = build_index(plugin)
+    except (KeyError, OSError, ValueError) as exc:
+        errors.append(f"cannot rebuild skill index: {exc}")
+    else:
+        rebuilt = render_index(index)
+        if not index_path.is_file():
+            if index["entries"]:
+                errors.append("missing config/skill-index.json; run scripts/build_skill_index.py")
+        elif index_path.read_text(encoding="utf-8") != rebuilt:
+            errors.append("config/skill-index.json is stale; run scripts/build_skill_index.py")
     for relative in (".env", ".general-screenwriter"):
         if (plugin / relative).exists():
             errors.append(f"forbidden runtime path in plugin: {relative}")
