@@ -749,7 +749,7 @@
           "production_stage": "scene_design",
           "validation_stages": ["quality_gate"],
           "validator": null,
-          "exporter": null,
+          "exporter": "shortdrama_production_checklist",
           "status": "active"
         },
         {
@@ -762,7 +762,7 @@
           "production_stage": "episode_script_delegate",
           "validation_stages": ["hook_check", "pacing_check", "dialogue_check", "quality_gate"],
           "validator": null,
-          "exporter": null,
+          "exporter": "shortdrama_episode_script",
           "status": "active"
         }
       ],
@@ -1010,7 +1010,7 @@
       ],
       "workflow_policy": "shortdrama-v1",
       "validators": ["shortdrama-checks"],
-      "exporters": [],
+      "exporters": ["shortdrama_episode_script", "shortdrama_production_checklist", "structured_json"],
       "capabilities": [],
       "status": "active",
       "legacy_aliases": [],
@@ -1128,7 +1128,7 @@
           "production_stage": "episode_script_delegate",
           "validation_stages": ["continuity_check", "foreshadow_check", "character_state_check", "quality_gate"],
           "validator": null,
-          "exporter": null,
+          "exporter": "tv_episode_script",
           "status": "active"
         },
         {
@@ -1383,7 +1383,7 @@
       ],
       "workflow_policy": "tv_longform-v1",
       "validators": ["tv-longform-checks"],
-      "exporters": [],
+      "exporters": ["tv_episode_script", "tv_season_package", "structured_json"],
       "capabilities": [],
       "status": "active",
       "legacy_aliases": [],
