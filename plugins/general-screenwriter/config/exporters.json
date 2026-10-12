@@ -10,6 +10,56 @@
       "confirmation_policy": "explicit_params_only",
       "validation_policy": "fail_closed",
       "model_calls": "forbidden"
+    },
+    {
+      "exporter_id": "shortdrama_episode_script",
+      "supported_types": ["episode_script"],
+      "required_inputs": ["episode_script"],
+      "output_format": "screenplay_text",
+      "required_user_params": ["output_directory", "filename"],
+      "confirmation_policy": "explicit_params_only",
+      "validation_policy": "fail_closed",
+      "model_calls": "forbidden"
+    },
+    {
+      "exporter_id": "shortdrama_production_checklist",
+      "supported_types": ["scene_table"],
+      "required_inputs": ["scene_table"],
+      "output_format": "production_checklist",
+      "required_user_params": ["output_directory", "filename"],
+      "confirmation_policy": "explicit_params_only",
+      "validation_policy": "fail_closed",
+      "model_calls": "forbidden"
+    },
+    {
+      "exporter_id": "tv_episode_script",
+      "supported_types": ["episode_script"],
+      "required_inputs": ["episode_script"],
+      "output_format": "screenplay_text",
+      "required_user_params": ["output_directory", "filename"],
+      "confirmation_policy": "explicit_params_only",
+      "validation_policy": "fail_closed",
+      "model_calls": "forbidden"
+    },
+    {
+      "exporter_id": "tv_season_package",
+      "supported_types": ["episode_script", "continuity_ledger", "season_arc"],
+      "required_inputs": ["episode_script", "continuity_ledger", "season_arc"],
+      "output_format": "markdown",
+      "required_user_params": ["output_directory", "filename"],
+      "confirmation_policy": "explicit_params_only",
+      "validation_policy": "fail_closed",
+      "model_calls": "forbidden"
+    },
+    {
+      "exporter_id": "structured_json",
+      "supported_types": ["episode_script", "continuity_ledger", "season_arc", "scene_table"],
+      "required_inputs": [],
+      "output_format": "json",
+      "required_user_params": ["output_directory", "filename"],
+      "confirmation_policy": "explicit_params_only",
+      "validation_policy": "fail_closed",
+      "model_calls": "forbidden"
     }
   ]
 }
