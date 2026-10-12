@@ -1,6 +1,6 @@
 # General Screenwriter for Codex
 
-这是由 `general-screenwriter` 包提供的 Codex 原生通用编剧创作插件，不依赖 WorkBuddy 团队运行时。原绘本编剧工坊已升级为通用工作台；当前包名和入口 Skill 都是 `general-screenwriter`，旧插件名不再是当前标识。当前三类媒介均可派发，绘本是完整创作路径，短剧和长篇连续剧是已激活的最小可用类型包。
+这是由 `general-screenwriter` 包提供的 Codex 原生通用编剧创作插件，不依赖 WorkBuddy 团队运行时。原绘本编剧工坊已升级为通用工作台；当前包名和入口 Skill 都是 `general-screenwriter`，旧插件名不再是当前标识。当前三类媒介均可派发，绘本是完整创作路径，短剧和长篇连续剧是已激活的最小可用类型包，并具备内容级确定性校验、类型专属导出器和真实执行的代表性创作样例。
 
 This repository is the active home for the Codex plugin. It packages:
 

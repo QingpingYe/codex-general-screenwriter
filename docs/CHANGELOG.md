@@ -2,6 +2,25 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-12
+
+### Added
+
+- 短剧与长篇连续剧的内容级确定性校验：新增共享剧本解析层，短剧 8 项与长篇 9 项检查全部从剧本内容（场景、台词、节拍、台账）和显式引用产物推导，引用缺失时失败关闭。
+- 类型专属导出器：短剧集稿、短剧制作清单、长篇集稿、长篇季包与结构化 JSON；纯内存渲染加原子写入，目标已存在默认拒绝，失败零残留。
+- 代表性创作工作流：短剧与长篇样例真实执行校验器并聚合成质量报告，附带内存导出预览；绘本样例保持声明式 skill 层评估。
+- `scripts/script_content.py`、`scripts/export_run.py`、`scripts/export_cli.py`、`scripts/sample_workflow.py` 及对应回归测试与契约块 `media-content-completion-v1`。
+
+### Changed
+
+- 短剧/长篇 type pack 质量规则接线到 `shortdrama-checks` / `tv-longform-checks`，并声明类型专属导出器与产物接线。
+- 长篇连续性台账改为一等引用产物（`continuity_ledger`，含 `linked_artifacts` / `entries` / `conflicts` / `open_foreshadows`），集稿只保留 `continuity_ledger_ref`。
+- 插件版本升至 0.7.0。
+
+### Compatibility
+
+- 旧绘本入口、旧 run manifest、旧插画流程与确认门语义不变；默认写盘策略仍为对话输出，未显式导出不写文件。
+
 ## [0.6.3] - 2026-10-12
 
 ### Changed

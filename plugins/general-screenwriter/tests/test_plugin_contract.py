@@ -8,6 +8,7 @@ ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import stage_dag
+from type_registry import load_type_registry, resolve_type_pack
 
 
 CONTRACT = ROOT / "config" / "plugin-contract.json"
@@ -289,6 +290,59 @@ class PluginContractTests(unittest.TestCase):
         )
         text = REPO_README.read_text(encoding="utf-8")
         self.assertIn(f"@{marketplace['name']}", text)
+
+
+class MediaContentCompletionContractTests(unittest.TestCase):
+    def test_contract_declares_media_content_completion(self):
+        contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        block = contract["media_content_completion"]
+        self.assertEqual(block["schema_version"], "media-content-completion-v1")
+        self.assertEqual(
+            set(block["content_validators"]),
+            {"shortdrama-checks", "tv-longform-checks"},
+        )
+        self.assertEqual(
+            set(block["exporter_ids"]),
+            {"shortdrama_episode_script", "shortdrama_production_checklist",
+             "tv_episode_script", "tv_season_package", "structured_json"},
+        )
+
+    def test_contract_sample_paths_exist_with_declared_execution(self):
+        contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        block = contract["media_content_completion"]
+        repo_root = ROOT.parents[1]
+        for path in block["deterministic_sample_paths"]:
+            fixture = repo_root / path
+            with self.subTest(path=path):
+                self.assertTrue(fixture.is_file(), path)
+                payload = json.loads(fixture.read_text(encoding="utf-8"))
+                self.assertEqual(payload["execution"], "deterministic")
+        for path in block["declarative_sample_paths"]:
+            fixture = repo_root / path
+            with self.subTest(path=path):
+                self.assertTrue(fixture.is_file(), path)
+                payload = json.loads(fixture.read_text(encoding="utf-8"))
+                self.assertEqual(payload["execution"], "declarative")
+
+    def test_contract_validators_and_exporters_match_type_packs(self):
+        contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
+        block = contract["media_content_completion"]
+        registry = load_type_registry()
+        for medium in ("shortdrama", "tv_longform"):
+            pack = resolve_type_pack(registry, medium)
+            with self.subTest(medium=medium):
+                self.assertLessEqual(
+                    set(pack.validators), set(block["content_validators"]),
+                )
+                self.assertLessEqual(
+                    set(pack.exporters), set(block["exporter_ids"]),
+                )
+
+    def test_plugin_readme_reports_completed_media_content_support(self):
+        text = PLUGIN_README.read_text(encoding="utf-8")
+        self.assertNotIn("短剧和长篇连续剧的内容级 validators、类型专属导出器", text)
+        self.assertIn("内容级校验", text)
+        self.assertIn("代表性创作工作流", text)
 
 
 if __name__ == "__main__":

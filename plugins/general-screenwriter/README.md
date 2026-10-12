@@ -19,11 +19,14 @@
 - 通用创作上下文基础：注册媒介类型、题材与系列/项目标识，并兼容旧绘本运行记录
 - 通用创作 DAG 与质量门 v1：类型包解析核心阶段/负责人/门，快照携带质量规则，结构化报告区分阻断与确认风险
 - 类型包创作工作流：`picturebook` 为完整路径，`shortdrama` 与 `tv_longform` 为最小可用结构化路径
+- 内容级校验：短剧（开场/转折/结尾钩子、节奏密度、冲突闭环、时长、人物状态、格式）与长篇连续剧（季弧线、集功能、时间线、伏笔与回收、场次连接、人物状态、系列约束、连续性台账）的确定性检查，全部从剧本内容与显式引用产物推导
+- 类型专属导出器：短剧集稿、短剧制作清单、长篇集稿、长篇季包与结构化 JSON；显式参数、失败关闭、原子写入
+- 代表性创作工作流：短剧与长篇各有真实执行校验器的通过/失败样例，直接聚合成质量报告；绘本样例保持声明式 skill 层评估
 - `lexile-check`：仅使用用户提供的实测结果
 
 ## 类型契约边界
 
-三个媒介类型包（picturebook、shortdrama、tv_longform）当前均可通过类型包派发。绘本核心产物为 positioning、topic_plan、worldview、characters、outline、script；其中定位信息作为简报输入。短剧与长篇连续剧为最小可用契约：各自声明核心产物、阶段链与结构化质量检查，经统一创作内核派发；它们的类型专属 validators、exporters 和完整输出生态仍待补齐。
+三个媒介类型包（picturebook、shortdrama、tv_longform）当前均可通过类型包派发。绘本核心产物为 positioning、topic_plan、worldview、characters、outline、script；其中定位信息作为简报输入。短剧与长篇连续剧声明各自的核心产物、阶段链、内容级质量校验器与类型专属导出器，经统一创作内核派发；质量规则失败按 `hard_block` / `require_user_confirmation` / `advisory` 语义进入报告，导出必须在用户显式给出输出目录与文件名后执行。
 
 插画是独立可选插画工作流，输入要求已批准脚本；资产清单、结构化提示、图片与 HTML 预览都不属于文字核心阶段，也不阻塞文字 run 的确认或完成。旧绘本入口、run manifest 和产物标识继续兼容读取。显式上下文派发必须匹配当前类型包版本；历史快照只读。插画派发前需记录获批脚本或用户明确提供脚本的来源声明，不能把声明当作用户确认的替代。知识库 schema v2 的作用域继承与只读权威解析已接入；v2 写入和完整数据迁移仍是后续专项。
 
@@ -36,7 +39,7 @@
 - WorkBuddy TeamCreate / SendMessage / 持久多 Agent 团队运行时
 - 原生 hooks 与平台级硬约束
 - 未确认的默认图片 API 调用
-- 短剧和长篇连续剧的内容级 validators、类型专属导出器和用户技能管理界面
+- 用户技能的可视化管理界面（当前仅支持自然语言管理）
 
 运行时强制、脚本校验与提示词约束的边界见 [ENFORCEMENT.md](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/docs/ENFORCEMENT.md)。
 

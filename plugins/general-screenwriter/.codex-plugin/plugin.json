@@ -1,6 +1,6 @@
 {
   "name": "general-screenwriter",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "description": "General screenwriting workshop for Codex with picturebook, shortdrama, and longform TV type packs, editorial workflow, quality gates, staging planning, and a gated illustration workflow.",
   "author": {
     "name": "YeQingping"
@@ -18,7 +18,7 @@
   "interface": {
     "displayName": "General Screenwriter Workshop",
     "shortDescription": "通用编剧创作插件（飞书知识库版）",
-    "longDescription": "A Codex-native general screenwriting workspace with 多人协作飞书知识库同步与权威检索, active picturebook/shortdrama/longform TV type packs, editorial workflow, text craft methodology, benchmark checks, staging planning, structured illustration prompts, explicitly confirmed image generation, and self-contained HTML 预览.",
+    "longDescription": "A Codex-native general screenwriting workspace with 多人协作飞书知识库同步与权威检索, active picturebook/shortdrama/longform TV type packs, content-level shortdrama/longform validators, deterministic media exporters, editorial workflow, text craft methodology, benchmark checks, staging planning, structured illustration prompts, explicitly confirmed image generation, and self-contained HTML 预览.",
     "developerName": "YeQingping",
     "category": "Productivity",
     "capabilities": [
