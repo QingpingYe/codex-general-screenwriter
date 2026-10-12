@@ -185,6 +185,17 @@ class WriteExportTests(unittest.TestCase):
             self.assertEqual(blocker.read_text(encoding="utf-8"), "keep")
             self.assertEqual(list(Path(tmp).iterdir()), [blocker])
 
+    def test_write_export_rejects_unencodable_content_without_temp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "out.txt"
+            with self.assertRaises(ExportRunnerError):
+                write_export(target, "bad\ud800")
+            self.assertEqual(list(Path(tmp).iterdir()), [])
+
+    def test_write_export_rejects_nul_path(self):
+        with self.assertRaises(ExportRunnerError):
+            write_export(Path("bad\x00dir") / "out.txt", "content")
+
     def test_existing_file_is_not_overwritten_by_default(self):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / "out.txt"
@@ -276,6 +287,16 @@ class RunExportTests(unittest.TestCase):
                     {"output_directory": tmp},
                     contract_path=CONTRACT,
                 )
+
+    def test_nul_output_directory_is_rejected(self):
+        with self.assertRaises(ExportRunnerError):
+            run_export(
+                "shortdrama_episode_script",
+                artifact_refs(),
+                {"episode_script": episode_payload()},
+                {"output_directory": "bad\x00dir", "filename": "e2.txt"},
+                contract_path=CONTRACT,
+            )
 
 
 class ExportCliTests(unittest.TestCase):
@@ -392,6 +413,42 @@ class ExportCliTests(unittest.TestCase):
             self.assertIn(
                 "林一：谁动了我的证据？",
                 written.read_text(encoding="utf-8"),
+            )
+
+    def test_cli_unencodable_content_has_no_traceback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            refs_file = tmp_path / "refs.json"
+            payloads_file = tmp_path / "payloads.json"
+            params_file = tmp_path / "params.json"
+            payload = episode_payload()
+            payload["scenes"][0]["lines"][0]["text"] = "bad\ud800"
+            refs_file.write_text(
+                json.dumps(artifact_refs(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            payloads_file.write_text(
+                json.dumps({"episode_script": payload}, ensure_ascii=True),
+                encoding="utf-8",
+            )
+            params_file.write_text(
+                json.dumps({"output_directory": tmp, "filename": "e2.txt"},
+                           ensure_ascii=False),
+                encoding="utf-8",
+            )
+            result = subprocess.run([
+                sys.executable, str(CLI),
+                "--exporter-id", "shortdrama_episode_script",
+                "--artifact-refs", str(refs_file),
+                "--payloads", str(payloads_file),
+                "--params", str(params_file),
+            ], capture_output=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn(b"[export_cli]", result.stderr)
+            self.assertNotIn(b"Traceback", result.stderr)
+            self.assertEqual(
+                sorted(item.name for item in tmp_path.iterdir()),
+                ["params.json", "payloads.json", "refs.json"],
             )
 
 

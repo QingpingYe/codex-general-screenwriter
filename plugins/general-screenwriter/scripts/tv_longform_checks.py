@@ -306,18 +306,23 @@ def _character_state(artifact, parsed: ParsedScript, references: Mapping):
         if not isinstance(latest, Mapping):
             violations.append("character_arc_map.latest 必须是对象")
         else:
+            prior_episode_id_present = "episode_id" in latest
             prior_episode_id = latest.get("episode_id")
             prior_states = latest.get("states")
-            prior_id_valid = (
+            if not prior_episode_id_present:
+                violations.append(
+                    "character_arc_map.latest.episode_id 必须显式提供"
+                )
+            prior_id_valid = prior_episode_id_present and (
                 prior_episode_id is None or _nonempty_text(prior_episode_id)
             )
-            if not prior_id_valid:
+            if prior_episode_id_present and not prior_id_valid:
                 violations.append(
                     "character_arc_map.latest.episode_id 必须是 null 或非空字符串"
                 )
             if not isinstance(prior_states, list):
                 violations.append("character_arc_map.latest.states 必须是数组")
-            elif prior_episode_id is None:
+            elif prior_episode_id is None and prior_episode_id_present:
                 if prior_states:
                     violations.append(
                         "无前序剧集时 character_arc_map.latest.states 必须为空数组"

@@ -346,6 +346,18 @@ class ContentCheckTests(unittest.TestCase):
             "character_state", episode(), context(), references)
         self.assertEqual(result.status, "fail")
 
+    def test_character_state_missing_episode_id_key_fails_closed(self):
+        references = longform_references()
+        references["character_arc_map"] = {
+            "artifact_id": "character_arc_map",
+            "latest": {"states": []},
+        }
+        result = validate_tv_longform_rules(
+            "character_state", episode(), context(), references)
+        self.assertEqual(result.status, "fail")
+        self.assertTrue(any(
+            "episode_id" in item for item in result.evidence["violations"]))
+
     def test_missing_bible_series_id_fails_closed(self):
         references = longform_references()
         references["series_bible"] = {

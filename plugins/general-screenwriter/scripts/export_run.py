@@ -58,9 +58,15 @@ def render_export(exporter_id, payloads, user_params=None) -> str:
 def write_export(destination, content, overwrite_allowed=False) -> Path:
     """Atomically write text to a concrete file path, cleaning up on failure."""
     path = Path(destination)
+    if "\x00" in str(path):
+        raise ExportRunnerError("导出目标路径不能包含 NUL 字符")
     check_export_destination(path, overwrite_allowed=overwrite_allowed)
     if not isinstance(content, str):
         raise ExportRunnerError("导出内容必须是文本")
+    try:
+        encoded = content.encode("utf-8")
+    except UnicodeEncodeError as error:
+        raise ExportRunnerError(f"导出内容无法编码为 UTF-8：{error}") from error
     tmp_path = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -68,11 +74,11 @@ def write_export(destination, content, overwrite_allowed=False) -> Path:
             prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent),
         )
         tmp_path = Path(tmp_name)
-        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-            stream.write(content)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(encoded)
         os.replace(tmp_path, path)
         tmp_path = None
-    except OSError as error:
+    except (OSError, ValueError) as error:
         if tmp_path is not None:
             try:
                 tmp_path.unlink()
@@ -101,9 +107,12 @@ def run_export(
             f"导出器 {exporter_id!r} 未声明 filename 参数，无法直写"
         )
     filename = request.user_params["filename"]
+    output_directory = request.user_params["output_directory"]
+    if "\x00" in filename or "\x00" in output_directory:
+        raise ExportRunnerError("导出路径不能包含 NUL 字符")
     if Path(filename).name != filename or filename in {".", ".."}:
         raise ExportRunnerError(f"filename 必须是纯文件名：{filename!r}")
-    destination = Path(request.user_params["output_directory"]) / filename
+    destination = Path(output_directory) / filename
     check_export_destination(destination, overwrite_allowed=overwrite_allowed)
     content = render_export(exporter_id, payloads, request.user_params)
     written = write_export(
