@@ -110,7 +110,7 @@
 
 阈值以模块级常量声明（`HOOK_MIN_CHARS = 6`、`SCENE_SECONDS_RANGE = (10, 80)`、`DIALOGUE_SHARE_MIN = 0.25`、`MIN_SCENES = 3`、`DIALOGUE_SECONDS = 4.0`、`ACTION_SECONDS = 2.5`、`SCENE_SETUP_SECONDS = 3.0`、`DURATION_TOLERANCE = 0.35`、`DURATION_RANGE_SECONDS = (30, 900)`）。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `test_script_content.py` 覆盖：合法载荷解析成功（场景数/台词占比/speakers 正确）；`scene_id` 重复、`kind` 未知、台词缺 speaker、`lines` 空数组分别抛 `ScriptContentError` 且 `errors` 非空。
 
@@ -137,28 +137,28 @@ def test_unregistered_speaker_fails_character_state(self):
 
 同时保留既有语义用例（缺失/空字段失败、未知 check_id 抛 `ValueError`、`closing_hook` 失败进入 `require_user_confirmation` 不阻断 `passed`）。合法性样例断言 `result.evidence["source"] == "content"`。
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `python plugins\general-screenwriter\tests\test_script_content.py; python plugins\general-screenwriter\tests\test_shortdrama_type_pack.py`
 Expected: 前者 import 失败；后者多项失败（新载荷下旧实现无法通过内容级断言）。
 
-- [ ] **Step 3: 实现解析层与内容级检查（GREEN）**
+- [x] **Step 3: 实现解析层与内容级检查（GREEN）**
 
 新建 `script_content.py`（纯函数、无 IO）；重写 `shortdrama_checks.py` 的 `_CHECKS` 为内容级实现，全部结果带 `evidence["source"] = "content"` 与关键度量（`scene_id`、`estimated_seconds`、`dialogue_share` 等）；异常路径统一返回 `fail` 而不是抛出（`ValueError` 仅保留给未知 check_id）。
 
-- [ ] **Step 4: 接线 type pack 与样例规则**
+- [x] **Step 4: 接线 type pack 与样例规则**
 
 `config/type-packs.json`：`shortdrama.validators == ["shortdrama-checks"]`，全部质量规则 `validator` 改为 `"shortdrama-checks"`；同步更新两个 `shortdrama-*.json` 样例的规则条目（保持声明式评估不动）。
 
 Run: `python scripts\release_gate.py`
 Expected: `registry_contract`、`quality_gate`、`exporter_contract` 步骤通过（类型契约与样例漂移不回归）。
 
-- [ ] **Step 5: 全量回归**
+- [x] **Step 5: 全量回归**
 
 Run: `python .\scripts\run_plugin_tests.py`
 Expected: `OK: N offline commands passed`（命令数随新测试文件增加）。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```powershell
 git add plugins/general-screenwriter/scripts/script_content.py plugins/general-screenwriter/scripts/shortdrama_checks.py plugins/general-screenwriter/tests/test_script_content.py plugins/general-screenwriter/tests/test_shortdrama_type_pack.py plugins/general-screenwriter/config/type-packs.json plugins/general-screenwriter/tests/fixtures/shortdrama-pass.json plugins/general-screenwriter/tests/fixtures/shortdrama-fail.json
@@ -212,7 +212,7 @@ git commit -m "feat: add content-level shortdrama validation"
 - `series_constraint`：必须有 `references["series_bible"]`；台词角色必须是圣经角色；`banned_terms` 出现在任何文本中即失败并列出命中；`series_id` 与圣经的 `series_id` 一致。
 - `continuity`：`continuity_ledger_ref` 非空；`continuity_ledger.linked_artifacts` 非空且全部存在于 references；`entries` 非空且值非空；`conflicts` 必须为空，非空则失败并列出。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 升级 `episode()` 为规范载荷并新增：
 
@@ -241,25 +241,25 @@ def test_well_formed_episode_passes_every_check_with_references(self):
 
 既有冲突报告格式用例（更新为当前 episode_id）与缺失字段失败用例保留。合法性样例断言 `result.evidence["source"] == "content"`。
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `python plugins\general-screenwriter\tests\test_tv_longform_type_pack.py`
 Expected: 多项失败（无 references 语义与内容级断言）。
 
-- [ ] **Step 3: 实现内容级检查（GREEN）**
+- [x] **Step 3: 实现内容级检查（GREEN）**
 
 重写 `tv_longform_checks.py`；所有检查无 `references` 需要时按"依赖缺失失败关闭"处理；evidence 统一带 `source` 与度量。
 
-- [ ] **Step 4: 接线 type pack 与样例规则**
+- [x] **Step 4: 接线 type pack 与样例规则**
 
 同 Task 1：pack `validators` 与规则 `validator` 更新；两个 `tv-longform-*.json` 样例规则同步。
 
-- [ ] **Step 5: 全量回归**
+- [x] **Step 5: 全量回归**
 
 Run: `python .\scripts\run_plugin_tests.py`
 Expected: 全绿。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```powershell
 git add plugins/general-screenwriter/scripts/tv_longform_checks.py plugins/general-screenwriter/tests/test_tv_longform_type_pack.py plugins/general-screenwriter/config/type-packs.json plugins/general-screenwriter/tests/fixtures/tv-longform-pass.json plugins/general-screenwriter/tests/fixtures/tv-longform-fail.json
@@ -304,7 +304,7 @@ git commit -m "feat: add content-level tv longform validation"
 
 `export_cli.py`：`--exporter-id`、`--artifact-refs`（JSON 文件）、`--payloads`（JSON 文件）、`--params`（JSON 文件）、`--overwrite`；成功打印 `ExportResult` JSON 并返回 0，`ExporterContractError`/`ExportRunnerError` 打印 stderr 返回 1，用法错误返回 2。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `test_export_run.py` 覆盖（临时目录，不触碰仓库文件）：
 
@@ -318,26 +318,26 @@ def test_write_failure_removes_partial_temp_file(self): ...
 def test_cli_roundtrip_writes_file(self): ...
 ```
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `python plugins\general-screenwriter\tests\test_export_run.py`
 Expected: import 失败（模块不存在）。
 
-- [ ] **Step 3: 实现渲染器、写入器与 CLI（GREEN）**
+- [x] **Step 3: 实现渲染器、写入器与 CLI（GREEN）**
 
-- [ ] **Step 4: 配置与既有导出器回归**
+- [x] **Step 4: 配置与既有导出器回归**
 
 新增 `config/exporters.json` 条目；`html_preview` 条目保持不变。
 
 Run: `python plugins\general-screenwriter\tests\test_exporter_contract.py; python plugins\general-screenwriter\tests\test_export_run.py`
 Expected: PASS。
 
-- [ ] **Step 5: 全量回归**
+- [x] **Step 5: 全量回归**
 
 Run: `python .\scripts\run_plugin_tests.py`
 Expected: 全绿。
 
-- [ ] **Step 6: 提交**
+- [x] **Step 6: 提交**
 
 ```powershell
 git add plugins/general-screenwriter/scripts/export_run.py plugins/general-screenwriter/scripts/export_cli.py plugins/general-screenwriter/tests/test_export_run.py plugins/general-screenwriter/config/exporters.json
@@ -354,7 +354,7 @@ git commit -m "feat: add media exporter renderer and atomic writer"
 - Consumes: Task 3 的 `config/exporters.json` 条目；`type_registry.validate_type_contract`。
 - Produces: `shortdrama.exporters = ["shortdrama_episode_script", "shortdrama_production_checklist", "structured_json"]`、`tv_longform.exporters = ["tv_episode_script", "tv_season_package", "structured_json"]`；`episode_script.exporter` 分别指向两个剧本导出器，短剧 `scene_table.exporter = "shortdrama_production_checklist"`；`picturebook` 条目不变。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `test_media_exporter_wiring.py`：
 
@@ -365,21 +365,21 @@ def test_contract_validation_accepts_wired_packs(self): ...
 def test_pack_exporter_lists_stay_scoped(self): ...
 ```
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `python plugins\general-screenwriter\tests\test_media_exporter_wiring.py`
 Expected: FAIL（pack `exporters` 为空、artifact `exporter` 为 null）。
 
-- [ ] **Step 3: 接线 type pack（GREEN）**
+- [x] **Step 3: 接线 type pack（GREEN）**
 
 更新 `config/type-packs.json`；不改阶段与质量规则。
 
-- [ ] **Step 4: 全量回归**
+- [x] **Step 4: 全量回归**
 
 Run: `python .\scripts\run_plugin_tests.py; python scripts\release_gate.py`
 Expected: 全绿。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```powershell
 git add plugins/general-screenwriter/config/type-packs.json plugins/general-screenwriter/tests/test_media_exporter_wiring.py
@@ -440,7 +440,7 @@ git commit -m "feat: wire media exporters into type packs"
 
 短剧失败样例：最后一个 beat 为 `closure` 且结尾场景无钩子文本，使 `closing_hook` 真实失败并进入 `user_confirmation_ids`。长篇失败样例：`character_arc_map.latest` 中林一状态为 `calm`，本集 `prior_state` 为 `determined`，使 `character_state` 真实硬阻断，`blocker_ids == ["character_state"]`。
 
-- [ ] **Step 1: 写失败测试**
+- [x] **Step 1: 写失败测试**
 
 `test_representative_workflows.py`：
 
@@ -461,19 +461,19 @@ def test_declarative_samples_keep_skill_layer_evaluation(self): ...
 
 `test_cross_media_samples.py`：绘本用例继续走 `evaluate_sample`；短剧/长剧用例改为 `run_sample_workflow`；`MediaActivationTests` 不变。
 
-- [ ] **Step 2: 运行并确认失败**
+- [x] **Step 2: 运行并确认失败**
 
 Run: `python plugins\general-screenwriter\tests\test_representative_workflows.py; python plugins\general-screenwriter\tests\test_cross_media_samples.py`
 Expected: 前者 import 失败；后者因 fixture 结构升级与 fixture-only 评估路径失败。
 
-- [ ] **Step 3: 实现 sample_workflow 与样例升级（GREEN）**
+- [x] **Step 3: 实现 sample_workflow 与样例升级（GREEN）**
 
-- [ ] **Step 4: 全量回归**
+- [x] **Step 4: 全量回归**
 
 Run: `python .\scripts\run_plugin_tests.py`
 Expected: 全绿（含更新后的六个样例）。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```powershell
 git add plugins/general-screenwriter/scripts/sample_workflow.py plugins/general-screenwriter/tests/test_representative_workflows.py plugins/general-screenwriter/tests/test_cross_media_samples.py plugins/general-screenwriter/tests/fixtures
@@ -494,27 +494,27 @@ git commit -m "feat: run representative creation workflows with real validators"
 - `plugin-contract.json` 新增 `media_content_completion` 块：`schema_version="media-content-completion-v1"`、`content_validators`（shortdrama-checks / tv-longform-checks）、`exporter_ids`、`deterministic_sample_paths`（短剧/长剧四个样例）、`declarative_sample_paths`（绘本两个样例）；`creative_workflow.schema_version` 不变。
 - 插件版本升到 `0.7.0`；CHANGELOG 新增 `[0.7.0]` 条目（Added/Changed）。
 
-- [ ] **Step 1: 写失败契约测试**
+- [x] **Step 1: 写失败契约测试**
 
 `test_plugin_contract.py` 新增：契约块字段与 fixture 路径真实存在；pack `validators`/`exporters` 与契约块一致；README 不再把"短剧和长篇连续剧的内容级 validators、类型专属导出器"列为暂不支持，且保留既有锚点语句（"均可通过类型包派发"、"知识库 schema v2"、"独立可选插画工作流"）。
 
 Run: `python plugins\general-screenwriter\tests\test_plugin_contract.py`
 Expected: FAIL（契约块缺失）。
 
-- [ ] **Step 2: 更新契约与 README（GREEN）**
+- [x] **Step 2: 更新契约与 README（GREEN）**
 
 插件 README"已支持"加入内容级校验、导出器与代表性工作流条目；"暂不支持"移除本阶段已完成项（用户技能可视化管理界面保留并改写为"仅支持自然语言管理"）。仓库根 README 同步能力一句话。
 
-- [ ] **Step 3: 版本与 CHANGELOG**
+- [x] **Step 3: 版本与 CHANGELOG**
 
 `plugin.json` 版本 `0.7.0`；CHANGELOG 记录本阶段三项能力与兼容说明（对外兼容承诺为旧 run/manifest/绘本路径不变；短剧/长剧样例为仓库内测试资产，随包升级）。
 
-- [ ] **Step 4: 全量验证**
+- [x] **Step 4: 全量验证**
 
 Run: `python .\scripts\run_plugin_tests.py; python scripts\release_gate.py`
 Expected: 全部 PASS / exit 0。
 
-- [ ] **Step 5: 提交**
+- [x] **Step 5: 提交**
 
 ```powershell
 git add plugins/general-screenwriter/config/plugin-contract.json plugins/general-screenwriter/tests/test_plugin_contract.py plugins/general-screenwriter/README.md README.md docs/CHANGELOG.md plugins/general-screenwriter/.codex-plugin/plugin.json
@@ -523,11 +523,11 @@ git commit -m "docs: announce media content completion"
 
 ## Completion Checklist
 
-- [ ] 短剧 8 条规则与长篇 9 条规则全部由内容级确定性校验器执行，规则 `validator` 非空且进入 pack `validators`。
-- [ ] 空洞内容、缺失跨集引用、状态冲突、时长与内容不符都会真实失败；失败关闭，不静默通过。
-- [ ] 五个新导出器声明在 `config/exporters.json`，渲染确定、中文可用、写入原子、失败零残留，短剧/长剧 type pack 完成接线。
-- [ ] 短剧与长剧各有 pass/fail 两个真实执行样例；报告 evidence 标记校验器来源；声明的阶段链在 pack 中拓扑可达。
-- [ ] 绘本路径与声明式样例语义未变；全量离线回归、发布门与治理检查通过。
+- [x] 短剧 8 条规则与长篇 9 条规则全部由内容级确定性校验器执行，规则 `validator` 非空且进入 pack `validators`。
+- [x] 空洞内容、缺失跨集引用、状态冲突、时长与内容不符都会真实失败；失败关闭，不静默通过。
+- [x] 五个新导出器声明在 `config/exporters.json`，渲染确定、中文可用、写入原子、失败零残留，短剧/长剧 type pack 完成接线。
+- [x] 短剧与长剧各有 pass/fail 两个真实执行样例；报告 evidence 标记校验器来源；声明的阶段链在 pack 中拓扑可达。
+- [x] 绘本路径与声明式样例语义未变；全量离线回归、发布门与治理检查通过。
 
 ## Plan Self-Review
 
