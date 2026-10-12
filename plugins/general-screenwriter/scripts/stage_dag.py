@@ -392,33 +392,6 @@ def _validate_used_user_skills(skills, errors):
             errors.append(f"{label}.content_hash 必须是 SHA-256 哈希")
 
 
-def _load_skill_registry(path=None):
-    """Return the deployable user-skill registry, or None when none is configured."""
-    source = Path(path) if path is not None else (
-        Path(__file__).resolve().parent.parent / "config" / "user-skills.json"
-    )
-    if not source.exists():
-        return None
-    from user_skill_contract import UserSkillContractError, load_user_skill_registry
-    try:
-        return load_user_skill_registry(source)
-    except UserSkillContractError:
-        return None
-
-
-def _validate_skills_against_registry(skills, registry):
-    active = {
-        (skill.skill_id, skill.version): skill
-        for skill in registry.skills if skill.status == "active"
-    }
-    for item in skills:
-        key = (item["skill_id"], item["version"])
-        if key not in active:
-            raise TypeRegistryError(
-                f"resolution_snapshot skills 与当前用户技能注册表不一致：{key[0]} {key[1]}"
-            )
-
-
 def assert_manifest_type_executable(manifest):
     """Enforce current contract only when dispatching an explicit-context run."""
     if not isinstance(manifest, dict) or "context" not in manifest:
@@ -452,11 +425,6 @@ def assert_manifest_type_executable(manifest):
                 )
                 if snapshot["quality_rules"] != expected:
                     raise TypeRegistryError("resolution_snapshot quality_rules 与当前 type pack 不一致")
-            skills = snapshot.get("skills")
-            if skills:
-                registry = _load_skill_registry()
-                if registry is not None:
-                    _validate_skills_against_registry(skills, registry)
         stage_ids = {stage["stage_id"] for stage in manifest["stages"]}
         workflow_data = snapshot.get("workflow")
         if workflow_data is None:

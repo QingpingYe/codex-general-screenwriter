@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).parents[1]
@@ -151,6 +152,21 @@ def _skills_snapshot(**skill_overrides):
 
 
 class SkillsSnapshotTests(unittest.TestCase):
+    def test_execution_does_not_consult_legacy_user_skill_registry(self):
+        manifest = stage_dag.attach_context(
+            stage_dag._creation_template_manifest(),
+            CreativeContext("picturebook", project_id="p1"),
+            _skills_snapshot(),
+        )
+        manifest["project_root"] = str(REPO_ROOT)
+        with mock.patch.object(
+            stage_dag,
+            "_load_skill_registry",
+            side_effect=AssertionError("legacy registry consulted"),
+            create=True,
+        ):
+            stage_dag.assert_manifest_type_executable(manifest)
+
     def test_build_resolution_snapshot_accepts_skills(self):
         snapshot = stage_dag.build_resolution_snapshot(
             resolve_type_pack(load_type_registry(), "picturebook"),
