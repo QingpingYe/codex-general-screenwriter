@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -36,6 +37,31 @@ _GENERIC_TITLE_TERMS = {
 
 class UserSkillHubError(ValueError):
     """Invalid lightweight user skill manifest or skill pack."""
+
+
+_WINDOWS_MOUNT_POINT_TAG = 0xA0000003
+
+
+def _is_link_like(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    is_junction = getattr(path, "is_junction", None)
+    if is_junction is not None:
+        try:
+            return bool(is_junction())
+        except OSError:
+            return False
+    if os.name == "nt":
+        try:
+            return getattr(os.lstat(path), "st_reparse_tag", 0) == _WINDOWS_MOUNT_POINT_TAG
+        except OSError:
+            return False
+    return False
+
+
+def _require_plain_entry(path: Path, label: str) -> None:
+    if _is_link_like(path):
+        raise UserSkillHubError(f"{label} 不得是符号链接或 junction：{path}")
 
 
 @dataclass(frozen=True)
@@ -203,7 +229,9 @@ def _validate_skill_document(directory: Path, label: str) -> None:
 def _reject_extra_files(directory: Path, label: str) -> None:
     allowed_files = {directory / "manifest.json", directory / _CONTENT_FILE}
     for path in directory.rglob("*"):
-        if path in allowed_files and path.is_file() and not path.is_symlink():
+        if _is_link_like(path):
+            raise UserSkillHubError(f"{label} 不得包含符号链接或 junction：{path.name}")
+        if path in allowed_files and path.is_file():
             continue
         raise UserSkillHubError(f"{label} 只能包含 manifest.json 与 content 文件：{path.name}")
 
@@ -212,9 +240,8 @@ def _validate_user_skill(
     directory: Path, registry: TypeRegistry
 ) -> UserSkill:
     raw_directory = Path(directory)
-    if raw_directory.is_symlink():
-        raise UserSkillHubError(f"用户技能目录不得是符号链接：{raw_directory}")
-    directory = directory.resolve()
+    _require_plain_entry(raw_directory, "用户技能目录")
+    directory = raw_directory.resolve()
     if not directory.is_dir():
         raise UserSkillHubError(f"用户技能目录不存在：{directory}")
     label = directory.name
@@ -272,17 +299,13 @@ def validate_user_skill_tree(plugin_root: Path) -> tuple[UserSkill, ...]:
         return ()
     if not user_skills.is_dir():
         raise UserSkillHubError(f"用户技能目录必须是目录：{user_skills}")
-    if user_skills.is_symlink():
-        raise UserSkillHubError(f"用户技能目录不得是符号链接：{user_skills}")
+    _require_plain_entry(user_skills, "用户技能目录")
     resolved_user_skills = user_skills.resolve()
     directories = sorted(
         directory for directory in user_skills.iterdir() if directory.is_dir()
     )
     for directory in directories:
-        if directory.is_symlink():
-            raise UserSkillHubError(
-                f"用户技能目录不得是符号链接或 junction：{directory}"
-            )
+        _require_plain_entry(directory, "用户技能目录")
         if directory.resolve().parent != resolved_user_skills:
             raise UserSkillHubError(
                 f"用户技能包必须直接位于 skills/user-skills：{directory}"
@@ -458,7 +481,9 @@ def preview_user_skill_warnings(
 def _validate_system_skill(
     directory: Path, registry: TypeRegistry
 ) -> SystemSkill:
-    directory = directory.resolve()
+    raw_directory = Path(directory)
+    _require_plain_entry(raw_directory, "系统技能目录")
+    directory = raw_directory.resolve()
     if not directory.is_dir():
         raise UserSkillHubError(f"系统技能目录不存在：{directory}")
     label = directory.name
@@ -512,7 +537,10 @@ def validate_system_skill_tree(plugin_root: Path) -> tuple[SystemSkill, ...]:
         for directory in skills_root.iterdir()
         if directory.is_dir()
         and directory.name != "user-skills"
-        and (directory / _CONTENT_FILE).is_file()
+        and (
+            (directory / _CONTENT_FILE).is_file()
+            or (directory / "skill-meta.json").is_file()
+        )
     )
     return tuple(
         _validate_system_skill(directory, registry)

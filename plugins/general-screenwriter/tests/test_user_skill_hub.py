@@ -285,6 +285,16 @@ class ValidateUserSkillTests(UserSkillHubTestCase):
         directory = self.make_skill(manifest_overrides={"supports": supports})
         self.assert_invalid(directory)
 
+    def test_windows_junction_single_user_skill_pack_is_rejected(self):
+        if sys.platform != "win32":
+            self.skipTest("junctions are Windows-specific")
+        import _winapi
+        directory = self.make_skill(skill_id="real-skill")
+        link = self.temp_path / "junction-skill"
+        _winapi.CreateJunction(str(directory), str(link))
+        with self.assertRaisesRegex(UserSkillHubError, "符号链接|junction"):
+            validate_user_skill(link, ROOT)
+
 
 class ValidateUserSkillTreeTests(UserSkillHubTestCase):
     def make_plugin_root(self):
@@ -810,10 +820,6 @@ class ValidateSystemSkillTests(UserSkillHubTestCase):
         (valid / "SKILL.md").write_text("Use this.", encoding="utf-8")
         ignored = skills_root / "not-a-skill"
         ignored.mkdir()
-        (ignored / "skill-meta.json").write_text(
-            json.dumps(system_metadata("ignored"), ensure_ascii=False),
-            encoding="utf-8",
-        )
         user_skills = skills_root / "user-skills"
         user_skills.mkdir()
         (user_skills / "SKILL.md").write_text("not system", encoding="utf-8")
@@ -821,6 +827,27 @@ class ValidateSystemSkillTests(UserSkillHubTestCase):
         self.assertEqual(
             [item.metadata["skill_id"] for item in result], ["valid-skill"]
         )
+
+    def test_windows_junction_system_skill_is_rejected(self):
+        if sys.platform != "win32":
+            self.skipTest("junctions are Windows-specific")
+        import _winapi
+        directory = self.make_system_skill(skill_id="real-system")
+        link = self.temp_path / "junction-system"
+        _winapi.CreateJunction(str(directory), str(link))
+        with self.assertRaisesRegex(UserSkillHubError, "符号链接|junction"):
+            validate_system_skill(link, ROOT)
+
+    def test_tree_rejects_half_installed_system_skill(self):
+        plugin_root = self.make_plugin_root()
+        directory = plugin_root / "skills" / "half-installed"
+        directory.mkdir(parents=True)
+        (directory / "skill-meta.json").write_text(
+            json.dumps(system_metadata("half-installed"), ensure_ascii=False),
+            encoding="utf-8",
+        )
+        with self.assertRaises(UserSkillHubError):
+            validate_system_skill_tree(plugin_root)
 
     def test_tree_rejects_installed_system_skill_without_metadata(self):
         plugin_root = self.make_plugin_root()
