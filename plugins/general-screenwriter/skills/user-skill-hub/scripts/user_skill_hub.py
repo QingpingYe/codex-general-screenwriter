@@ -462,17 +462,21 @@ def install_user_skill_pack(
         raise
 
     had_target = target.exists()
+    swapped = False
     try:
         if had_target:
             backup_root.mkdir(parents=True, exist_ok=True)
             shutil.move(str(target), str(backup))
         shutil.move(str(work), str(target))
+        swapped = True
         validate_user_skill_tree(root)
     except Exception:
-        if target.exists():
-            shutil.rmtree(target, ignore_errors=True)
         if had_target and backup.exists():
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
             shutil.move(str(backup), str(target))
+        elif swapped and target.exists():
+            shutil.rmtree(target, ignore_errors=True)
         shutil.rmtree(work_root, ignore_errors=True)
         shutil.rmtree(backup_root, ignore_errors=True)
         raise

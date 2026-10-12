@@ -156,6 +156,32 @@ class UserSkillInstallTests(unittest.TestCase):
         )
         self.assertIn("# V1", text)
 
+    def test_install_restores_pack_when_backup_rename_fails(self):
+        plugin_root = self.make_plugin_root()
+        install_user_skill_pack(
+            self.make_staged("hold-skill", content="# V1\n"), plugin_root
+        )
+        target = self.target(plugin_root, "hold-skill")
+        real_move = shutil.move
+
+        def failing_move(source, destination):
+            if str(source) == str(target):
+                raise OSError("locked by another process")
+            return real_move(source, destination)
+
+        with mock.patch("user_skill_hub.shutil.move", side_effect=failing_move):
+            with self.assertRaises(OSError):
+                install_user_skill_pack(
+                    self.make_staged("hold-skill", content="# V2\n"),
+                    plugin_root,
+                    overwrite=True,
+                )
+
+        self.assertTrue(target.is_dir())
+        self.assertIn(
+            "# V1", (target / "SKILL.md").read_text(encoding="utf-8")
+        )
+
     def test_install_leaves_tree_untouched_when_staged_pack_invalid(self):
         plugin_root = self.make_plugin_root()
         staged = self.make_staged("bad-skill", omit_skill_md=True)
