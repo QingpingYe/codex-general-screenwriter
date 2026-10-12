@@ -10,6 +10,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 GATE_STEPS = (
     ("registry_contract", "plugins/general-screenwriter/tests/test_type_registry.py"),
     ("knowledge_adapter", "plugins/general-screenwriter/skills/knowledge-loader/scripts/test_load_knowledge.py"),
+    ("user_skill_trees", "scripts/user_skill_gate.py"),
     ("skill_registry", "plugins/general-screenwriter/tests/test_user_skill_contract.py"),
     ("dag_scheduler", "plugins/general-screenwriter/tests/test_stage_dag.py"),
     ("quality_gate", "plugins/general-screenwriter/tests/test_quality_gate_contract.py"),

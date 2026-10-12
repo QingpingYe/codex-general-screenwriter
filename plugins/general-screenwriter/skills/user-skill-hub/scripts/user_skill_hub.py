@@ -301,11 +301,15 @@ def validate_user_skill_tree(plugin_root: Path) -> tuple[UserSkill, ...]:
         raise UserSkillHubError(f"用户技能目录必须是目录：{user_skills}")
     _require_plain_entry(user_skills, "用户技能目录")
     resolved_user_skills = user_skills.resolve()
-    directories = sorted(
-        directory for directory in user_skills.iterdir() if directory.is_dir()
-    )
+    directories = []
+    for entry in sorted(user_skills.iterdir(), key=lambda path: path.name):
+        _require_plain_entry(entry, "用户技能目录")
+        if not entry.is_dir():
+            raise UserSkillHubError(
+                f"用户技能根目录只允许技能目录：{entry.name}"
+            )
+        directories.append(entry)
     for directory in directories:
-        _require_plain_entry(directory, "用户技能目录")
         if directory.resolve().parent != resolved_user_skills:
             raise UserSkillHubError(
                 f"用户技能包必须直接位于 skills/user-skills：{directory}"

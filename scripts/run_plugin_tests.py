@@ -53,6 +53,7 @@ def build_commands(repo_root: Path) -> list[list[str]]:
         [
             [sys.executable, str(repo_root / "scripts" / "governance_check.py")],
             [sys.executable, str(repo_root / "scripts" / "package_check.py")],
+            [sys.executable, str(repo_root / "scripts" / "user_skill_gate.py")],
             [
                 "node",
                 "--test",

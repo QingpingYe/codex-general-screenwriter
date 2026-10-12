@@ -372,6 +372,18 @@ class ValidateUserSkillTreeTests(UserSkillHubTestCase):
         with self.assertRaisesRegex(UserSkillHubError, "skills/user-skills|符号链接"):
             validate_user_skill_tree(plugin_root)
 
+    def test_loose_files_in_user_skills_root_are_rejected(self):
+        plugin_root = self.make_plugin_root()
+        user_skills = plugin_root / "skills" / "user-skills"
+        user_skills.mkdir(parents=True)
+        (user_skills / "notes.md").write_text("loose file", encoding="utf-8")
+        (user_skills / "tool.exe").write_bytes(b"MZ")
+        with self.assertRaises(UserSkillHubError) as context:
+            validate_user_skill_tree(plugin_root)
+        self.assertTrue(
+            any(name in str(context.exception) for name in ("notes.md", "tool.exe"))
+        )
+
 
 class MatchingAndInjectionTests(UserSkillHubTestCase):
     def make_plugin_root(self):

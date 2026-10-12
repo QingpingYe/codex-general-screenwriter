@@ -35,12 +35,13 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(len(reached), 1)
 
-    def test_declares_nine_gate_steps(self):
+    def test_declares_gate_steps(self):
         self.assertEqual(
             [name for name, _ in release_gate.GATE_STEPS],
-            ["registry_contract", "knowledge_adapter", "skill_registry",
-             "dag_scheduler", "quality_gate", "exporter_contract",
-             "offline_regression", "governance_check", "packaging_check"],
+            ["registry_contract", "knowledge_adapter", "user_skill_trees",
+             "skill_registry", "dag_scheduler", "quality_gate",
+             "exporter_contract", "offline_regression", "governance_check",
+             "packaging_check"],
         )
 
     def test_contract_declares_release_gate(self):
