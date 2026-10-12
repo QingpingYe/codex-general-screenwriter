@@ -5,6 +5,8 @@
 **取代：** `2026-10-09-general-screenwriter-user-skill-governance-design.md` 中与用户技能版本、审计、生命周期和冲突治理相关的方案。  
 **关联仓库：** `https://github.com/QingpingYe/codex-general-screenwriter.git`
 
+**修订（2026-10-12）：** §8.3 与 §9 的提交/推送流程已取消；用户技能仅保存在本地插件目录，`user-skill-hub` 不执行 git 操作。行为以 `plugins/general-screenwriter/skills/user-skill-hub/SKILL.md` 为准。
+
 ## 1. 目标
 
 为没有计算机背景的编剧提供一个自然语言技能中心。用户可以通过 Codex 对话完成以下事情：

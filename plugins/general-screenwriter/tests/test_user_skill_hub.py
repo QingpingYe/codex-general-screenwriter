@@ -930,19 +930,26 @@ class HubSkillAndSampleTests(unittest.TestCase):
     def test_hub_requires_user_name_before_create_or_import(self):
         self.assertIn("创建或导入用户技能前，必须先询问 user_name", self.hub_skill)
 
-    def test_hub_requires_overwrite_and_push_confirmation(self):
+    def test_hub_requires_overwrite_confirmation(self):
         self.assertIn("覆盖现有技能前必须获得用户明确确认", self.hub_skill)
-        self.assertIn("推送前必须获得用户明确确认", self.hub_skill)
 
     def test_hub_does_not_expose_internal_commands_as_interface(self):
         self.assertIn("不得把内部命令作为用户界面", self.hub_skill)
 
-    def test_hub_describes_repository_and_mechanical_patch_bump(self):
-        self.assertIn(
-            "https://github.com/QingpingYe/codex-general-screenwriter.git",
-            self.hub_skill,
-        )
-        self.assertIn("机械递增 plugin.json 的 patch 版本", self.hub_skill)
+    def test_hub_keeps_skills_local_only(self):
+        self.assertIn("只保存在本地插件目录", self.hub_skill)
+        self.assertIn("不提交", self.hub_skill)
+        self.assertIn("不推送", self.hub_skill)
+        self.assertIn("不改插件版本号", self.hub_skill)
+        self.assertNotIn("机械递增", self.hub_skill)
+
+    def test_hub_has_no_git_workflow(self):
+        for phrase in ("git push", "force push", "pull/rebase", "暂存目标技能目录"):
+            with self.subTest(phrase=phrase):
+                self.assertNotIn(phrase, self.hub_skill)
+
+    def test_hub_regenerates_local_index_after_install(self):
+        self.assertIn("重新生成 `config/skill-index.json`", self.hub_skill)
 
     def test_contract_declares_user_skill_hub(self):
         self.assertIn("user-skill-hub", self.contract["skills"])
@@ -975,7 +982,7 @@ class HubSkillAndSampleTests(unittest.TestCase):
         self.assertIn("自然对话", readme)
         self.assertIn("user_name", readme)
         self.assertIn("覆盖", readme)
-        self.assertIn("patch 版本", readme)
+        self.assertIn("不会为它执行 git 提交或推送", readme)
         self.assertIn("系统技能", readme)
         for phrase in (
             "all",
@@ -986,14 +993,12 @@ class HubSkillAndSampleTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, readme)
 
-    def test_publishing_workflow_limits_staging_and_forbids_force_push(self):
+    def test_hub_describes_local_storage_without_publishing(self):
         self.assertIn(
-            "只暂存目标技能目录、`config/skill-index.json` 和 `.codex-plugin/plugin.json`",
+            "只保存在本地插件目录 `skills/user-skills/<skill_id>/`",
             self.hub_skill,
         )
-        self.assertIn("重新生成 `config/skill-index.json`", self.hub_skill)
-        self.assertIn("不要暂存无关的工作区变更", self.hub_skill)
-        self.assertIn("禁止 force push", self.hub_skill)
+        self.assertNotIn("Marketplace", self.hub_skill)
 
 
 if __name__ == "__main__":

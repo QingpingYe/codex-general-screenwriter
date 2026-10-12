@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `user-skill-hub` no longer commits or pushes user skills to the plugin repository and no longer bumps the plugin version for them; user skills live in the local plugin checkout only.
+
 ## [0.6.2] - 2026-10-12
 
 ### Added

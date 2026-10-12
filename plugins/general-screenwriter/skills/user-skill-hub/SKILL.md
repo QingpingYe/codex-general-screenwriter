@@ -71,17 +71,11 @@ preview:
 - `content` 是 `SKILL.md` 且非空；
 - 目录没有额外文件或可执行文件。
 
-任一环节校验失败时不得写入、不得覆盖，也不得提交。
+任一环节校验失败时不得写入或覆盖。安装完成后运行 `scripts/build_skill_index.py` 重新生成 `config/skill-index.json`，保持本地索引与技能树一致。
 
-## Git 与补丁版本
+## 本地保存
 
-用户技能属于插件包，源仓库是 `https://github.com/QingpingYe/codex-general-screenwriter.git`。
-
-写入技能包后，若用户要求保存或提交，机械递增 plugin.json 的 patch 版本，例如 `0.6.0` 到 `0.6.1`。不要改 major 或 minor，不要手写日期或描述性版本号。
-
-如果用户要求同步远端，先确认当前分支和未提交工作，再执行 pull/rebase；存在冲突时停止并让用户选择保留方向。推送前必须获得用户明确确认，禁止自动 push。失败或网络不可用时保留本地文件和未提交变更，说明下一步选项。
-
-提交前重新生成 `config/skill-index.json`（运行 `scripts/build_skill_index.py`），保证索引与技能包一致；提交时只暂存目标技能目录、`config/skill-index.json` 和 `.codex-plugin/plugin.json`，不要暂存无关的工作区变更，并保留这些无关变更不变。即使远端落后，也禁止 force push；先按普通 pull/rebase 处理，冲突必须由用户决定。
+用户技能只保存在本地插件目录 `skills/user-skills/<skill_id>/`。本流程不执行任何 git 操作：不提交、不推送、不改插件版本号，也不提供共享发布或远端同步；安装完成即为本地生效。需要共享或同步时由用户在流程之外自行处理，本技能不代劳。
 
 ## 失败处理
 
