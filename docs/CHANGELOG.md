@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-12
+
+### Added
+
+- Atomic `install_user_skill_pack` (staged validation, same-volume swap, rollback) with an internal `user_skill_hub.py` CLI and a staged-write hub workflow.
+- `scripts/user_skill_gate.py` tree gate wired into `run_plugin_tests` and the release gate for user and system skill trees.
+- Deterministic `config/skill-index.json` built by `scripts/build_skill_index.py`, with a governance drift check and an entry-skill medium routing step.
+
+### Changed
+
+- Unified symlink/junction rejection across single-pack, user-tree, system-tree, and pack-inner validation; system skill trees now reject directories that have `skill-meta.json` but no `SKILL.md`.
+- `user_skill_hub` contract schema is now `user-skill-hub-v2` with field `wildcard_value`; the `package_check` credential allowlist was removed.
+- Release gate steps are now `user_skill_trees`, `user_skill_hub`, and `user_skill_runtime` instead of the legacy `skill_registry` step.
+
 ### Removed
 
 - Legacy `user-skill-contract-v1` registry modules (`scripts/user_skill_contract.py`, `scripts/user_skill_resolver.py`), the `config/user-skills.example.json` template, and their tests. Historical `resolution_snapshot.skills` fields remain readable; `config/user-skills.json` is no longer read by any code path.
