@@ -5,15 +5,15 @@
   "workflow_inputs": [],
   "knowledge_scope": {"scope_type": "series", "scope_id": "s1"},
   "quality_rules": [
-    {"check_id": "season_arc", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "require_user_confirmation", "validator": null},
-    {"check_id": "episode_function", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "require_user_confirmation", "validator": null},
-    {"check_id": "timeline", "artifact_ids": ["episode_script"], "stage_id": "continuity_check", "blocking_policy": "require_user_confirmation", "validator": null},
-    {"check_id": "foreshadow", "artifact_ids": ["episode_script"], "stage_id": "foreshadow_check", "blocking_policy": "require_user_confirmation", "validator": null},
-    {"check_id": "payoff", "artifact_ids": ["episode_script"], "stage_id": "foreshadow_check", "blocking_policy": "require_user_confirmation", "validator": null},
-    {"check_id": "scene_transition", "artifact_ids": ["episode_script"], "stage_id": "continuity_check", "blocking_policy": "require_user_confirmation", "validator": null},
-    {"check_id": "character_state", "artifact_ids": ["episode_script"], "stage_id": "character_state_check", "blocking_policy": "hard_block", "validator": null},
-    {"check_id": "series_constraint", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "hard_block", "validator": null},
-    {"check_id": "continuity", "artifact_ids": ["episode_script"], "stage_id": "continuity_check", "blocking_policy": "hard_block", "validator": null}
+    {"check_id": "season_arc", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "require_user_confirmation", "validator": "tv-longform-checks"},
+    {"check_id": "episode_function", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "require_user_confirmation", "validator": "tv-longform-checks"},
+    {"check_id": "timeline", "artifact_ids": ["episode_script"], "stage_id": "continuity_check", "blocking_policy": "require_user_confirmation", "validator": "tv-longform-checks"},
+    {"check_id": "foreshadow", "artifact_ids": ["episode_script"], "stage_id": "foreshadow_check", "blocking_policy": "require_user_confirmation", "validator": "tv-longform-checks"},
+    {"check_id": "payoff", "artifact_ids": ["episode_script"], "stage_id": "foreshadow_check", "blocking_policy": "require_user_confirmation", "validator": "tv-longform-checks"},
+    {"check_id": "scene_transition", "artifact_ids": ["episode_script"], "stage_id": "continuity_check", "blocking_policy": "require_user_confirmation", "validator": "tv-longform-checks"},
+    {"check_id": "character_state", "artifact_ids": ["episode_script"], "stage_id": "character_state_check", "blocking_policy": "hard_block", "validator": "tv-longform-checks"},
+    {"check_id": "series_constraint", "artifact_ids": ["episode_script"], "stage_id": "quality_gate", "blocking_policy": "hard_block", "validator": "tv-longform-checks"},
+    {"check_id": "continuity", "artifact_ids": ["episode_script"], "stage_id": "continuity_check", "blocking_policy": "hard_block", "validator": "tv-longform-checks"}
   ],
   "expected_results": [
     {"check_id": "season_arc", "status": "pass"},
