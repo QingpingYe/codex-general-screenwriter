@@ -130,6 +130,33 @@ class RenderTests(unittest.TestCase):
                 {"episode_script": {"artifact_id": "episode_script"}},
             )
 
+    def test_script_render_requires_heading(self):
+        payloads = {"episode_script": episode_payload()}
+        del payloads["episode_script"]["scenes"][0]["heading"]
+        with self.assertRaises(ExportRunnerError):
+            render_export("shortdrama_episode_script", payloads)
+
+    def test_script_render_requires_canonical_scene_fields(self):
+        for key in ("scene_id", "location", "time_of_day"):
+            payloads = {"episode_script": episode_payload()}
+            del payloads["episode_script"]["scenes"][0][key]
+            with self.subTest(key=key), self.assertRaises(ExportRunnerError):
+                render_export("shortdrama_episode_script", payloads)
+
+    def test_script_render_rejects_empty_lines(self):
+        payloads = {"episode_script": episode_payload()}
+        payloads["episode_script"]["scenes"][0]["lines"] = []
+        with self.assertRaises(ExportRunnerError):
+            render_export("shortdrama_episode_script", payloads)
+
+    def test_production_checklist_missing_scene_id_renders_dash(self):
+        text = render_export(
+            "shortdrama_production_checklist",
+            {"scene_table": {"artifact_id": "scene_table", "scenes": [{}]}},
+        )
+        self.assertIn("| - | - | - | - | - | - | - |", text)
+        self.assertNotIn("| S1 |", text)
+
 
 class WriteExportTests(unittest.TestCase):
     def test_write_export_roundtrip(self):

@@ -19,6 +19,7 @@ from exporter_contract import (
     load_exporter_contract,
     validate_export_request,
 )
+from script_content import ScriptContentError, parse_episode_script
 
 
 DEFAULT_CONTRACT_PATH = (
@@ -141,36 +142,27 @@ def _require_scenes(payload: Mapping, artifact_id: str):
     return scenes
 
 
+def _validated_episode_script(payload: Mapping, artifact_id: str):
+    try:
+        return parse_episode_script(payload)
+    except ScriptContentError as error:
+        raise ExportRunnerError(
+            f"{artifact_id} 载荷不合法：{'；'.join(error.errors)}"
+        ) from error
+
+
 def _screenplay_text(payload: Mapping) -> str:
+    parsed = _validated_episode_script(payload, "episode_script")
     blocks = []
-    for index, scene in enumerate(_require_scenes(payload, "episode_script")):
-        heading = scene.get("heading")
-        if not isinstance(heading, str) or not heading.strip():
-            heading = f"场{index + 1}"
-        lines = [heading.strip()]
-        raw_lines = scene.get("lines")
-        if not isinstance(raw_lines, list):
-            raise ExportRunnerError(f"scenes[{index}].lines 必须是数组")
-        for raw_line in raw_lines:
-            if not isinstance(raw_line, Mapping):
-                raise ExportRunnerError("剧本行必须是对象")
-            text = raw_line.get("text")
-            if not isinstance(text, str) or not text.strip():
-                raise ExportRunnerError("剧本行文本不能为空")
-            text = text.strip()
-            kind = raw_line.get("kind")
-            if kind == "dialogue":
-                speaker = raw_line.get("speaker")
-                if not isinstance(speaker, str) or not speaker.strip():
-                    raise ExportRunnerError("台词行缺少角色")
-                lines.append(f"{speaker.strip()}：{text}")
-            elif kind == "action":
-                lines.append(text)
+    for scene in parsed.scenes:
+        lines = [scene.heading]
+        for line in scene.lines:
+            if line.kind == "dialogue":
+                lines.append(f"{line.speaker}：{line.text}")
             else:
-                raise ExportRunnerError(f"未知剧本行类型：{kind!r}")
-        transition = scene.get("transition")
-        if isinstance(transition, str) and transition.strip():
-            lines.append(f"【转场】{transition.strip()}")
+                lines.append(line.text)
+        if scene.transition:
+            lines.append(f"【转场】{scene.transition}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks) + "\n"
 
@@ -185,9 +177,7 @@ def _render_production_checklist(payloads: Mapping, user_params: Mapping) -> str
         "| 场次 | 地点 | 时段 | 出场 | 道具 | 转场 | 备注 |",
         "| --- | --- | --- | --- | --- | --- | --- |",
     ]
-    for index, scene in enumerate(_require_scenes(payload, "scene_table")):
-        scene_id = scene.get("scene_id") or f"S{index + 1}"
-
+    for scene in _require_scenes(payload, "scene_table"):
         def cell(key):
             value = scene.get(key)
             if isinstance(value, list):
@@ -198,7 +188,7 @@ def _render_production_checklist(payloads: Mapping, user_params: Mapping) -> str
 
         rows.append(
             "| " + " | ".join(
-                [str(scene_id)] + [
+                [cell("scene_id")] + [
                     cell(key) for key in
                     ("location", "time_of_day", "cast", "props",
                      "transition", "notes")
