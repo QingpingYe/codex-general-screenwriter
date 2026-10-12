@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -162,10 +163,14 @@ class UserSkillInstallTests(unittest.TestCase):
             self.make_staged("hold-skill", content="# V1\n"), plugin_root
         )
         target = self.target(plugin_root, "hold-skill")
+        (plugin_root / "nested").mkdir()
+        alias_target = self.target(plugin_root / "nested" / "..", "hold-skill")
+        self.assertTrue(alias_target.exists())
         real_move = shutil.move
+        expected_source = alias_target.resolve()
 
         def failing_move(source, destination):
-            if str(source) == str(target):
+            if Path(source).resolve() == expected_source:
                 raise OSError("locked by another process")
             return real_move(source, destination)
 
@@ -199,12 +204,42 @@ class UserSkillInstallTests(unittest.TestCase):
             "--staging", str(staged), "--plugin-root", str(plugin_root),
         ]
 
-        first = subprocess.run(command, capture_output=True, text=True)
+        first = subprocess.run(
+            command, capture_output=True, text=True, encoding="utf-8",
+            errors="replace",
+        )
         self.assertEqual(first.returncode, 0, first.stderr)
 
-        second = subprocess.run(command, capture_output=True, text=True)
+        second = subprocess.run(
+            command, capture_output=True, text=True, encoding="utf-8",
+            errors="replace",
+        )
         self.assertEqual(second.returncode, 1)
         self.assertIn("覆盖", second.stderr)
+
+    def test_cli_errors_stay_utf8_under_non_utf8_console_encoding(self):
+        plugin_root = self.make_plugin_root()
+        staged = self.make_staged("console-skill")
+        command = [
+            sys.executable, str(HUB_SCRIPT), "install",
+            "--staging", str(staged), "--plugin-root", str(plugin_root),
+        ]
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "cp1252"
+
+        first = subprocess.run(
+            command, capture_output=True, text=True, encoding="utf-8",
+            errors="replace", env=env,
+        )
+        self.assertEqual(first.returncode, 0, first.stderr)
+
+        second = subprocess.run(
+            command, capture_output=True, text=True, encoding="utf-8",
+            errors="replace", env=env,
+        )
+        self.assertEqual(second.returncode, 1, second.stderr)
+        self.assertIn("覆盖", second.stderr)
+        self.assertNotIn("Traceback", second.stderr)
 
 
 if __name__ == "__main__":

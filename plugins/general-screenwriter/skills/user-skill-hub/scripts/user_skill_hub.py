@@ -618,6 +618,10 @@ def validate_system_skill_tree(plugin_root: Path) -> tuple[SystemSkill, ...]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="用户技能内部校验与安装工具")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
