@@ -62,7 +62,7 @@ class PackageCheckTests(unittest.TestCase):
             self.assertFalse(report.ok)
             self.assertTrue(any("root_token" in error for error in report.errors))
 
-    def test_contract_all_token_is_not_treated_as_secret(self):
+    def test_contract_wildcard_value_is_not_treated_as_secret(self):
         with tempfile.TemporaryDirectory() as temp:
             plugin = Path(temp) / "plugins" / "general-screenwriter"
             (plugin / ".codex-plugin").mkdir(parents=True)
@@ -73,7 +73,8 @@ class PackageCheckTests(unittest.TestCase):
             )
             (plugin / "config" / "plugin-contract.json").write_text(
                 json.dumps({
-                    "user_skill_hub": {"all_token": "all"},
+                    "user_skill_hub": {"wildcard_value": "all"},
+                    "legacy": {"all_token": "all"},
                     "integration": {"root_token": "live-wiki-token"},
                 }),
                 encoding="utf-8",
@@ -81,7 +82,10 @@ class PackageCheckTests(unittest.TestCase):
             report = build_package_report(Path(temp))
             self.assertFalse(report.ok)
             self.assertFalse(
-                any("user_skill_hub.all_token" in error for error in report.errors)
+                any("user_skill_hub.wildcard_value" in error for error in report.errors)
+            )
+            self.assertTrue(
+                any("legacy.all_token" in error for error in report.errors)
             )
             self.assertTrue(
                 any("integration.root_token" in error for error in report.errors)

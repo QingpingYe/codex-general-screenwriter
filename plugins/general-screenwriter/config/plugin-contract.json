@@ -234,8 +234,8 @@
     "confirmation_role": "report_only"
   },
   "user_skill_hub": {
-    "schema_version": "user-skill-hub-v1",
-    "all_token": "all",
+    "schema_version": "user-skill-hub-v2",
+    "wildcard_value": "all",
     "required_user_field": "user_name",
     "skill_types": [
       "prompt_skill",

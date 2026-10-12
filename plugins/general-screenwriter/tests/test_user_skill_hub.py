@@ -949,8 +949,8 @@ class HubSkillAndSampleTests(unittest.TestCase):
         self.assertEqual(
             self.contract["user_skill_hub"],
             {
-                "schema_version": "user-skill-hub-v1",
-                "all_token": "all",
+                "schema_version": "user-skill-hub-v2",
+                "wildcard_value": "all",
                 "required_user_field": "user_name",
                 "skill_types": [
                     "prompt_skill",
@@ -964,7 +964,7 @@ class HubSkillAndSampleTests(unittest.TestCase):
 
     def test_contract_matches_validator_policy(self):
         hub_contract = self.contract["user_skill_hub"]
-        self.assertEqual(hub_contract["all_token"], "all")
+        self.assertEqual(hub_contract["wildcard_value"], "all")
         self.assertEqual(hub_contract["required_user_field"], "user_name")
         self.assertEqual(set(hub_contract["skill_types"]), SKILL_TYPES)
         self.assertFalse(hub_contract["allow_executable_files"])

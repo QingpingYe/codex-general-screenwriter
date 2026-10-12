@@ -359,7 +359,7 @@ git add -A plugins/general-screenwriter/scripts/user_skill_contract.py plugins/g
 git commit -m "chore: remove legacy user skill registry"
 ```
 
-### Task 7: D5 wildcard_token 命名与白名单清理
+### Task 7: D5 wildcard_value 命名与白名单清理
 
 **Files:**
 - Modify: `plugins/general-screenwriter/config/plugin-contract.json`
@@ -369,11 +369,11 @@ git commit -m "chore: remove legacy user skill registry"
 
 **Interfaces:**
 - Consumes: 现有 `user_skill_hub` 契约块与 `package_check` 密钥扫描。
-- Produces: 契约块 `schema_version="user-skill-hub-v2"`、字段 `wildcard_token`；`package_check` 无白名单例外。
+- Produces: 契约块 `schema_version="user-skill-hub-v2"`、字段 `wildcard_value`（`wildcard_token` 仍以 `token` 结尾，会命中密钥扫描启发式）；`package_check` 无白名单例外。
 
 - [ ] **Step 1: 先改期望测试（RED）**
 
-`test_user_skill_hub.py` 两处断言（契约整字典与 `hub_contract["all_token"]`）改为 `wildcard_token` 与 `user-skill-hub-v2`。
+`test_user_skill_hub.py` 两处断言（契约整字典与 `hub_contract["all_token"]`）改为 `wildcard_value` 与 `user-skill-hub-v2`。
 
 Run: `python plugins\general-screenwriter\tests\test_user_skill_hub.py -k contract`
 Expected: 失败。
@@ -384,7 +384,7 @@ Expected: 失败。
 
 - [ ] **Step 3: 清理 package_check 白名单**
 
-`package_check.py` 删除 `_ALLOWED_JSON_CREDENTIALS` 常量与 `visit()` 中的例外分支；`test_package_check.py` 的 `test_contract_all_token_is_not_treated_as_secret` 改为 `test_contract_wildcard_token_is_not_treated_as_secret`（沿用 `root_token` 仍被拦截的断言）。
+`package_check.py` 删除 `_ALLOWED_JSON_CREDENTIALS` 常量与 `visit()` 中的例外分支；`test_package_check.py` 的 `test_contract_all_token_is_not_treated_as_secret` 改为 `test_contract_wildcard_value_is_not_treated_as_secret`（`wildcard_value` 不误报，`legacy.all_token` 与 `root_token` 均被拦截）。
 
 - [ ] **Step 4: 验证**
 

@@ -7,9 +7,6 @@ from pathlib import Path
 
 
 _JSON_SECRET_SUFFIXES = ("api_key", "apikey", "authorization", "password", "secret", "token")
-_ALLOWED_JSON_CREDENTIALS = {
-    ("config/plugin-contract.json.user_skill_hub", "all_token"): "all",
-}
 
 
 @dataclass(frozen=True)
@@ -32,14 +29,10 @@ def _check_json_secret_values(path: Path, relative: str, errors: list[str]) -> N
             for key, child in value.items():
                 child_path = f"{path_name}.{key}"
                 key_name = str(key).lower()
-                allowed_value = _ALLOWED_JSON_CREDENTIALS.get(
-                    (path_name, str(key))
-                )
                 if (
                     key_name.endswith(_JSON_SECRET_SUFFIXES)
                     and isinstance(child, str)
                     and child
-                    and child != allowed_value
                     and not child.startswith(("REPLACE_WITH_", "<"))
                 ):
                     errors.append(f"non-placeholder credential value: {child_path}")

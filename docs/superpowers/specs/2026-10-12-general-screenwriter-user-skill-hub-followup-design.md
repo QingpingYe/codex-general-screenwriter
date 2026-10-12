@@ -99,8 +99,8 @@
 
 规则：
 
-1. `plugin-contract.json` 的 `user_skill_hub.all_token` 更名 `wildcard_token`，`schema_version` 由 `user-skill-hub-v1` 升为 `user-skill-hub-v2`（`v1` 已随 0.6.1 发布，按版本化 schema 处理）。
-2. `scripts/package_check.py` 删除 `_ALLOWED_JSON_CREDENTIALS` 白名单机制并简化 `visit()`；`scripts/test_package_check.py` 中原"白名单放行"用例改为验证 `wildcard_token` 不触发误报、`root_token` 仍被拦截。
+1. `plugin-contract.json` 的 `user_skill_hub.all_token` 更名 `wildcard_value`（初稿的 `wildcard_token` 仍以 `token` 结尾，会继续命中密钥扫描启发式），`schema_version` 由 `user-skill-hub-v1` 升为 `user-skill-hub-v2`（`v1` 已随 0.6.1 发布，按版本化 schema 处理）。
+2. `scripts/package_check.py` 删除 `_ALLOWED_JSON_CREDENTIALS` 白名单机制并简化 `visit()`；`scripts/test_package_check.py` 中原"白名单放行"用例改为验证 `wildcard_value` 不触发误报，`token` 结尾字段与 `root_token` 仍被拦截。
 3. 死代码（`user_skill_contract` 不可达 precedence 分支、resolver 的 `PRECEDENCE_RANK` 兜底）不单独处理，随 D3 第 3 步删除。
 4. 历史计划文档中的 `all_token` 字样保持不动，属归档记录。
 
@@ -136,7 +136,7 @@
 2. `skills/user-skills/` 根下散落文件导致树校验与 release gate 失败。
 3. 无效或半写入的技能包无法进入 live 树；覆盖安装失败时旧内容完整恢复。
 4. `plugin-contract.json` 只保留 `user_skill_hub` 一套用户技能契约；旧注册表模块与示例删除；`resolution_snapshot.skills` 旧快照仍可读。
-5. `wildcard_token` 命名不再触发密钥扫描白名单；`package_check` 白名单机制删除。
+5. `wildcard_value` 命名不再触发密钥扫描；`package_check` 白名单机制删除。
 6. `config/skill-index.json` 与现场重建逐字节一致，漂移被治理检查拦截。
 7. `python .\scripts\run_plugin_tests.py` 与 `python .\scripts\release_gate.py` 全绿；Windows junction 用例真实执行（日志中不出现 skip）。
 
