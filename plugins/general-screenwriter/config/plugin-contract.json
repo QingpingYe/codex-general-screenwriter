@@ -233,30 +233,6 @@
     "executes_validators": false,
     "confirmation_role": "report_only"
   },
-  "user_skill_contract": {
-    "schema_version": "user-skill-contract-v1",
-    "skill_types": [
-      "prompt_skill",
-      "checklist_skill",
-      "validator_skill",
-      "exporter_skill"
-    ],
-    "execution_policies": [
-      "dialog_only",
-      "advisory",
-      "blocking_validator",
-      "export_only",
-      "interactive"
-    ],
-    "statuses": [
-      "draft",
-      "active",
-      "disabled",
-      "retired"
-    ],
-    "registry_example": "config/user-skills.example.json",
-    "cannot_replace_system_rules": true
-  },
   "user_skill_hub": {
     "schema_version": "user-skill-hub-v1",
     "all_token": "all",

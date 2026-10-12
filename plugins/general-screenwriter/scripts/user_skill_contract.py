@@ -1,4 +1,8 @@
-"""User skill contract: descriptors, registry parsing, and validation."""
+"""Legacy user skill registry contract (deprecated).
+
+Superseded by skills/user-skill-hub/scripts/user_skill_hub.py; this module is
+removed by the 2026-10-12 user-skill-hub follow-up migration.
+"""
 
 import json
 from dataclasses import dataclass

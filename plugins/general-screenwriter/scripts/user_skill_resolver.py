@@ -1,4 +1,8 @@
-"""Resolve user skills by scope, stage, artifact, and authority."""
+"""Legacy user skill resolver (deprecated).
+
+Superseded by skills/user-skill-hub/scripts/user_skill_hub.py; removed by the
+2026-10-12 user-skill-hub follow-up migration.
+"""
 
 import hashlib
 import json

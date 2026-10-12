@@ -39,9 +39,9 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertEqual(
             [name for name, _ in release_gate.GATE_STEPS],
             ["registry_contract", "knowledge_adapter", "user_skill_trees",
-             "skill_registry", "dag_scheduler", "quality_gate",
-             "exporter_contract", "offline_regression", "governance_check",
-             "packaging_check"],
+             "user_skill_hub", "user_skill_runtime", "dag_scheduler",
+             "quality_gate", "exporter_contract", "offline_regression",
+             "governance_check", "packaging_check"],
         )
 
     def test_contract_declares_release_gate(self):

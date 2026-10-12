@@ -127,20 +127,6 @@ class ExampleRegistryTests(unittest.TestCase):
             with self.subTest(skill=skill.skill_id):
                 validate_user_skill_descriptor(skill, pack)
 
-    def test_contract_declares_user_skill_contract(self):
-        contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
-        declared = contract["user_skill_contract"]
-        self.assertEqual(declared["schema_version"], "user-skill-contract-v1")
-        self.assertEqual(
-            set(declared["skill_types"]),
-            {"prompt_skill", "checklist_skill", "validator_skill", "exporter_skill"},
-        )
-        self.assertEqual(
-            set(declared["execution_policies"]),
-            {"dialog_only", "advisory", "blocking_validator", "export_only", "interactive"},
-        )
-        self.assertTrue(declared["cannot_replace_system_rules"])
-
 
 if __name__ == "__main__":
     unittest.main()
