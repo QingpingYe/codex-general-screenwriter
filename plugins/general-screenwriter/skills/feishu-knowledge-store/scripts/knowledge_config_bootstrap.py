@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 import tempfile
 from typing import Any, Literal, Mapping
-from urllib.parse import parse_qs, parse_qsl, unquote, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qs, unquote, urlsplit, urlunsplit
 
 from models import KnowledgeConfig, SourceConfig, TargetConfig
 
@@ -24,6 +24,7 @@ class KnowledgeConfigBootstrapError(ValueError):
 
     status = "config_invalid"
 
+
     def to_dict(self) -> dict[str, str]:
         return {"status": self.status, "error": str(self)}
 
@@ -32,6 +33,7 @@ ConfigBootstrapError = KnowledgeConfigBootstrapError
 
 
 @dataclass(frozen=True)
+
 
 class WikiReference:
     url: str
@@ -105,6 +107,7 @@ def parse_wiki_reference(url: str) -> WikiReference:
         path_space_id = query_space_id
 
     return WikiReference(url=url, token=token, space_id=path_space_id, root_mode=root_mode)
+
 
 def build_config_from_links(
     source_url: str,
@@ -207,30 +210,13 @@ def _reference_identity(reference: WikiReference) -> tuple[str, str | None, str]
     if reference.root_mode == "space":
         return "space", reference.space_id, ""
     return "node", reference.space_id, reference.token
-_SENSITIVE_QUERY_KEYS = {
-    "appsecret",
-    "clientsecret",
-    "accesstoken",
-    "refreshtoken",
-    "authorization",
-    "bearer",
-    "devicecode",
-    "usercode",
-    "token",
-}
 
 
 def _safe_wiki_url(url: str) -> str:
+    """Persist only the stable path identity, never query or fragment state."""
     parsed = urlsplit(url)
-    pairs = parse_qsl(parsed.query, keep_blank_values=True)
-    safe_pairs = [
-        (key, value)
-        for key, value in pairs
-        if re.sub(r"[^a-z0-9]", "", key.lower()) not in _SENSITIVE_QUERY_KEYS
-    ]
-    if safe_pairs == pairs:
-        return url
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(safe_pairs), parsed.fragment))
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
+
 
 def _resolve_reference(reference: WikiReference, cli: Any) -> dict[str, Any]:
     if reference.root_mode == "space":
@@ -313,7 +299,7 @@ def _config_to_dict(config: KnowledgeConfig) -> dict[str, Any]:
         "source": {
             "space_id": config.source.space_id,
             "root_mode": config.source.root_mode,
-            "wiki_url": config.source.wiki_url,
+            "wiki_url": _safe_wiki_url(config.source.wiki_url),
         },
         "target": target,
         "identity": config.identity,

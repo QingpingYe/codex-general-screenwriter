@@ -22,14 +22,18 @@ from models import KnowledgeConfig
 
 @dataclass(frozen=True)
 
+
 class ResourceAccessReport:
     status: Literal["ok", "resource_grant_required", "waiting_admin"]
     missing: tuple[str, ...]
     details: tuple[str, ...]
 
     @property
+
+
     def ok(self) -> bool:
         return self.status == "ok"
+
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -40,6 +44,8 @@ class ResourceAccessReport:
 
 
 class _AccessFailure(RuntimeError):
+
+
     def __init__(
         self,
         missing: str | Iterable[str],
@@ -89,13 +95,15 @@ def check_resource_access(
 
     try:
         _check_source_read(config, cli, sample_node_tokens)
-        _check_target_write(config, cli)
+        target_detail = _check_target_write(config, cli)
     except _AccessFailure as failure:
         return _report(failure.status, failure.missing, (failure.detail,))
 
     return _report("ok", (), (
-        "user identity is valid; source reads and target edit ACL were verified",
+        "user identity and source reads were verified",
+        target_detail,
     ))
+
 
 def _check_source_read(config: KnowledgeConfig, cli: Any, sample_node_tokens: Iterable[str]) -> None:
     samples = tuple(token for token in sample_node_tokens if isinstance(token, str) and token.strip())
@@ -143,15 +151,24 @@ def _check_source_read(config: KnowledgeConfig, cli: Any, sample_node_tokens: It
             raise _AccessFailure("source.sample", "source sample document is not readable")
 
 
-def _check_target_write(config: KnowledgeConfig, cli: Any) -> None:
+def _check_target_write(config: KnowledgeConfig, cli: Any) -> str:
     if config.target.root_mode == "node":
         root_token = config.target.root_token
         if not isinstance(root_token, str) or not root_token.strip():
             raise _AccessFailure("target.root", "target root token is missing")
         try:
-            target = cli.get_node(root_token)
+            target_payload = cli.get_node(root_token)
         except Exception as error:
             raise _access_error(error, "target.root", "target root is not readable") from error
+        target = _unwrap_node(target_payload)
+        if not target:
+            raise _AccessFailure("target.root", "target root response did not contain a node")
+        target_space = _node_space(target)
+        if not target_space or target_space != config.target.space_id:
+            raise _AccessFailure(
+                "target.root",
+                "target root does not belong to the configured target space",
+            )
         token = _node_token(target) or root_token
         try:
             allowed = _check_permission(cli, token, "wiki", "edit")
@@ -182,38 +199,28 @@ def _check_target_write(config: KnowledgeConfig, cli: Any) -> None:
                 ("target.edit", "target.acceptance_write"),
                 "target edit and acceptance-page write permissions are not available",
             )
-        return
+        return "target root edit ACL and acceptance-page write permission were verified"
 
     try:
         items = cli.list_nodes(config.target.space_id, page_limit=1)
     except Exception as error:
         raise _access_error(error, "target.root", "target space is not readable") from error
-    candidate = _first_node_token(items)
-    if not candidate:
+    if not isinstance(items, (list, tuple)):
         raise _AccessFailure(
-            "target.acceptance_write",
-            "target space has no node on which the pre-write ACL can be verified",
+            ("target.create", "target.acceptance_write"),
+            "target space contents could not be determined safely",
         )
-    try:
-        allowed = _check_permission(cli, candidate, "wiki", "edit")
-    except PermissionDenied as error:
-        if _is_scope_error(error):
-            raise _AccessFailure(
-                _scope_missing_key(error),
-                _scope_detail(error, "target edit permission"),
-                status="waiting_admin",
-            ) from error
-        raise _AccessFailure(("target.edit", "target.acceptance_write"), "target edit permission is not available") from error
-    except Exception as error:
-        raise _AccessFailure(
-            ("target.edit", "target.acceptance_write"),
-            f"target edit permission could not be verified: {_safe_error(error)}",
-        ) from error
-    if not allowed:
-        raise _AccessFailure(
-            ("target.edit", "target.acceptance_write"),
-            "target edit and acceptance-page write permissions are not available",
+    if not items:
+        return (
+            "target space is readable and empty; creation ACL preflight is deferred "
+            "to the designated initializer"
         )
+    raise _AccessFailure(
+        ("target.create", "target.acceptance_write"),
+        "target space already contains nodes, but root-level create permission "
+        "cannot be verified read-only; child edit ACL is not sufficient",
+    )
+
 
 def _auth_status(cli: Any) -> Any:
     caller = getattr(cli, "_json", None)
@@ -361,9 +368,6 @@ def _sample_from_items(items: Any) -> str | None:
     return first if isinstance(first, str) and first.strip() else None
 
 
-def _first_node_token(items: Any) -> str | None:
-    return _sample_from_items(items)
-
 def _access_error(error: Exception, missing: str, detail: str) -> _AccessFailure:
     if isinstance(error, AuthenticationError):
         return _AccessFailure(
@@ -390,7 +394,6 @@ def _waiting_for_scope_or_auth(error: Exception, missing: str) -> ResourceAccess
         f"user authorization is missing: {_safe_error(error)}",
     )
     return _report("waiting_admin", (missing,), details)
-
 
 
 def _is_scope_error(error: Exception) -> bool:

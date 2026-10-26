@@ -21,11 +21,14 @@ from models import KnowledgeConfig, SourceConfig, TargetConfig
 
 
 class FakeCli:
+
+
     def __init__(self, responses=None):
         self.identity = "user"
         self.binary = Path("lark-cli")
         self.responses = dict(responses or {})
         self.calls = []
+
 
     def get_node(self, token):
         self.calls.append(token)
@@ -44,6 +47,8 @@ def node_payload(space_id, node_token, obj_token):
 
 
 class WikiReferenceTests(unittest.TestCase):
+
+
     def test_parses_space_url_and_discards_query_and_fragment(self):
         reference = parse_wiki_reference(
             "https://team.feishu.cn/wiki/space/space-123?from=share#section"
@@ -51,6 +56,7 @@ class WikiReferenceTests(unittest.TestCase):
         self.assertEqual(reference.root_mode, "space")
         self.assertEqual(reference.space_id, "space-123")
         self.assertEqual(reference.token, "space-123")
+
 
     def test_parses_node_url_and_discards_query_and_fragment(self):
         reference = parse_wiki_reference(
@@ -60,6 +66,7 @@ class WikiReferenceTests(unittest.TestCase):
         self.assertEqual(reference.token, "node-123")
         self.assertIsNone(reference.space_id)
 
+
     def test_parses_node_url_with_explicit_space_identity(self):
         reference = parse_wiki_reference(
             "https://team.feishu.cn/wiki/space/space-123/node/node-456?x=1"
@@ -68,11 +75,13 @@ class WikiReferenceTests(unittest.TestCase):
         self.assertEqual(reference.space_id, "space-123")
         self.assertEqual(reference.token, "node-456")
 
+
     def test_accepts_explicit_node_token_without_guessing_space(self):
         reference = parse_wiki_reference("node:node-123")
         self.assertEqual(reference.root_mode, "node")
         self.assertEqual(reference.token, "node-123")
         self.assertIsNone(reference.space_id)
+
 
     def test_rejects_non_wiki_urls_and_ambiguous_root_modes(self):
         for value in (
@@ -85,6 +94,7 @@ class WikiReferenceTests(unittest.TestCase):
                     parse_wiki_reference(value)
                 self.assertEqual(caught.exception.status, "config_invalid")
 
+
     def test_rejects_conflicting_url_identity(self):
         with self.assertRaises(KnowledgeConfigBootstrapError):
             parse_wiki_reference(
@@ -93,6 +103,8 @@ class WikiReferenceTests(unittest.TestCase):
 
 
 class BuildConfigTests(unittest.TestCase):
+
+
     def test_builds_config_from_node_links_without_asking_for_ids(self):
         source_url = "https://team.feishu.cn/wiki/source-node?from=share"
         target_url = "https://team.feishu.cn/wiki/target-node#section"
@@ -105,13 +117,14 @@ class BuildConfigTests(unittest.TestCase):
 
         self.assertEqual(cli.calls, ["source-node", "target-node"])
         self.assertEqual(config.source, SourceConfig(
-            "source-space", "node", source_url,
+            "source-space", "node", "https://team.feishu.cn/wiki/source-node",
         ))
         self.assertEqual(config.target, TargetConfig(
             "target-space", "target-node", "node",
         ))
         self.assertEqual(config.identity, "user")
         self.assertEqual(config.cli_candidates, (Path("lark-cli"),))
+
 
     def test_builds_space_configs_without_user_supplied_ids(self):
         source_url = "https://team.feishu.cn/wiki/space/source-space"
@@ -128,6 +141,7 @@ class BuildConfigTests(unittest.TestCase):
             "target-space", None, "space",
         ))
 
+
     def test_rejects_source_and_target_that_resolve_to_same_resource(self):
         url = "https://team.feishu.cn/wiki/node-123"
         cli = FakeCli()
@@ -135,6 +149,7 @@ class BuildConfigTests(unittest.TestCase):
             build_config_from_links(url, url, cli)
         self.assertEqual(caught.exception.status, "config_invalid")
         self.assertEqual(cli.calls, [])
+
 
     def test_rejects_identity_conflicting_node_response(self):
         cli = FakeCli({
@@ -150,6 +165,7 @@ class BuildConfigTests(unittest.TestCase):
         self.assertEqual(caught.exception.status, "config_invalid")
         self.assertIn("identity", str(caught.exception).lower())
 
+
     def test_build_strips_credential_shaped_query_parameters(self):
         source_url = "https://team.feishu.cn/wiki/source-node?from=share&access_token=shortsecret"
         target_url = "https://team.feishu.cn/wiki/target-node"
@@ -162,7 +178,48 @@ class BuildConfigTests(unittest.TestCase):
         self.assertNotIn("access_token", config.source.wiki_url)
 
 
+    def test_build_discards_credentials_in_url_fragment(self):
+        source_url = "https://team.feishu.cn/wiki/source-node#access_token=shortsecret"
+        target_url = "https://team.feishu.cn/wiki/target-node"
+        cli = FakeCli({
+            "source-node": node_payload("source-space", "source-node", "source-doc"),
+            "target-node": node_payload("target-space", "target-node", "target-doc"),
+        })
+        config = build_config_from_links(source_url, target_url, cli)
+        self.assertNotIn("shortsecret", config.source.wiki_url)
+        self.assertNotIn("access_token", config.source.wiki_url)
+        self.assertNotIn("#", config.source.wiki_url)
+
+
+    def test_atomic_save_sanitizes_query_and_fragment_from_manual_config(self):
+        config = KnowledgeConfig(
+            SourceConfig(
+                "source-space",
+                "node",
+                "https://team.feishu.cn/wiki/source-node?from=share#access_token=shortsecret",
+            ),
+            TargetConfig("target-space", "target-node", "node"),
+            "user",
+            45,
+            (Path("lark-cli"),),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            destination = Path(tmp) / "feishu-knowledge-base.json"
+            write_config_atomic(config, destination)
+            serialized = destination.read_text(encoding="utf-8")
+        self.assertNotIn("shortsecret", serialized)
+        self.assertNotIn("access_token", serialized)
+        self.assertNotIn("from=share", serialized)
+        payload = json.loads(serialized)
+        self.assertEqual(
+            payload["source"]["wiki_url"],
+            "https://team.feishu.cn/wiki/source-node",
+        )
+
+
 class AtomicWriteTests(unittest.TestCase):
+
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -175,6 +232,7 @@ class AtomicWriteTests(unittest.TestCase):
             45,
             (Path("lark-cli"),),
         )
+
 
     def test_write_uses_same_directory_temp_file_then_atomic_replace(self):
         seen = {}
@@ -201,6 +259,7 @@ class AtomicWriteTests(unittest.TestCase):
         self.assertEqual(loaded.source, self.config.source)
         self.assertEqual(loaded.target, self.config.target)
 
+
     def test_failed_replace_preserves_old_config_and_removes_temp_file(self):
         self.destination.parent.mkdir(parents=True)
         self.destination.write_text('{"old": true}\n', encoding="utf-8")
@@ -212,6 +271,7 @@ class AtomicWriteTests(unittest.TestCase):
         self.assertEqual(self.destination.read_text(encoding="utf-8"), '{"old": true}\n')
         self.assertEqual(list(self.destination.parent.glob("*.tmp")), [])
         self.assertEqual(list(self.destination.parent.glob(".*.tmp")), [])
+
 
     def test_serialized_config_contains_no_credential_fields(self):
         write_config_atomic(self.config, self.destination)

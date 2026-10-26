@@ -19,6 +19,7 @@ class FakeCli:
     identity = "user"
     binary = Path("lark-cli")
 
+
     def __init__(self, nodes=None, permissions=None, auth_error=None, auth_result=None, docs=None):
         self.nodes = dict(nodes or {})
         self.permissions = dict(permissions or {})
@@ -26,6 +27,7 @@ class FakeCli:
         self.auth_result = auth_result
         self.docs = set(docs or ())
         self.calls = []
+
 
     def _json(self, *arguments):
         self.calls.append(arguments)
@@ -47,6 +49,7 @@ class FakeCli:
             return {"data": {"auth_result": result}}
         raise AssertionError(f"unexpected command: {arguments}")
 
+
     def get_node(self, token):
         self.calls.append(("get_node", token))
         result = self.nodes.get(token)
@@ -55,6 +58,7 @@ class FakeCli:
         if result is None:
             raise AssertionError(f"unexpected node: {token}")
         return result
+
 
     def fetch_doc(self, token):
         self.calls.append(("fetch_doc", token))
@@ -86,6 +90,8 @@ def config(source_mode="node", target_mode="node"):
 
 
 class ResourceAccessTests(unittest.TestCase):
+
+
     def test_ok_checks_auth_source_sample_target_root_and_target_edit(self):
         cli = FakeCli(
             nodes={
@@ -110,6 +116,7 @@ class ResourceAccessTests(unittest.TestCase):
         self.assertIn("target-root", permission_call)
         self.assertIn("edit", permission_call)
 
+
     def test_root_readable_but_sample_node_unreadable_is_resource_grant_required(self):
         cli = FakeCli(
             nodes={
@@ -126,6 +133,7 @@ class ResourceAccessTests(unittest.TestCase):
         self.assertIn("source.sample", report.missing)
         self.assertNotEqual(report.status, "ok")
 
+
     def test_missing_target_edit_acl_is_resource_grant_required(self):
         cli = FakeCli(
             nodes={
@@ -140,6 +148,7 @@ class ResourceAccessTests(unittest.TestCase):
         self.assertEqual(report.status, "resource_grant_required")
         self.assertIn("target.edit", report.missing)
         self.assertIn("target.acceptance_write", report.missing)
+
 
     def test_resource_permission_denial_is_not_reported_as_scope_success(self):
         cli = FakeCli(
@@ -156,6 +165,7 @@ class ResourceAccessTests(unittest.TestCase):
 
         self.assertEqual(report.status, "resource_grant_required")
         self.assertIn("target.edit", report.missing)
+
 
     def test_missing_scope_is_reported_as_waiting_admin(self):
         cli = FakeCli(
@@ -175,6 +185,7 @@ class ResourceAccessTests(unittest.TestCase):
         self.assertEqual(report.status, "waiting_admin")
         self.assertIn("scope:docs:permission.member:auth", report.missing)
 
+
     def test_user_authorization_failure_is_waiting_admin_and_separate_from_acl(self):
         cli = FakeCli(auth_error=AuthenticationError("login required; scope missing"))
         report = check_resource_access(config(), cli)
@@ -182,6 +193,7 @@ class ResourceAccessTests(unittest.TestCase):
         self.assertEqual(report.status, "waiting_admin")
         self.assertIn("user_authorization", report.missing)
         self.assertNotIn("target.edit", report.missing)
+
 
     def test_space_source_uses_first_child_as_sample_when_available(self):
         cli = FakeCli(
@@ -200,12 +212,70 @@ class ResourceAccessTests(unittest.TestCase):
         self.assertEqual(report.status, "ok")
         self.assertIn(("get_node", "first-child"), cli.calls)
 
+
     def test_auth_status_false_is_waiting_admin(self):
         cli = FakeCli(auth_result={"ok": False})
         report = check_resource_access(config(), cli)
 
         self.assertEqual(report.status, "waiting_admin")
         self.assertIn("user_authorization", report.missing)
+
+
+    def test_target_space_with_child_does_not_treat_child_edit_as_create_acl(self):
+        cli = FakeCli(
+            nodes={
+                "source-root": node_payload("source-space", "source-root", "source-doc"),
+            },
+            docs={"source-doc"},
+        )
+        cli.list_nodes = lambda space_id, parent_node_token=None, page_limit=10: [
+            {"node_token": "arbitrary-child"}
+        ]
+        report = check_resource_access(config(target_mode="space"), cli)
+
+        self.assertEqual(report.status, "resource_grant_required")
+        self.assertIn("target.create", report.missing)
+        self.assertIn("target.acceptance_write", report.missing)
+        self.assertFalse(any(
+            call[:3] == ("drive", "permission.members", "auth") for call in cli.calls
+        ))
+
+
+    def test_empty_target_space_is_not_false_blocked(self):
+        cli = FakeCli(
+            nodes={
+                "source-root": node_payload("source-space", "source-root", "source-doc"),
+            },
+            docs={"source-doc"},
+        )
+        cli.list_nodes = lambda space_id, parent_node_token=None, page_limit=10: []
+        report = check_resource_access(config(target_mode="space"), cli)
+
+        self.assertEqual(report.status, "ok")
+        self.assertIn("empty", " ".join(report.details).lower())
+        self.assertFalse(any(
+            call[:3] == ("drive", "permission.members", "auth") for call in cli.calls
+        ))
+
+
+    def test_target_node_space_must_match_configured_target_space(self):
+        cli = FakeCli(
+            nodes={
+                "source-root": node_payload("source-space", "source-root", "source-doc"),
+                "target-root": node_payload("other-space", "target-root", "target-doc"),
+            },
+            permissions={("target-root", "wiki", "edit"): True},
+            docs={"source-doc"},
+        )
+        report = check_resource_access(config(), cli)
+
+        self.assertEqual(report.status, "resource_grant_required")
+        self.assertIn("target.root", report.missing)
+        self.assertFalse(any(
+            call[:3] == ("drive", "permission.members", "auth") for call in cli.calls
+        ))
+
+
     def test_details_redact_credential_values(self):
         cli = FakeCli(
             nodes={
