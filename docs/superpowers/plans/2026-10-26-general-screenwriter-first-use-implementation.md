@@ -94,9 +94,11 @@ git commit -m "feat: use a single lark cli minimum version"
 **Files:**
 - Create: `plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/lark_cli_context.py`
 - Create: `plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/test_lark_cli_context.py`
+- Modify: `plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/lark_cli.py`
 - Modify: `plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/config.py`
 - Modify: `plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/store_cli.py`
 - Modify: `plugins/general-screenwriter/skills/knowledge-loader/scripts/authority_cli.py`
+- Modify: `plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/test_lark_cli.py`
 - Modify: `plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/test_store_cli.py`
 - Modify: `plugins/general-screenwriter/skills/knowledge-loader/scripts/test_authority_cli.py`
 
@@ -106,7 +108,7 @@ git commit -m "feat: use a single lark cli minimum version"
 
 - [ ] **Step 1: 写入失败测试**
 
-在 `test_lark_cli_context.py` 覆盖：显式路径优先、PATH 次之、标准目录再次、私有安装目录存在时被识别、首候选坏但后候选好、显式路径失效时报告路径而不继续命中同一值、带空格/中文路径、无 profile 时不生成 `--profile`、有 profile 时每个命令都带 `--profile <name>`。
+在 `test_lark_cli_context.py` 覆盖：显式路径优先、PATH 次之、标准目录再次、私有安装目录存在时被识别、首候选坏但后候选好、显式路径失效时报告路径而不继续命中同一值、带空格/中文路径、无 profile 时不生成 `--profile`、有 profile 时每个命令都带 `--profile <name>`。在 `test_lark_cli.py` 增加 `LarkCli(profile="...")` 调用带 profile 的断言。
 
 - [ ] **Step 2: 运行并确认失败**
 
@@ -120,14 +122,14 @@ Expected: 模块不存在或路径/profile 断言失败。
 
 - [ ] **Step 4: 运行并确认通过**
 
-Run: `python "plugins\general-screenwriter\skills\feishu-knowledge-store\scripts\test_lark_cli_context.py"; python "plugins\general-screenwriter\skills\feishu-knowledge-store\scripts\test_store_cli.py"; python "plugins\general-screenwriter\skills\knowledge-loader\scripts\test_authority_cli.py"`
+Run: `python "plugins\general-screenwriter\skills\feishu-knowledge-store\scripts\test_lark_cli_context.py"; python "plugins\general-screenwriter\skills\feishu-knowledge-store\scripts\test_lark_cli.py"; python "plugins\general-screenwriter\skills\feishu-knowledge-store\scripts\test_store_cli.py"; python "plugins\general-screenwriter\skills\knowledge-loader\scripts\test_authority_cli.py"`
 
 Expected: 全部 PASS，且 profile 参数出现在每一个 fake CLI 调用中。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-git add plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/lark_cli_context.py plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/test_lark_cli_context.py plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/config.py plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/store_cli.py plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/test_store_cli.py plugins/general-screenwriter/skills/knowledge-loader/scripts/authority_cli.py plugins/general-screenwriter/skills/knowledge-loader/scripts/test_authority_cli.py
+git add plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/lark_cli_context.py plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/test_lark_cli_context.py plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/lark_cli.py plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/config.py plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/store_cli.py plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/test_lark_cli.py plugins/general-screenwriter/skills/feishu-knowledge-store/scripts/test_store_cli.py plugins/general-screenwriter/skills/knowledge-loader/scripts/authority_cli.py plugins/general-screenwriter/skills/knowledge-loader/scripts/test_authority_cli.py
 git commit -m "feat: resolve one cli context with profile binding"
 ```
 
