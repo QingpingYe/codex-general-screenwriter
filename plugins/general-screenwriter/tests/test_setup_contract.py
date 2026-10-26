@@ -67,6 +67,24 @@ class SetupContractTests(unittest.TestCase):
                 self.assertIn("恢复原任务", text)
                 self.assertIn("ready", text)
 
+    def test_wiki_ingest_does_not_bypass_setup_for_install_or_login(self):
+        paths = (
+            ROOT / "skills" / "wiki-ingest" / "SKILL.md",
+            ROOT / "skills" / "wiki-ingest" / "references" / "feishu-wiki-extraction.md",
+        )
+        bypass_patterns = (
+            r"经用户批准.{0,12}(安装|安装器)",
+            r"用户批准.{0,12}安装",
+            r"提示用户.{0,12}重新登录",
+            r"用户.{0,12}重新登录",
+        )
+        for path in paths:
+            text = path.read_text(encoding="utf-8")
+            with self.subTest(path=path):
+                self.assertIn("setup", text)
+                self.assertIn("ready", text)
+                for pattern in bypass_patterns:
+                    self.assertIsNone(re.search(pattern, text, re.IGNORECASE))
     def test_setup_skill_is_ai_internal_and_has_no_user_facing_commands(self):
         text = SETUP_SKILL.read_text(encoding="utf-8")
         self.assertIn("内部", text)

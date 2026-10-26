@@ -70,7 +70,7 @@ lark-cli auth status --json --verify
 lark-cli wiki +node-get --node-token <source_root_token> --as user --format json
 ```
 
-认证失败、CLI 不兼容、根节点不可读取时，终止运行并报告具体原因。CLI 缺失时先走上述经用户批准的安装流程。不得尝试创建替代知识库。
+认证失败、CLI 不兼容、根节点不可读取时，终止运行并报告具体原因；若 setup 尚未 `ready`，先回到 setup 内部补齐运行时、CLI、授权和配置，再恢复本任务。不得尝试创建替代知识库。
 
 ### 2. 枚举源节点
 

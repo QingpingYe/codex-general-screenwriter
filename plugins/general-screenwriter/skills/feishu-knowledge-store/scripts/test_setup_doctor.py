@@ -8,6 +8,7 @@ from unittest.mock import patch
 from lark_cli_context import CliContext, CliContextError
 from lark_cli_contract import REQUIRED_CAPABILITIES
 from models import KnowledgeConfig, SourceConfig, TargetConfig
+from lark_profile import ProfileState
 from publisher import Publisher
 from resource_access import ResourceAccessReport
 
@@ -156,7 +157,15 @@ def patched_runtime(
         stack.enter_context(patch.object(
             setup_doctor, "check_resource_access", return_value=resource_report,
         ))
-        yield cli
+        stack.enter_context(patch.object(
+            setup_doctor,
+            "ensure_named_profile",
+            return_value=ProfileState(
+                context.profile or "general-screenwriter", "cli_test_app", "existing",
+            ),
+        ))
+
+        yield SimpleNamespace(cli=cli, resolver=cli_resolver)
 
 
 def check(report, check_id):
@@ -164,6 +173,150 @@ def check(report, check_id):
 
 
 class SetupDoctorTests(unittest.TestCase):
+    def test_explicit_profile_is_forwarded_to_cli_resolution(self):
+        context = CliContext(
+            Path("lark-cli"), "1.0.95", "team-z", frozenset(REQUIRED_CAPABILITIES),
+        )
+        resolved = SimpleNamespace(
+            path=Path("C:/tmp/feishu-knowledge-base.json"),
+            origin="explicit",
+            searched=(Path("C:/tmp/feishu-knowledge-base.json"),),
+        )
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(
+                setup_doctor, "resolve_config_path", return_value=resolved,
+            ))
+            stack.enter_context(patch.object(
+                setup_doctor, "load_config", return_value=config(),
+            ))
+            resolver = stack.enter_context(patch.object(
+                setup_doctor, "resolve_cli_context", return_value=context,
+            ))
+            stack.enter_context(patch.object(setup_doctor, "LarkCli", return_value=FakeCli()))
+            stack.enter_context(patch.object(
+                setup_doctor, "Publisher", return_value=SimpleNamespace(
+                    inspect_control_tree=lambda: {
+                        "status": "control_tree_complete",
+                        "state": "complete",
+                        "present": [],
+                        "missing": [],
+                        "duplicates": [],
+                        "tokens": {},
+                        "verification_token": None,
+                    },
+                ),
+            ))
+            stack.enter_context(patch.object(
+                setup_doctor, "ensure_named_profile",
+                return_value=ProfileState("team-z", "cli_app", "existing"),
+            ))
+            stack.enter_context(patch.object(
+                setup_doctor, "read_authenticated_identity", return_value="open_id:ou_user",
+            ))
+            stack.enter_context(patch.object(
+                setup_doctor, "check_resource_access",
+                return_value=ResourceAccessReport("ok", (), ("verified",)),
+            ))
+            run_doctor(config_path="config.json", profile="team-z")
+
+        self.assertEqual(resolver.call_args.kwargs["profile"], "team-z")
+
+    def test_profile_continuity_across_doctor_init_and_write_verify(self):
+        cli = FakeCli()
+        with patched_runtime(cli) as runtime:
+            run_doctor(config_path="config.json", profile="team-z")
+            init_target(
+                config_path="config.json",
+                authorized=True,
+                initializer_confirmed=True,
+                profile="team-z",
+            )
+            verify_write_access(
+                config_path="config.json",
+                authorized=True,
+                profile="team-z",
+            )
+
+        profiles = [
+            call.kwargs.get("profile")
+            for call in runtime.resolver.call_args_list
+        ]
+        self.assertTrue(profiles)
+        self.assertEqual(set(profiles), {"team-z"})
+    def test_run_doctor_uses_setup_default_profile_when_none_is_supplied(self):
+        context = CliContext(
+            Path("lark-cli"), "1.0.95", None,
+            frozenset(REQUIRED_CAPABILITIES),
+        )
+        missing_config = setup_doctor.ConfigResolutionError(
+            "configuration file not found",
+            status="missing_config",
+        )
+        with (
+            patch.object(
+                setup_doctor, "_resolve_cli_runtime",
+                return_value=(context, FakeCli()),
+            ) as resolve_runtime,
+            patch.object(setup_doctor, "resolve_config_path", side_effect=missing_config),
+            patch.object(
+                setup_doctor, "ensure_named_profile",
+                return_value=ProfileState(
+                    setup_doctor.DEFAULT_PROFILE, "cli_app", "existing",
+                ),
+            ),
+            patch.object(
+                setup_doctor, "read_authenticated_identity",
+                return_value="open_id:ou_user",
+            ),
+        ):
+            run_doctor(config_path="config.json")
+
+        self.assertEqual(
+            resolve_runtime.call_args.args[0],
+            setup_doctor.DEFAULT_PROFILE,
+        )
+    def test_no_config_doctor_reports_independent_prerequisite_checks(self):
+        context = CliContext(
+            Path("lark-cli"), "1.0.95", "team-z", frozenset(REQUIRED_CAPABILITIES),
+        )
+        missing_config = setup_doctor.ConfigResolutionError(
+            "configuration file not found",
+            status="missing_config",
+        )
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(
+                setup_doctor, "resolve_config_path", side_effect=missing_config,
+            ))
+            stack.enter_context(patch.object(
+                setup_doctor, "resolve_cli_context", return_value=context,
+            ))
+            stack.enter_context(patch.object(setup_doctor, "LarkCli", return_value=FakeCli()))
+            stack.enter_context(patch.object(
+                setup_doctor, "ensure_named_profile",
+                return_value=ProfileState("team-z", "cli_app", "existing"),
+            ))
+            stack.enter_context(patch.object(
+                setup_doctor, "read_authenticated_identity", return_value="open_id:ou_user",
+            ))
+            resource = stack.enter_context(patch.object(
+                setup_doctor, "check_resource_access",
+            ))
+            report = run_doctor(config_path="config.json", profile="team-z")
+
+        check_ids = [item["check_id"] for item in report["checks"]]
+        self.assertEqual(report["status"], "config_missing")
+        self.assertEqual(
+            check_ids,
+            [
+                "config", "runtime", "cli", "profile", "app", "auth",
+                "resource_access", "control_tree", "write_verification",
+            ],
+        )
+        self.assertEqual(check(report, "config")["reason_code"], "missing_config")
+        self.assertEqual(check(report, "resource_access")["reason_code"], "config_missing")
+        self.assertEqual(check(report, "control_tree")["reason_code"], "config_missing")
+        self.assertEqual(check(report, "write_verification")["reason_code"], "config_missing")
+        resource.assert_not_called()
     def test_empty_target_doctor_waits_without_control_plane_or_lock(self):
         cli = FakeCli()
         with patched_runtime(cli), \

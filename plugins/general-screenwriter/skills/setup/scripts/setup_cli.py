@@ -51,7 +51,7 @@ from lark_profile import (
     begin_app_config,
     ensure_named_profile,
 )
-from setup_doctor import init_target, run_doctor, verify_write_access
+from setup_doctor import DEFAULT_PROFILE, init_target, run_doctor, verify_write_access
 
 
 COMMANDS = (
@@ -62,7 +62,6 @@ COMMANDS = (
     "target-init",
     "write-verify",
 )
-DEFAULT_PROFILE = "general-screenwriter"
 SETUP_SCHEMA_VERSION = 1
 _PROFILE_ENVIRONMENT_KEYS = (
     "GENERAL_SCREENWRITER_PROFILE",
@@ -263,13 +262,16 @@ def doctor_report(
     workspace: str | None = None,
     environ: Mapping[str, str] | None = None,
     initializer: bool = False,
+    profile: str | None = None,
     runner: Callable[..., Any] = subprocess.run,
 ) -> dict[str, Any]:
+    environment = _environment(environ)
     return run_doctor(
         config_path=config_path,
         workspace=workspace,
-        environ=_environment(environ),
+        environ=environment,
         initializer=initializer,
+        profile=_profile_name(profile, environment),
         runner=runner,
     )
 
@@ -574,17 +576,20 @@ def target_init(
     *,
     initializer: bool = False,
     authorized: bool = False,
+    profile: str | None = None,
     config_path: str | None = None,
     workspace: str | None = None,
     environ: Mapping[str, str] | None = None,
     runner: Callable[..., Any] = subprocess.run,
 ) -> dict[str, Any]:
+    environment = _environment(environ)
     return init_target(
         config_path=config_path,
         workspace=workspace,
-        environ=_environment(environ),
+        environ=environment,
         authorized=authorized,
         initializer_confirmed=initializer,
+        profile=_profile_name(profile, environment),
         runner=runner,
     )
 
@@ -592,16 +597,19 @@ def target_init(
 def write_verify(
     *,
     authorized: bool = False,
+    profile: str | None = None,
     config_path: str | None = None,
     workspace: str | None = None,
     environ: Mapping[str, str] | None = None,
     runner: Callable[..., Any] = subprocess.run,
 ) -> dict[str, Any]:
+    environment = _environment(environ)
     return verify_write_access(
         config_path=config_path,
         workspace=workspace,
-        environ=_environment(environ),
+        environ=environment,
         authorized=authorized,
+        profile=_profile_name(profile, environment),
         runner=runner,
     )
 
@@ -619,11 +627,11 @@ def _sanitize_payload(value: Any) -> Any:
     return value
 
 
-def _add_common(parser: argparse.ArgumentParser, *, include_profile: bool = True) -> None:
+def _add_common(parser: argparse.ArgumentParser, *, include_mode: bool = False) -> None:
     parser.add_argument("--config")
     parser.add_argument("--workspace")
-    if include_profile:
-        parser.add_argument("--profile")
+    parser.add_argument("--profile")
+    if include_mode:
         parser.add_argument("--mode", default="per_user")
     parser.add_argument("--json", action="store_true")
 
@@ -633,11 +641,11 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     doctor = subparsers.add_parser("doctor")
-    _add_common(doctor, include_profile=False)
+    _add_common(doctor)
     doctor.add_argument("--initializer", action="store_true")
 
     auth_start_parser = subparsers.add_parser("auth-start")
-    _add_common(auth_start_parser)
+    _add_common(auth_start_parser, include_mode=True)
 
     auth_complete_parser = subparsers.add_parser("auth-complete")
     _add_common(auth_complete_parser)
@@ -649,12 +657,12 @@ def _parser() -> argparse.ArgumentParser:
     config_parser.add_argument("--target-url", required=True)
 
     target_init_parser = subparsers.add_parser("target-init")
-    _add_common(target_init_parser, include_profile=False)
+    _add_common(target_init_parser)
     target_init_parser.add_argument("--initializer", action="store_true")
     target_init_parser.add_argument("--authorized", action="store_true")
 
     write_verify_parser = subparsers.add_parser("write-verify")
-    _add_common(write_verify_parser, include_profile=False)
+    _add_common(write_verify_parser)
     write_verify_parser.add_argument("--authorized", action="store_true")
     return parser
 
@@ -707,6 +715,7 @@ def main(
                 workspace=parsed.workspace,
                 environ=environ,
                 initializer=parsed.initializer,
+                profile=parsed.profile,
                 runner=runner,
             )
         elif command == "auth-start":
@@ -741,6 +750,7 @@ def main(
             payload = target_init(
                 initializer=parsed.initializer,
                 authorized=parsed.authorized,
+                profile=parsed.profile,
                 config_path=parsed.config,
                 workspace=parsed.workspace,
                 environ=environ,
@@ -749,6 +759,7 @@ def main(
         elif command == "write-verify":
             payload = write_verify(
                 authorized=parsed.authorized,
+                profile=parsed.profile,
                 config_path=parsed.config,
                 workspace=parsed.workspace,
                 environ=environ,

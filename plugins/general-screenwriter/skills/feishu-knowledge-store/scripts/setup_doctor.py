@@ -15,6 +15,12 @@ from control_plane import ControlPlane, LockHeld
 from lark_cli import LarkCli, redact_sensitive
 from lark_cli_context import CliContextError, resolve_cli_context
 from lark_cli_contract import REQUIRED_CAPABILITIES
+from lark_profile import (
+    AppConfigRequired,
+    OrgAppBindingRequired,
+    ProfileError,
+    ensure_named_profile,
+)
 from publisher import NeedsReview, Publisher, TREE_ORDER, WRITE_VERIFICATION_TITLE
 from resource_access import authenticated_identity as read_authenticated_identity, check_resource_access
 from setup_state import SetupCheck, render_setup_report
@@ -22,6 +28,7 @@ from setup_state import SetupCheck, render_setup_report
 
 WRITE_VERIFICATION_PURPOSE = "write-verification"
 WRITE_VERIFICATION_SCHEMA_VERSION = 1
+DEFAULT_PROFILE = "general-screenwriter"
 
 
 @dataclass(frozen=True)
@@ -75,48 +82,22 @@ def _exception_status(error: Exception) -> str:
     return "needs_escalation"
 
 
-def _resolve_context(
-    config_path: Any,
-    workspace: Any,
+def _selected_profile(profile: str | None, environ: Mapping[str, str] | None) -> str:
+    if isinstance(profile, str) and profile.strip():
+        return profile.strip()
+    from_environment = _profile_from_environment(environ)
+    return from_environment or DEFAULT_PROFILE
+
+
+def _resolve_cli_runtime(
+    profile: str | None,
     environ: Mapping[str, str] | None,
     runner: Callable[..., Any],
-) -> _Context:
-    try:
-        resolved = resolve_config_path(config_path, workspace, environ)
-    except ConfigResolutionError as error:
-        status = "config_missing" if error.status == "missing_config" else error.status
-        raise _SetupFailure(SetupCheck(
-            "config", status, error.status, str(error), (
-                "Collect the source and target Wiki links, then generate schema-v2 config.",
-            ), "Provide the source and target Wiki links.",
-        )) from error
-    except Exception as error:
-        raise _SetupFailure(SetupCheck(
-            "config", "config_invalid", "config_invalid", _safe_error(error),
-            ("Regenerate the knowledge configuration from Wiki links.",),
-            "Provide valid Wiki links.",
-        )) from error
-
-    try:
-        config = load_config(resolved.path, resolved.path.parent, environ)
-    except ConfigError as error:
-        status = "config_invalid"
-        raise _SetupFailure(SetupCheck(
-            "config", status, getattr(error, "status", status), str(error),
-            ("Regenerate the schema-v2 configuration from Wiki links.",),
-            "Provide valid source and target Wiki links.",
-        )) from error
-    except Exception as error:
-        raise _SetupFailure(SetupCheck(
-            "config", "config_invalid", "config_invalid", _safe_error(error),
-            ("Regenerate the schema-v2 configuration from Wiki links.",),
-            "Provide valid source and target Wiki links.",
-        )) from error
-
-    profile = _profile_from_environment(environ)
+) -> tuple[Any, LarkCli]:
+    selected_profile = _selected_profile(profile, environ)
     try:
         cli_context = resolve_cli_context(
-            profile=profile, environ=environ, runner=runner,
+            profile=selected_profile, environ=environ, runner=runner,
         )
     except CliContextError as error:
         status = {
@@ -152,10 +133,60 @@ def _resolve_context(
     try:
         cli = LarkCli(
             cli_context.binary,
-            identity=config.identity,
+            identity="user",
             runner=runner,
             profile=cli_context.profile,
         )
+    except Exception as error:
+        raise _SetupFailure(SetupCheck(
+            "runtime", "needs_escalation", "runtime_initialization_failed",
+            _safe_error(error), ("Inspect the setup inputs and rerun doctor.",), None,
+        )) from error
+    return cli_context, cli
+
+
+def _resolve_context(
+    config_path: Any,
+    workspace: Any,
+    environ: Mapping[str, str] | None,
+    runner: Callable[..., Any],
+    profile: str | None = None,
+) -> _Context:
+    try:
+        resolved = resolve_config_path(config_path, workspace, environ)
+    except ConfigResolutionError as error:
+        status = "config_missing" if error.status == "missing_config" else error.status
+        raise _SetupFailure(SetupCheck(
+            "config", status, error.status, str(error), (
+                "Collect the source and target Wiki links, then generate schema-v2 config.",
+            ), "Provide the source and target Wiki links.",
+        )) from error
+    except Exception as error:
+        raise _SetupFailure(SetupCheck(
+            "config", "config_invalid", "config_invalid", _safe_error(error),
+            ("Regenerate the knowledge configuration from Wiki links.",),
+            "Provide valid Wiki links.",
+        )) from error
+
+    try:
+        config = load_config(resolved.path, resolved.path.parent, environ)
+    except ConfigError as error:
+        status = "config_invalid"
+        raise _SetupFailure(SetupCheck(
+            "config", status, getattr(error, "status", status), str(error),
+            ("Regenerate the schema-v2 configuration from Wiki links.",),
+            "Provide valid source and target Wiki links.",
+        )) from error
+    except Exception as error:
+        raise _SetupFailure(SetupCheck(
+            "config", "config_invalid", "config_invalid", _safe_error(error),
+            ("Regenerate the schema-v2 configuration from Wiki links.",),
+            "Provide valid source and target Wiki links.",
+        )) from error
+
+    cli_context, cli = _resolve_cli_runtime(profile, environ, runner)
+
+    try:
         publisher = Publisher(
             cli,
             config.target.root_token,
@@ -169,7 +200,6 @@ def _resolve_context(
         )) from error
 
     return _Context(config, resolved.path, cli_context, cli, publisher)
-
 
 def _ready_check(check_id: str, message: str) -> SetupCheck:
     return SetupCheck(check_id, "ready", None, message, (), None)
@@ -358,22 +388,162 @@ def _context_ready_checks(context: _Context) -> tuple[SetupCheck, SetupCheck]:
     )
 
 
-def run_doctor(
-    config_path=None,
-    workspace=None,
-    environ=None,
-    initializer=False,
-    runner=subprocess.run,
-) -> dict[str, Any]:
-    """Return independent read-only setup checks without loading ControlPlane."""
-    try:
-        context = _resolve_context(
-            config_path, workspace, environ, runner,
+def _runtime_check_from_cli_failure(check: SetupCheck) -> SetupCheck:
+    if check.status == "cli_missing":
+        return SetupCheck(
+            "runtime", "runtime_missing", "runtime_missing",
+            "no compatible CLI runtime is available",
+            ("Resolve or privately install the runtime before retrying setup.",),
+            "Allow the local runtime setup if prompted.",
         )
-    except _SetupFailure as failure:
-        return _failure_report(failure.check)
+    if check.status in {"needs_escalation", "cli_unavailable"}:
+        return SetupCheck(
+            "runtime", "needs_escalation", "runtime_unavailable",
+            "the CLI runtime could not be loaded",
+            ("Inspect the local runtime and retry setup.",),
+            "Resolve the local runtime problem.",
+        )
+    return _ready_check("runtime", "a local CLI runtime is present")
 
-    checks = list(_context_ready_checks(context))
+
+def _pending_doctor_check(check_id: str, reason_code: str, message: str) -> SetupCheck:
+    return SetupCheck(
+        check_id, "needs_context", reason_code, message,
+        ("Complete the preceding setup prerequisite, then rerun doctor.",),
+        None,
+    )
+
+
+def _profile_and_app_checks(
+    cli_context: Any,
+    selected_profile: str | None,
+    runner: Callable[..., Any],
+) -> tuple[SetupCheck, SetupCheck]:
+    if not selected_profile:
+        return (
+            SetupCheck(
+                "profile", "app_unconfigured", "profile_missing",
+                "no named profile has been selected",
+                ("Select or create one explicit per-user profile before continuing.",),
+                "Choose which local profile should be used.",
+            ),
+            SetupCheck(
+                "app", "app_unconfigured", "app_missing",
+                "the named profile has no configured application",
+                ("Start the named application setup flow.",),
+                "Complete the visible application setup step if prompted.",
+            ),
+        )
+    try:
+        state = ensure_named_profile(
+            cli_context, selected_profile, mode="per_user", runner=runner,
+        )
+    except AppConfigRequired:
+        return (
+            SetupCheck(
+                "profile", "app_unconfigured", "profile_missing",
+                f"named profile {selected_profile!r} is not configured",
+                ("Start the named application setup flow for this profile.",),
+                "Complete the visible application setup step if prompted.",
+            ),
+            SetupCheck(
+                "app", "app_unconfigured", "app_missing",
+                f"app configuration is missing for profile {selected_profile!r}",
+                ("Create or bind the application for the selected profile.",),
+                "Complete the visible application setup step if prompted.",
+            ),
+        )
+    except OrgAppBindingRequired as error:
+        return (
+            SetupCheck(
+                "profile", "waiting_org_app_binding", error.status,
+                str(error),
+                ("Use the organisation-approved local binding for this profile.",),
+                "Ask the organisation owner to provide the approved binding.",
+            ),
+            SetupCheck(
+                "app", "waiting_org_app_binding", error.status,
+                str(error),
+                ("Use the organisation-approved local binding for this profile.",),
+                "Ask the organisation owner to provide the approved binding.",
+            ),
+        )
+    except ProfileError as error:
+        status = getattr(error, "status", "profile_error")
+        return (
+            SetupCheck(
+                "profile", "needs_escalation", status, _safe_error(error),
+                ("Inspect the named profile state and retry doctor.",),
+                "Resolve the local profile problem.",
+            ),
+            SetupCheck(
+                "app", "needs_escalation", status, _safe_error(error),
+                ("Inspect the named profile state and retry doctor.",),
+                "Resolve the application configuration problem.",
+            ),
+        )
+    except Exception as error:
+        return (
+            SetupCheck(
+                "profile", "needs_escalation", "profile_check_failed",
+                _safe_error(error), ("Inspect the named profile state and retry doctor.",),
+                None,
+            ),
+            SetupCheck(
+                "app", "needs_escalation", "app_check_failed",
+                _safe_error(error), ("Inspect the application state and retry doctor.",),
+                None,
+            ),
+        )
+
+    app_id = getattr(state, "app_id", "")
+    return (
+        _ready_check("profile", f"named profile {selected_profile!r} is available"),
+        _ready_check("app", f"app {app_id!r} is configured")
+        if app_id else SetupCheck(
+            "app", "app_unconfigured", "app_missing",
+            f"app configuration is missing for profile {selected_profile!r}",
+            ("Create or bind the application for the selected profile.",),
+            "Complete the visible application setup step if prompted.",
+        ),
+    )
+
+
+def _auth_check(
+    cli: LarkCli,
+    profile_check: SetupCheck,
+    app_check: SetupCheck,
+) -> SetupCheck:
+    if profile_check.status != "ready" or app_check.status != "ready":
+        return _pending_doctor_check(
+            "auth",
+            app_check.reason_code or profile_check.reason_code or "auth_not_checked",
+            "user authorization has not been checked because profile/app setup is incomplete",
+        )
+    try:
+        identity = read_authenticated_identity(cli)
+    except Exception as error:
+        return SetupCheck(
+            "auth", "waiting_admin", "identity_unavailable", _safe_error(error),
+            ("Resolve the user authentication error, then rerun doctor.",),
+            "Resolve the reported user authentication problem.",
+        )
+    if not identity:
+        return SetupCheck(
+            "auth", "waiting_admin", "identity_missing",
+            "verified auth status did not expose a stable user identity",
+            ("Sign in with a user identity that exposes an open ID or user ID.",),
+            "Complete the visible user authorization step.",
+        )
+    return _ready_check("auth", "the selected profile has a verified user identity")
+
+
+def _run_doctor_with_context(
+    context: _Context,
+    initializer: bool,
+    checks: list[SetupCheck],
+) -> dict[str, Any]:
+    """Append resource/tree/write checks to a fully resolved setup context."""
     tree = _inspect_control_tree(context.publisher)
     authenticated_identity, identity_error = _current_identity(context)
     verification_result = None
@@ -442,6 +612,177 @@ def run_doctor(
     return report
 
 
+def run_doctor(
+    config_path=None,
+    workspace=None,
+    environ=None,
+    initializer=False,
+    runner=subprocess.run,
+    profile=None,
+) -> dict[str, Any]:
+    """Return independent read-only setup checks without loading ControlPlane.
+
+    Runtime, CLI, profile, app, and auth are checked before configuration.
+    Resource, control-tree, and write checks are reported as pending states when
+    configuration or CLI prerequisites are missing, rather than collapsing the
+    report to the first prerequisite.
+    """
+    environment = _environment(environ)
+    selected_profile = _selected_profile(profile, environment)
+    checks: list[SetupCheck] = []
+    cli_context = None
+    cli = None
+    cli_failure: SetupCheck | None = None
+
+    try:
+        cli_context, cli = _resolve_cli_runtime(selected_profile, environment, runner)
+    except _SetupFailure as failure:
+        cli_failure = failure.check
+        if cli_failure.check_id == "cli":
+            checks.append(cli_failure)
+            checks.append(_runtime_check_from_cli_failure(cli_failure))
+        else:
+            checks.append(cli_failure)
+            checks.append(SetupCheck(
+                "cli", "needs_escalation", "cli_unavailable",
+                "the CLI context could not be initialized",
+                ("Inspect the CLI installation and retry doctor.",),
+                "Resolve the local CLI problem.",
+            ))
+    else:
+        checks.append(_ready_check("runtime", "the CLI runtime is available"))
+        checks.append(_ready_check("cli", "a compatible lark-cli context is ready"))
+
+    if cli_context is not None:
+        selected_profile = selected_profile or getattr(cli_context, "profile", None)
+        profile_check, app_check = _profile_and_app_checks(
+            cli_context, selected_profile, runner,
+        )
+        checks.extend((profile_check, app_check))
+        checks.append(_auth_check(cli, profile_check, app_check))
+    else:
+        cli_reason = cli_failure.reason_code if cli_failure is not None else "cli_unavailable"
+        profile_check = _pending_doctor_check(
+            "profile", cli_reason,
+            "profile state could not be checked until the CLI runtime is ready",
+        )
+        app_check = _pending_doctor_check(
+            "app", cli_reason,
+            "app configuration could not be checked until the CLI runtime is ready",
+        )
+        checks.extend((
+            profile_check,
+            app_check,
+            _pending_doctor_check(
+                "auth", cli_reason,
+                "user authorization could not be checked until the CLI runtime is ready",
+            ),
+        ))
+
+    try:
+        resolved = resolve_config_path(config_path, workspace, environment)
+    except ConfigResolutionError as error:
+        status = "config_missing" if error.status == "missing_config" else error.status
+        config_check = SetupCheck(
+            "config", status, error.status, str(error), (
+                "Collect the source and target Wiki links, then generate schema-v2 config.",
+            ), "Provide the source and target Wiki links.",
+        )
+        checks.insert(0, config_check)
+        checks.extend((
+            _pending_doctor_check("resource_access", status, "resource checks require configuration"),
+            _pending_doctor_check("control_tree", status, "control-tree checks require configuration"),
+            _pending_doctor_check("write_verification", status, "write verification requires configuration"),
+        ))
+        report = render_setup_report(tuple(checks))
+        report["control_tree"] = {"status": status, "config_missing": True}
+        return report
+    except Exception as error:
+        config_check = SetupCheck(
+            "config", "config_invalid", "config_invalid", _safe_error(error),
+            ("Regenerate the knowledge configuration from Wiki links.",),
+            "Provide valid source and target Wiki links.",
+        )
+        checks.insert(0, config_check)
+        checks.extend((
+            _pending_doctor_check("resource_access", "config_invalid", "resource checks require valid configuration"),
+            _pending_doctor_check("control_tree", "config_invalid", "control-tree checks require valid configuration"),
+            _pending_doctor_check("write_verification", "config_invalid", "write verification requires valid configuration"),
+        ))
+        report = render_setup_report(tuple(checks))
+        report["control_tree"] = {"status": "config_invalid", "config_invalid": True}
+        return report
+
+    try:
+        config = load_config(resolved.path, resolved.path.parent, environment)
+    except ConfigError as error:
+        status = getattr(error, "status", "config_invalid")
+        config_check = SetupCheck(
+            "config", "config_invalid", status, str(error),
+            ("Regenerate the schema-v2 configuration from Wiki links.",),
+            "Provide valid source and target Wiki links.",
+        )
+        checks.insert(0, config_check)
+        checks.extend((
+            _pending_doctor_check("resource_access", "config_invalid", "resource checks require valid configuration"),
+            _pending_doctor_check("control_tree", "config_invalid", "control-tree checks require valid configuration"),
+            _pending_doctor_check("write_verification", "config_invalid", "write verification requires valid configuration"),
+        ))
+        report = render_setup_report(tuple(checks))
+        report["control_tree"] = {"status": "config_invalid", "config_invalid": True}
+        return report
+    except Exception as error:
+        config_check = SetupCheck(
+            "config", "config_invalid", "config_invalid", _safe_error(error),
+            ("Regenerate the schema-v2 configuration from Wiki links.",),
+            "Provide valid source and target Wiki links.",
+        )
+        checks.insert(0, config_check)
+        checks.extend((
+            _pending_doctor_check("resource_access", "config_invalid", "resource checks require valid configuration"),
+            _pending_doctor_check("control_tree", "config_invalid", "control-tree checks require valid configuration"),
+            _pending_doctor_check("write_verification", "config_invalid", "write verification requires valid configuration"),
+        ))
+        report = render_setup_report(tuple(checks))
+        report["control_tree"] = {"status": "config_invalid", "config_invalid": True}
+        return report
+
+    checks.append(_ready_check("config", f"configuration loaded from {resolved.path}"))
+    if cli_context is None or cli is None:
+        reason = cli_failure.reason_code if cli_failure is not None else "cli_unavailable"
+        checks.extend((
+            _pending_doctor_check("resource_access", reason, "resource checks require a compatible CLI"),
+            _pending_doctor_check("control_tree", reason, "control-tree checks require a compatible CLI"),
+            _pending_doctor_check("write_verification", reason, "write verification requires a compatible CLI"),
+        ))
+        report = render_setup_report(tuple(checks))
+        report["control_tree"] = {"status": reason, "cli_unavailable": True}
+        return report
+
+    try:
+        publisher = Publisher(
+            cli,
+            config.target.root_token,
+            config.target.space_id,
+            root_mode=config.target.root_mode,
+        )
+    except Exception as error:
+        checks.append(SetupCheck(
+            "runtime", "needs_escalation", "runtime_initialization_failed",
+            _safe_error(error), ("Inspect the setup inputs and rerun doctor.",), None,
+        ))
+        checks.extend((
+            _pending_doctor_check("resource_access", "runtime_unavailable", "resource checks require a runtime"),
+            _pending_doctor_check("control_tree", "runtime_unavailable", "control-tree checks require a runtime"),
+            _pending_doctor_check("write_verification", "runtime_unavailable", "write verification requires a runtime"),
+        ))
+        report = render_setup_report(tuple(checks))
+        report["control_tree"] = {"status": "runtime_unavailable", "runtime_unavailable": True}
+        return report
+
+    context = _Context(config, resolved.path, cli_context, cli, publisher)
+    return _run_doctor_with_context(context, bool(initializer), checks)
+
 def _validate_initialized_documents(context: _Context, tree: Mapping[str, Any]) -> None:
     tokens = tree.get("tokens", {})
     control_plane = ControlPlane(
@@ -459,12 +800,13 @@ def init_target(
     environ=None,
     authorized=False,
     initializer_confirmed=False,
+    profile=None,
     runner=subprocess.run,
 ) -> dict[str, Any]:
     """Preview and initialize an empty target only for a confirmed maintainer."""
     try:
         context = _resolve_context(
-            config_path, workspace, environ, runner,
+            config_path, workspace, environ, runner, profile=profile,
         )
     except _SetupFailure as failure:
         return _failure_report(failure.check)
@@ -629,12 +971,13 @@ def verify_write_access(
     workspace=None,
     environ=None,
     authorized=False,
+    profile=None,
     runner=subprocess.run,
 ) -> dict[str, Any]:
     """Perform the dedicated acceptance write and read it back before ready."""
     try:
         context = _resolve_context(
-            config_path, workspace, environ, runner,
+            config_path, workspace, environ, runner, profile=profile,
         )
     except _SetupFailure as failure:
         return _failure_report(failure.check)

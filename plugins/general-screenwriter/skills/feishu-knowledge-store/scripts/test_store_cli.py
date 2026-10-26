@@ -562,6 +562,32 @@ class StoreCliTests(unittest.TestCase):
         self.assertEqual(seen["config_path"], str(self.config_path))
         self.assertTrue(seen["initializer"])
 
+    def test_profile_bound_setup_commands_pass_the_explicit_profile(self):
+        seen = []
+        report = {"status": "ready", "ready": True, "checks": []}
+        with patch.object(
+                store_cli, "run_doctor",
+                side_effect=lambda **kwargs: seen.append(kwargs) or report):
+            store_cli.main([
+                "doctor", "--config", str(self.config_path),
+                "--profile", "team-z",
+            ], stdout=StringIO())
+        with patch.object(
+                store_cli, "init_target",
+                side_effect=lambda **kwargs: seen.append(kwargs) or report):
+            store_cli.main([
+                "init-target", "--config", str(self.config_path),
+                "--profile", "team-z", "--initializer", "--authorized",
+            ], stdout=StringIO())
+        with patch.object(
+                store_cli, "verify_write_access",
+                side_effect=lambda **kwargs: seen.append(kwargs) or report):
+            store_cli.main([
+                "write-verify", "--config", str(self.config_path),
+                "--profile", "team-z", "--authorized",
+            ], stdout=StringIO())
+
+        self.assertEqual([item["profile"] for item in seen], ["team-z"] * 3)
     def test_init_target_command_passes_initializer_and_authorization(self):
         seen = {}
 

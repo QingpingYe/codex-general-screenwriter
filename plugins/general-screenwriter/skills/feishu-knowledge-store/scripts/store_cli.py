@@ -123,15 +123,18 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = commands.add_parser("doctor")
     doctor.add_argument("--config")
     doctor.add_argument("--workspace")
+    doctor.add_argument("--profile")
     doctor.add_argument("--initializer", action="store_true")
     init = commands.add_parser("init-target")
     init.add_argument("--config")
     init.add_argument("--workspace")
+    init.add_argument("--profile")
     init.add_argument("--initializer", action="store_true")
     init.add_argument("--authorized", action="store_true")
     write_verify = commands.add_parser("write-verify")
     write_verify.add_argument("--config")
     write_verify.add_argument("--workspace")
+    write_verify.add_argument("--profile")
     write_verify.add_argument("--authorized", action="store_true")
     return parser
 
@@ -253,12 +256,14 @@ def main(argv=None, stdout=None, components_factory=None) -> int:
             payload = run_doctor(
                 config_path=args.config,
                 workspace=workspace,
+                profile=args.profile,
                 initializer=bool(getattr(args, "initializer", False)),
             )
         elif args.command == "init-target":
             payload = init_target(
                 config_path=args.config,
                 workspace=workspace,
+                profile=args.profile,
                 authorized=bool(getattr(args, "authorized", False)),
                 initializer_confirmed=bool(getattr(args, "initializer", False)),
             )
@@ -266,6 +271,7 @@ def main(argv=None, stdout=None, components_factory=None) -> int:
             payload = verify_write_access(
                 config_path=args.config,
                 workspace=workspace,
+                profile=args.profile,
                 authorized=bool(getattr(args, "authorized", False)),
             )
         elif args.command in {

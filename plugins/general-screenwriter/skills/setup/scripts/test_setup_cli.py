@@ -74,6 +74,49 @@ class SetupCliTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(payload["status"], "cli_missing")
 
+    def test_explicit_profile_is_forwarded_to_every_profile_bound_phase(self):
+        report = {
+            "schema_version": 1,
+            "status": "ready",
+            "ready": True,
+            "blocking_checks": [],
+            "checks": [],
+            "ai_next_actions": [],
+            "human_action": None,
+        }
+        with mock.patch.object(setup_cli, "run_doctor", return_value=report) as doctor:
+            self.run_main(["doctor", "--profile", "team-z", "--json"])
+        with mock.patch.object(setup_cli, "init_target", return_value=report) as init:
+            self.run_main([
+                "target-init", "--profile", "team-z",
+                "--initializer", "--authorized", "--json",
+            ])
+        with mock.patch.object(setup_cli, "verify_write_access", return_value=report) as verify:
+            self.run_main(["write-verify", "--profile", "team-z", "--authorized", "--json"])
+
+        self.assertEqual(doctor.call_args.kwargs["profile"], "team-z")
+        self.assertEqual(init.call_args.kwargs["profile"], "team-z")
+        self.assertEqual(verify.call_args.kwargs["profile"], "team-z")
+    def test_default_profile_is_continuous_across_profile_bound_phases(self):
+        report = {
+            "schema_version": 1,
+            "status": "ready",
+            "ready": True,
+            "blocking_checks": [],
+            "checks": [],
+            "ai_next_actions": [],
+            "human_action": None,
+        }
+        with mock.patch.object(setup_cli, "run_doctor", return_value=report) as doctor:
+            self.run_main(["doctor", "--json"])
+        with mock.patch.object(setup_cli, "init_target", return_value=report) as init:
+            self.run_main(["target-init", "--initializer", "--authorized", "--json"])
+        with mock.patch.object(setup_cli, "verify_write_access", return_value=report) as verify:
+            self.run_main(["write-verify", "--authorized", "--json"])
+
+        self.assertEqual(doctor.call_args.kwargs["profile"], "general-screenwriter")
+        self.assertEqual(init.call_args.kwargs["profile"], "general-screenwriter")
+        self.assertEqual(verify.call_args.kwargs["profile"], "general-screenwriter")
     def test_auth_start_returns_visible_challenge_without_leaking_code_into_guidance(self):
         authorization = DeviceAuthorization(
             verification_url="https://open.feishu.cn/page/cli?user_code=AB-12",
