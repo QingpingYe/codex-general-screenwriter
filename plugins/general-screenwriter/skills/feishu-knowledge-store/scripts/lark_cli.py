@@ -12,6 +12,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from lark_cli_contract import parse_version, version_meets_minimum
+
 
 class LarkCliError(RuntimeError):
     pass
@@ -202,12 +204,12 @@ class LarkCli:
 
     def verify_supported_version(self) -> dict[str, str]:
         text = self._raw("--version").strip()
-        match = re.search(r"lark-cli.*?([0-9]+\.[0-9]+\.[0-9]+)", text, flags=re.IGNORECASE)
-        if match is None:
-            raise CliUnavailable("未识别 lark-cli 版本")
-        version = match.group(1)
-        if version not in {"1.0.95", "1.0.96"}:
-            raise CliUnavailable(f"暂不支持的 lark-cli 版本：{version}")
+        version_parts = parse_version(text)
+        if version_parts is None:
+            raise CliUnavailable("unrecognized lark-cli version")
+        version = ".".join(str(part) for part in version_parts)
+        if not version_meets_minimum(version):
+            raise CliUnavailable(f"unsupported lark-cli version: {version}")
         return {"version": version}
 
     @staticmethod

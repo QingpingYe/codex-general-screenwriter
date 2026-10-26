@@ -4,7 +4,6 @@
 import argparse
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -12,11 +11,10 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from lark_cli import LarkCli
+from lark_cli_contract import parse_version, version_meets_minimum
 
 
-SUPPORTED_VERSIONS = {"1.0.95", "1.0.96"}
 INSTALL_COMMAND = ("npx", "@larksuite/cli@latest", "install")
-_VERSION = re.compile(r"lark-cli.*?([0-9]+\.[0-9]+\.[0-9]+)", re.IGNORECASE)
 
 
 class BootstrapError(RuntimeError):
@@ -158,8 +156,8 @@ def _inspect_candidates(candidates: Iterable[Path | str], runner: Callable[..., 
                 str(getattr(completed, "stderr", "") or ""),
             ) if part
         )
-        match = _VERSION.search(output)
-        if match is None:
+        version_parts = parse_version(output)
+        if version_parts is None:
             if getattr(completed, "returncode", 0) != 0:
                 continue
             unsupported = {
@@ -169,8 +167,8 @@ def _inspect_candidates(candidates: Iterable[Path | str], runner: Callable[..., 
                 "reason": "lark-cli version could not be recognized",
             }
             continue
-        version = match.group(1)
-        if version in SUPPORTED_VERSIONS:
+        version = ".".join(str(part) for part in version_parts)
+        if version_meets_minimum(version):
             return {"status": "available", "path": str(path), "version": version}
         unsupported = {"status": "unsupported", "path": str(path), "version": version}
     if unsupported is not None:

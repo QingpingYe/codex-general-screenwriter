@@ -7,7 +7,7 @@ SCRIPTS = Path(__file__).parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from lark_cli import AuthenticationError, LarkCli, RevisionConflict
+from lark_cli import AuthenticationError, CliUnavailable, LarkCli, RevisionConflict
 
 
 class Completed:
@@ -93,6 +93,17 @@ class LarkCliTests(unittest.TestCase):
         runner = FakeRunner(Completed("lark-cli version 1.0.95\n"))
         client = LarkCli(Path("lark-cli"), "user", runner)
         self.assertEqual(client.verify_supported_version(), {"version": "1.0.95"})
+
+    def test_newer_stable_version_is_supported(self):
+        runner = FakeRunner(Completed("lark-cli version 2.0.0\n"))
+        client = LarkCli(Path("lark-cli"), "user", runner)
+        self.assertEqual(client.verify_supported_version(), {"version": "2.0.0"})
+
+    def test_prerelease_version_is_rejected(self):
+        runner = FakeRunner(Completed("lark-cli version 1.0.95-rc.1\n"))
+        client = LarkCli(Path("lark-cli"), "user", runner)
+        with self.assertRaises(CliUnavailable):
+            client.verify_supported_version()
 
     def test_final_json_prefers_top_level_payload_when_notice_is_a_separate_line(self):
         business = {"code": 0, "data": {"items": [{"token": "A"}]}}

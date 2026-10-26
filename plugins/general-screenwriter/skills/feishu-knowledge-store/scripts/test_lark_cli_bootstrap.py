@@ -84,6 +84,20 @@ class LarkCliBootstrapTests(unittest.TestCase):
         })
         self.assertEqual(runner.commands, [[r"C:\Tools\lark-cli.exe", "--version"]])
 
+    def test_newer_stable_cli_is_supported_without_install(self):
+        runner = Runner(Completed("lark-cli version 1.0.100\n"))
+        result = ensure_lark_cli(
+            candidates=(Path(r"C:\Tools\lark-cli.exe"),),
+            runner=runner,
+        )
+        self.assertEqual(result, {
+            "status": "available",
+            "path": r"C:\Tools\lark-cli.exe",
+            "version": "1.0.100",
+            "installed": False,
+        })
+        self.assertEqual(runner.commands, [[r"C:\Tools\lark-cli.exe", "--version"]])
+
     def test_missing_cli_reports_official_install_command(self):
         runner = Runner(Completed("not found", returncode=1))
         result = ensure_lark_cli(
@@ -140,6 +154,17 @@ class LarkCliBootstrapTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "unsupported")
         self.assertEqual(result["version"], "1.0.94")
+        self.assertEqual(runner.commands, [[r"C:\Tools\lark-cli.exe", "--version"]])
+
+    def test_prerelease_version_is_not_supported(self):
+        runner = Runner(Completed("lark-cli version 1.0.95-rc.1\n"))
+        result = ensure_lark_cli(
+            candidates=(Path(r"C:\Tools\lark-cli.exe"),),
+            install=True,
+            runner=runner,
+        )
+        self.assertEqual(result["status"], "unsupported")
+        self.assertIsNone(result["version"])
         self.assertEqual(runner.commands, [[r"C:\Tools\lark-cli.exe", "--version"]])
 
     def test_installer_failure_is_reported_with_redacted_output(self):
