@@ -226,6 +226,7 @@ class ResourceAccessTests(unittest.TestCase):
             nodes={
                 "source-root": node_payload("source-space", "source-root", "source-doc"),
             },
+            permissions={("arbitrary-child", "wiki", "edit"): True},
             docs={"source-doc"},
         )
         cli.list_nodes = lambda space_id, parent_node_token=None, page_limit=10: [
@@ -236,9 +237,31 @@ class ResourceAccessTests(unittest.TestCase):
         self.assertEqual(report.status, "resource_grant_required")
         self.assertIn("target.create", report.missing)
         self.assertIn("target.acceptance_write", report.missing)
-        self.assertFalse(any(
+        self.assertTrue(any(
             call[:3] == ("drive", "permission.members", "auth") for call in cli.calls
         ))
+
+
+    def test_target_space_missing_permission_auth_scope_is_waiting_admin(self):
+        cli = FakeCli(
+            nodes={
+                "source-root": node_payload("source-space", "source-root", "source-doc"),
+            },
+            permissions={
+                ("arbitrary-child", "wiki", "edit"): PermissionDenied(
+                    "missing scope docs:permission.member:auth"
+                ),
+            },
+            docs={"source-doc"},
+        )
+        cli.list_nodes = lambda space_id, parent_node_token=None, page_limit=10: [
+            {"node_token": "arbitrary-child"}
+        ]
+        report = check_resource_access(config(target_mode="space"), cli)
+
+        self.assertEqual(report.status, "waiting_admin")
+        self.assertIn("scope:docs:permission.member:auth", report.missing)
+        self.assertNotIn("target.create", report.missing)
 
 
     def test_empty_target_space_is_not_false_blocked(self):
@@ -246,6 +269,7 @@ class ResourceAccessTests(unittest.TestCase):
             nodes={
                 "source-root": node_payload("source-space", "source-root", "source-doc"),
             },
+            permissions={("target-space", "wiki", "edit"): False},
             docs={"source-doc"},
         )
         cli.list_nodes = lambda space_id, parent_node_token=None, page_limit=10: []
@@ -253,10 +277,28 @@ class ResourceAccessTests(unittest.TestCase):
 
         self.assertEqual(report.status, "ok")
         self.assertIn("empty", " ".join(report.details).lower())
-        self.assertFalse(any(
+        self.assertTrue(any(
             call[:3] == ("drive", "permission.members", "auth") for call in cli.calls
         ))
 
+
+    def test_empty_target_space_missing_permission_auth_scope_is_waiting_admin(self):
+        cli = FakeCli(
+            nodes={
+                "source-root": node_payload("source-space", "source-root", "source-doc"),
+            },
+            permissions={
+                ("target-space", "wiki", "edit"): PermissionDenied(
+                    "missing scope docs:permission.member:auth"
+                ),
+            },
+            docs={"source-doc"},
+        )
+        cli.list_nodes = lambda space_id, parent_node_token=None, page_limit=10: []
+        report = check_resource_access(config(target_mode="space"), cli)
+
+        self.assertEqual(report.status, "waiting_admin")
+        self.assertIn("scope:docs:permission.member:auth", report.missing)
 
     def test_target_node_space_must_match_configured_target_space(self):
         cli = FakeCli(

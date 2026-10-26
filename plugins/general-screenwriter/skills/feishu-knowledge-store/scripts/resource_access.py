@@ -210,6 +210,8 @@ def _check_target_write(config: KnowledgeConfig, cli: Any) -> str:
             ("target.create", "target.acceptance_write"),
             "target space contents could not be determined safely",
         )
+    probe_token = _sample_from_items(items) or config.target.space_id
+    _probe_permission_scope(cli, probe_token, "target-space create preflight")
     if not items:
         return (
             "target space is readable and empty; creation ACL preflight is deferred "
@@ -220,6 +222,33 @@ def _check_target_write(config: KnowledgeConfig, cli: Any) -> str:
         "target space already contains nodes, but root-level create permission "
         "cannot be verified read-only; child edit ACL is not sufficient",
     )
+
+
+def _probe_permission_scope(cli: Any, token: str, context: str) -> None:
+    """Exercise the permission endpoint only to surface missing auth scopes.
+
+    A returned ``auth_result`` is intentionally discarded: it may describe an
+    arbitrary node and must never be treated as proof of target-space create
+    permission.
+    """
+    try:
+        _check_permission(cli, token, "wiki", "edit")
+    except AuthenticationError as error:
+        raise _AccessFailure(
+            "user_authorization",
+            _scope_detail(error, context),
+            status="waiting_admin",
+        ) from error
+    except PermissionDenied as error:
+        if _is_scope_error(error):
+            raise _AccessFailure(
+                _scope_missing_key(error),
+                _scope_detail(error, context),
+                status="waiting_admin",
+            ) from error
+        return
+    except Exception:
+        return
 
 
 def _auth_status(cli: Any) -> Any:
