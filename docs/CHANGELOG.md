@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-26
+
+### Added
+
+- Natural-language first-use setup for Feishu-related work: the AI checks runtime, CLI, named profile, application, authorization, links, resource ACL, shared target ownership, and write verification internally, then resumes the original task.
+- User-level private Lark CLI installation, compatible higher-version reuse, stable minimum-version checks, no PATH mutation, and no global skill installation.
+- Split setup states for `resource_grant_required`, `waiting_initializer`, `write_verification_required`, and `write_result_uncertain`, with readback-before-retry recovery behavior.
+- Release gates `first_use_contract` and `setup_docs_contract` before offline regression, plus explicit live Windows/Feishu acceptance requirements that remain unexecuted until a maintainer records evidence.
+
+### Changed
+
+- Marketplace activation is `ON_USE`; Feishu authentication and setup begin only when a Feishu-dependent request needs them.
+- User-facing README follows natural-language interaction only; maintainer commands remain in maintenance documentation.
+- 插件版本升至 0.8.0。
+
+### Compatibility
+
+- Existing compatible CLIs and named profiles are reused without overwriting unrelated profiles or credentials. Normal users do not run Feishu commands, prepare JSON, or restart the session.
+- Live Windows VM, two-user, higher-version CLI, interrupted-recovery, and credential-scan gates are documented as requiring execution and are not claimed as passed by offline tests.
+
 ## [0.7.0] - 2026-10-12
 
 ### Added

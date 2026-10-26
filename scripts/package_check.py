@@ -6,7 +6,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-_JSON_SECRET_SUFFIXES = ("api_key", "apikey", "authorization", "password", "secret", "token")
+_JSON_SECRET_SUFFIXES = (
+    "api_key",
+    "apikey",
+    "authorization",
+    "password",
+    "secret",
+    "token",
+    "device_code",
+    "user_code",
+)
 
 
 @dataclass(frozen=True)

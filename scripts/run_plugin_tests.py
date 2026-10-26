@@ -13,6 +13,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PLUGIN_ROOT = REPO_ROOT / "plugins" / "general-screenwriter"
 PYTHON_TEST_ROOTS = (PLUGIN_ROOT, REPO_ROOT / "scripts")
 EXCLUDED_DIRS = frozenset({".git", ".tmp", "__pycache__", "node_modules"})
+REQUIRED_FIRST_USE_TEST_PATHS = (
+    Path("tests") / "test_first_use_release_contract.py",
+    Path("tests") / "test_first_use_e2e.py",
+    Path("tests") / "test_setup_contract.py",
+)
 
 
 class DiscoveryError(RuntimeError):
@@ -47,6 +52,13 @@ def build_commands(repo_root: Path) -> list[list[str]]:
     python_tests = discover_python_tests(
         (plugin_root, repo_root / "scripts")
     )
+    required_first_use = {
+        plugin_root / relative for relative in REQUIRED_FIRST_USE_TEST_PATHS
+    }
+    missing_first_use = sorted(required_first_use - set(python_tests))
+    if missing_first_use:
+        missing = ", ".join(str(path) for path in missing_first_use)
+        raise DiscoveryError(f"required first-use tests were not discovered: {missing}")
 
     commands = [[sys.executable, str(path)] for path in python_tests]
     commands.extend(

@@ -1,7 +1,7 @@
 {
   "name": "general-screenwriter",
-  "version": "0.7.0",
-  "description": "General screenwriting workshop for Codex with picturebook, shortdrama, and longform TV type packs, editorial workflow, quality gates, staging planning, and a gated illustration workflow.",
+  "version": "0.8.0",
+  "description": "General screenwriting workshop for Codex with natural-language first-use setup, picturebook, shortdrama, and longform TV type packs, editorial workflow, quality gates, staging planning, and a gated illustration workflow.",
   "author": {
     "name": "YeQingping"
   },
