@@ -23,6 +23,14 @@ class CliUnavailable(LarkCliError):
     pass
 
 
+class VersionUnparseable(LarkCliError):
+    pass
+
+
+class UnsupportedVersion(LarkCliError):
+    pass
+
+
 class AuthenticationError(LarkCliError):
     pass
 
@@ -206,10 +214,10 @@ class LarkCli:
         text = self._raw("--version").strip()
         version_parts = parse_version(text)
         if version_parts is None:
-            raise CliUnavailable("unrecognized lark-cli version")
+            raise VersionUnparseable("unrecognized lark-cli version")
         version = ".".join(str(part) for part in version_parts)
         if not version_meets_minimum(version):
-            raise CliUnavailable(f"unsupported lark-cli version: {version}")
+            raise UnsupportedVersion(f"unsupported lark-cli version: {version}")
         return {"version": version}
 
     @staticmethod

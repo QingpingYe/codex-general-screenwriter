@@ -7,7 +7,14 @@ SCRIPTS = Path(__file__).parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from lark_cli import AuthenticationError, CliUnavailable, LarkCli, RevisionConflict
+from lark_cli import (
+    AuthenticationError,
+    CliUnavailable,
+    LarkCli,
+    RevisionConflict,
+    UnsupportedVersion,
+    VersionUnparseable,
+)
 
 
 class Completed:
@@ -24,7 +31,10 @@ class FakeRunner:
 
     def __call__(self, command, **_kwargs):
         self.calls.append(command)
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, BaseException):
+            raise response
+        return response
 
 
 def ok(payload):
@@ -99,11 +109,31 @@ class LarkCliTests(unittest.TestCase):
         client = LarkCli(Path("lark-cli"), "user", runner)
         self.assertEqual(client.verify_supported_version(), {"version": "2.0.0"})
 
-    def test_prerelease_version_is_rejected(self):
+    def test_prerelease_version_is_unparseable(self):
         runner = FakeRunner(Completed("lark-cli version 1.0.95-rc.1\n"))
         client = LarkCli(Path("lark-cli"), "user", runner)
-        with self.assertRaises(CliUnavailable):
+        with self.assertRaises(VersionUnparseable):
             client.verify_supported_version()
+
+    def test_older_version_is_distinct_from_unparseable_version(self):
+        runner = FakeRunner(Completed("lark-cli version 1.0.94\n"))
+        client = LarkCli(Path("lark-cli"), "user", runner)
+        with self.assertRaises(UnsupportedVersion):
+            client.verify_supported_version()
+
+    def test_unparseable_version_is_distinct_from_unavailable_cli(self):
+        runner = FakeRunner(Completed("lark-cli version unknown\n"))
+        client = LarkCli(Path("lark-cli"), "user", runner)
+        with self.assertRaises(VersionUnparseable) as raised:
+            client.verify_supported_version()
+        self.assertNotIsInstance(raised.exception, CliUnavailable)
+
+    def test_missing_executable_remains_cli_unavailable(self):
+        runner = FakeRunner(FileNotFoundError("missing lark-cli"))
+        client = LarkCli(Path("missing-lark-cli"), "user", runner)
+        with self.assertRaises(CliUnavailable) as raised:
+            client.verify_supported_version()
+        self.assertNotIsInstance(raised.exception, VersionUnparseable)
 
     def test_final_json_prefers_top_level_payload_when_notice_is_a_separate_line(self):
         business = {"code": 0, "data": {"items": [{"token": "A"}]}}

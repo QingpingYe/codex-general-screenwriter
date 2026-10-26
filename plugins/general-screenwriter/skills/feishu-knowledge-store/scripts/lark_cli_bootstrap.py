@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from lark_cli import LarkCli
-from lark_cli_contract import parse_version, version_meets_minimum
+from lark_cli_contract import inspect_capabilities, parse_version, version_meets_minimum
 
 
 INSTALL_COMMAND = ("npx", "@larksuite/cli@latest", "install")
@@ -37,7 +37,7 @@ def ensure_lark_cli(
 
     if found["status"] == "available":
         return {**found, "installed": installed}
-    if found["status"] == "unsupported":
+    if found["status"] in {"unsupported", "version_unparseable"}:
         return {**found, "installed": installed}
     if not install:
         return {
@@ -80,7 +80,7 @@ def ensure_lark_cli(
     rechecked = _inspect_candidates(recheck_candidates, runner)
     if rechecked["status"] == "available":
         return {**rechecked, "installed": installed}
-    if rechecked["status"] == "unsupported":
+    if rechecked["status"] in {"unsupported", "version_unparseable"}:
         return {**rechecked, "installed": installed}
     return {
         "status": "missing",
@@ -134,6 +134,7 @@ def _platform_candidates(environment: Mapping[str, str]) -> tuple[Path, ...]:
 
 def _inspect_candidates(candidates: Iterable[Path | str], runner: Callable[..., Any]) -> dict[str, Any]:
     unsupported: dict[str, Any] | None = None
+    unparseable: dict[str, Any] | None = None
     for candidate in candidates:
         path = Path(candidate)
         try:
@@ -160,19 +161,27 @@ def _inspect_candidates(candidates: Iterable[Path | str], runner: Callable[..., 
         if version_parts is None:
             if getattr(completed, "returncode", 0) != 0:
                 continue
-            unsupported = {
-                "status": "unsupported",
+            unparseable = {
+                "status": "version_unparseable",
                 "path": str(path),
                 "version": None,
-                "reason": "lark-cli version could not be recognized",
+                "reason": "lark-cli version could not be parsed unambiguously",
             }
             continue
         version = ".".join(str(part) for part in version_parts)
         if version_meets_minimum(version):
-            return {"status": "available", "path": str(path), "version": version}
+            report = inspect_capabilities(path, runner)
+            return {
+                "status": "available",
+                "path": str(path),
+                "version": version,
+                "capability_report": report.to_dict(),
+            }
         unsupported = {"status": "unsupported", "path": str(path), "version": version}
     if unsupported is not None:
         return unsupported
+    if unparseable is not None:
+        return unparseable
     return {"status": "missing"}
 
 
