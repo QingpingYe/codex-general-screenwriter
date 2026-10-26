@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from lark_cli_context import build_cli_command_for
 from lark_cli_contract import parse_version, version_meets_minimum
 
 
@@ -70,12 +71,16 @@ class LarkCli:
         preferred_binary: Path | str,
         identity: str = "user",
         runner: Callable[..., Any] = subprocess.run,
+        profile: str | None = None,
     ) -> None:
         if identity != "user":
             raise ValueError("identity must be 'user'")
+        if profile is not None and (not isinstance(profile, str) or not profile.strip()):
+            raise ValueError("profile must be a non-empty string")
         self.binary = Path(preferred_binary)
         self.identity = identity
         self.runner = runner
+        self.profile = profile
 
     def preflight(self, target_root_token: str | None,
                   root_mode: str = "node") -> dict[str, Any]:
@@ -163,7 +168,7 @@ class LarkCli:
             raise LarkCliError("update response did not include document revision_id") from error
 
     def _json(self, *arguments: str) -> dict[str, Any]:
-        command = [str(self.binary), *arguments]
+        command = build_cli_command_for(self.binary, self.profile, *arguments)
         try:
             completed = self.runner(
                 command, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,
@@ -184,7 +189,7 @@ class LarkCli:
         return payload
 
     def _raw(self, *arguments: str) -> str:
-        command = [str(self.binary), *arguments]
+        command = build_cli_command_for(self.binary, self.profile, *arguments)
         try:
             completed = self.runner(
                 command, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False,

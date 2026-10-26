@@ -322,6 +322,56 @@ class StoreCliTests(unittest.TestCase):
         self.assertEqual(payload["status"], "missing_config")
         self.assertIn("searched", payload)
 
+    def test_build_components_uses_one_resolved_context_and_profile(self):
+        resolved = SimpleNamespace(
+            path=self.config_path,
+            origin="explicit",
+            searched=(self.config_path,),
+        )
+        context = SimpleNamespace(
+            binary=Path(r"C:\工具 目录\lark-cli.exe"),
+            version="1.0.95",
+            profile="team-a",
+            capabilities=frozenset({"help", "wiki"}),
+        )
+        seen = {}
+
+        class FakeCli:
+            def __init__(self, binary, identity="user", runner=None, profile=None):
+                seen["cli"] = (binary, identity, profile)
+
+        class FakePublisher:
+            def __init__(self, cli, root_token, space_id, root_mode=None):
+                seen["publisher"] = (cli, root_token, space_id, root_mode)
+
+            def resolve_control_plane(self):
+                return {"index": "index-doc", "lock": "lock-doc"}
+
+        class FakeControlPlane:
+            def __init__(self, cli, tokens, lock_ttl_minutes=None):
+                seen["control_plane"] = (cli, tokens, lock_ttl_minutes)
+
+        def resolve_context(**kwargs):
+            seen["context_call"] = kwargs
+            return context
+
+        with patch.object(store_cli, "resolve_config_path", return_value=resolved), \
+                patch.object(store_cli, "load_config", return_value=config(self.config_path)), \
+                patch.object(store_cli, "resolve_cli_context", side_effect=resolve_context), \
+                patch.object(store_cli, "LarkCli", FakeCli), \
+                patch.object(store_cli, "Publisher", FakePublisher), \
+                patch.object(store_cli, "ControlPlane", FakeControlPlane):
+            components = store_cli.build_components(
+                config_path=self.config_path,
+                environ={"TEST_ENV": "1"},
+                profile="team-a",
+            )
+
+        self.assertIs(components.cli_context, context)
+        self.assertEqual(seen["cli"], (context.binary, "user", "team-a"))
+        self.assertEqual(seen["context_call"]["profile"], "team-a")
+        self.assertEqual(seen["context_call"]["environ"], {"TEST_ENV": "1"})
+
     def test_config_status_reports_missing_configuration(self):
         stdout = StringIO()
         missing = Path(self.tmp.name) / "missing.json"

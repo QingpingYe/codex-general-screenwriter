@@ -101,17 +101,26 @@ def load_config(
     if isinstance(ttl, bool) or not isinstance(ttl, int) or not 15 <= ttl <= 120:
         raise ConfigError("lock_ttl_minutes must be an integer from 15 to 120")
 
-    candidates: list[Path] = []
-    for candidate in (environment.get("LARK_CLI_PATH"), which("lark-cli")):
-        if candidate:
-            candidate_path = Path(candidate)
-            if candidate_path not in candidates:
-                candidates.append(candidate_path)
+    candidates = cli_candidates_from_environment(environment, which)
     return KnowledgeConfig(
         SourceConfig(source_space_id, source["root_mode"], source_wiki_url),
         TargetConfig(target_space_id, target_root_token, target_root_mode),
         "user", ttl, tuple(candidates),
     )
+
+
+def cli_candidates_from_environment(
+    environ: Mapping[str, str],
+    which: Callable[[str], str | None],
+) -> tuple[Path, ...]:
+    """Return the explicit and PATH-derived CLI candidates, preserving order."""
+    candidates: list[Path] = []
+    for candidate in (environ.get("LARK_CLI_PATH"), which("lark-cli")):
+        if candidate:
+            candidate_path = Path(candidate)
+            if candidate_path not in candidates:
+                candidates.append(candidate_path)
+    return tuple(candidates)
 
 
 def _nonempty_string(value: object, field: str) -> str:

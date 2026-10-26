@@ -65,9 +65,7 @@ class AuthorityCliTests(unittest.TestCase):
             "load", "--project-id", "小老鼠迈尔斯", "--series-id", "海外绘本",
             "--page-types", "worldview", "--workspace", str(self.root),
             "--config", str(self.config_path),
-        ], stdout=stdout, components_factory=factory, cli_probe=lambda **kwargs: {
-            "status": "available", "version": "1.0.95",
-        }, getuser=lambda: "tester")
+        ], stdout=stdout, components_factory=factory, getuser=lambda: "tester")
         payload = json.loads(stdout.getvalue())
         cache = self.root / ".general-screenwriter" / "cache" / "tester" / "knowledge-bundle.json"
         self.assertEqual(exit_code, 0)
@@ -84,8 +82,7 @@ class AuthorityCliTests(unittest.TestCase):
             "load", "--project-id", "p", "--series-id", "s",
             "--page-types", "worldview", "--workspace", str(self.root),
             "--config", str(self.config_path),
-        ], stdout=stdout, components_factory=factory,
-            cli_probe=lambda **kwargs: {"status": "available"})
+        ], stdout=stdout, components_factory=factory)
         payload = json.loads(stdout.getvalue())
         self.assertEqual(exit_code, 1)
         self.assertEqual(payload["status"], "runtime_error")
@@ -135,11 +132,30 @@ class AuthorityCliTests(unittest.TestCase):
             "--page-types", "worldview", "--workspace", str(self.root),
             "--config", str(self.config_path), "--allow-offline-cache",
         ], stdout=stdout, components_factory=factory,
-            cli_probe=lambda **kwargs: {"status": "available"},
             getuser=lambda: "tester")
         payload = json.loads(stdout.getvalue())
         self.assertEqual(exit_code, 1)
         self.assertIn("缺少权威知识页", payload["error"])
+
+    def test_load_forwards_the_selected_profile_to_components(self):
+        seen = {}
+
+        def factory(config_path, environ=None, workspace=None, profile=None):
+            seen["profile"] = profile
+            return SimpleNamespace(
+                config=SimpleNamespace(cli_candidates=("lark-cli",)),
+                cli=FakeCli(), publisher=None, control_plane=FakePlane(),
+            )
+
+        stdout = StringIO()
+        exit_code = main([
+            "load", "--project-id", "小老鼠迈尔斯", "--series-id", "海外绘本",
+            "--page-types", "worldview", "--workspace", str(self.root),
+            "--config", str(self.config_path), "--profile", "team-a",
+        ], stdout=stdout, components_factory=factory, getuser=lambda: "tester")
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(seen["profile"], "team-a")
 
 
 if __name__ == "__main__":

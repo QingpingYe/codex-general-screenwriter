@@ -17,7 +17,6 @@ from authority import AuthorityGapError, AuthorityLoader, AuthorityQuery
 from cache import KnowledgeCache
 from config import load_config
 from config_paths import resolve_config_path
-from lark_cli_bootstrap import ensure_lark_cli
 from load_knowledge import (
     KnowledgeEvidenceBundle,
     bundle_from_dict,
@@ -44,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     load.add_argument("--page-types", required=True)
     load.add_argument("--workspace")
     load.add_argument("--config")
+    load.add_argument("--profile")
     load.add_argument("--allow-offline-cache", action="store_true")
     return parser
 
@@ -54,16 +54,16 @@ def _error_payload(error: Exception) -> dict:
     return {"status": "runtime_error", "error": str(error)}
 
 
-def main(argv=None, stdout=None, components_factory=None, cli_probe=None,
-         getuser=None, environ=None) -> int:
+def main(argv=None, stdout=None, components_factory=None,
+         getuser=None, environ=None, profile=None) -> int:
     stdout = stdout if stdout is not None else sys.stdout
     args = build_parser().parse_args(argv)
     components_factory = components_factory or build_components
-    cli_probe = cli_probe or ensure_lark_cli
+    selected_profile = profile if profile is not None else args.profile
     workspace = Path(args.workspace) if args.workspace else Path.cwd()
     try:
         resolved = resolve_config_path(args.config, workspace, environ)
-        config = load_config(resolved.path, resolved.path.parent, environ)
+        load_config(resolved.path, resolved.path.parent, environ)
         cache_store = KnowledgeCache(workspace, safe_user(getuser))
         cached_bundle = bundle_from_dict(cache_store.load())
         page_types = tuple(
@@ -71,13 +71,13 @@ def main(argv=None, stdout=None, components_factory=None, cli_probe=None,
         )
         query = AuthorityQuery(args.project_id, args.series_id, page_types)
         try:
-            cli_status = cli_probe(candidates=config.cli_candidates, environ=environ)
-            if cli_status.get("status") != "available":
-                if not (args.allow_offline_cache and cached_bundle is not None):
-                    raise RuntimeError("lark-cli is unavailable")
-            components = components_factory(
-                resolved.path, environ=environ, workspace=workspace,
-            )
+            component_arguments = {
+                "environ": environ,
+                "workspace": workspace,
+            }
+            if selected_profile is not None:
+                component_arguments["profile"] = selected_profile
+            components = components_factory(resolved.path, **component_arguments)
             loader = AuthorityLoader(
                 components.control_plane, components.cli,
                 cache_store=cache_store, cached_bundle=cached_bundle,

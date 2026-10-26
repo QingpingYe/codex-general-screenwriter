@@ -64,6 +64,19 @@ class LarkCliTests(unittest.TestCase):
         self.assertIn("+fetch", runner.calls[-1])
         self.assertNotIn("+get", runner.calls[-1])
 
+    def test_profile_is_bound_to_json_and_raw_commands(self):
+        runner = FakeRunner(
+            ok({"data": {"node": {"token": "root"}}}),
+            Completed("lark-cli version 1.0.95\n"),
+        )
+        client = LarkCli(Path("lark-cli"), "user", runner, profile="team-a")
+
+        client.get_node("root")
+        client.verify_supported_version()
+
+        for call in runner.calls:
+            self.assertEqual(call[:3], ["lark-cli", "--profile", "team-a"])
+
     def test_list_nodes_requires_space_id_and_uses_pagination(self):
         runner = FakeRunner(ok({"data": {"items": [{"title": "节点"}]}}))
         client = LarkCli(Path("lark-cli"), "user", runner)

@@ -12,6 +12,7 @@ from config_paths import ConfigResolutionError, resolve_config_path
 from control_plane import ControlPlane
 from lark_cli import LarkCli
 from lark_cli_bootstrap import ensure_lark_cli
+from lark_cli_context import resolve_cli_context
 from publisher import Publisher
 from source_admission import empty_admission_policy
 from source_baseline import build_source_baseline, read_source_admission, write_source_baseline
@@ -22,15 +23,21 @@ from sync_runner import SyncRunner
 class Components:
     config: Any
     config_path: Path
+    cli_context: Any
     cli: Any
     publisher: Publisher
     control_plane: ControlPlane
 
 
-def build_components(config_path=None, environ=None, workspace=None) -> Components:
+def build_components(config_path=None, environ=None, workspace=None, profile=None) -> Components:
     resolved = resolve_config_path(config_path, workspace, environ)
     config = load_config(resolved.path, resolved.path.parent, environ)
-    cli = LarkCli(config.cli_candidates[0], identity=config.identity)
+    cli_context = resolve_cli_context(profile=profile, environ=environ)
+    cli = LarkCli(
+        cli_context.binary,
+        identity=config.identity,
+        profile=cli_context.profile,
+    )
     publisher = Publisher(
         cli, config.target.root_token, config.target.space_id,
         root_mode=config.target.root_mode,
@@ -41,7 +48,7 @@ def build_components(config_path=None, environ=None, workspace=None) -> Componen
         {"index": tokens["index"], "lock": tokens["lock"]},
         lock_ttl_minutes=config.lock_ttl_minutes,
     )
-    return Components(config, resolved.path, cli, publisher, control_plane)
+    return Components(config, resolved.path, cli_context, cli, publisher, control_plane)
 
 
 def build_parser() -> argparse.ArgumentParser:
