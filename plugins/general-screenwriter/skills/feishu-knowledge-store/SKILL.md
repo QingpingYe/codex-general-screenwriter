@@ -5,6 +5,10 @@ description: 通过远端租约、docx revision 前提、正文内容比较和�
 
 # Feishu Knowledge Store
 
+## Setup Gate
+
+任何飞书同步、发布或知识库诊断请求，都先检查 setup 状态。先检查 setup，再进入后续流程；若尚未 `ready`，由 AI 内部补齐私有运行时、named profile、应用配置、用户授权、链接驱动的知识库配置、资源 ACL、目标初始化和写入验收。完成后恢复原任务，不要求用户重述同步范围。
+
 ## 目标
 
 将 `wiki-ingest` 生成的候选 Markdown 发布到目标飞书 Wiki。目标 Wiki 是唯一共享权威；候选正文是页面内容的权威来源，系统元数据和来源向量只记录来源归属与 revision 基线。
@@ -22,9 +26,9 @@ description: 通过远端租约、docx revision 前提、正文内容比较和�
 
 ## 使用流程
 
-1. Run `store_cli.py config-status` to confirm durable configuration and CLI availability before remote work.
-2. 运行 `scripts/lark_cli_bootstrap.py` 检查兼容的 lark-cli。若结果为 `missing`，先向用户说明将执行 `npx @larksuite/cli@latest install`，获得明确批准后加 `--install` 重跑；若为 `unsupported`，不得替换用户已有 CLI。
-3. 运行 `preflight`，验证用户身份、原始库读取和目标库读写能力。安装 CLI 不代表完成登录；认证失败时由用户本人执行 `lark-cli auth login`。
+1. 先检查 setup 状态；未 `ready` 时先完成内部准备，不进入远端同步或写入。
+2. setup 为 `ready` 后，解析持久配置和兼容 CLI，再继续原有同步任务。
+3. 运行只读预检，验证用户身份、原始库读取和目标库读写能力；认证或资源权限缺口分别报告，并由 AI 在内部续跑授权和复查。
 4. 控制页位于远端系统树中：`AI_KB_INDEX_V1` 是唯一同步状态权威，`AI_KB_LOCK_V1` 提供租约；只读准入策略来自 `AI_KB_SOURCE_ADMISSION_V1`：未裁定默认纳入，只有 `exclude` 生效并作用于自身、全部后代和后代容器；页缺失表示空排除，损坏则硬失败。远端命令在 `build_components()` 中通过 `Publisher.resolve_control_plane()` 解析索引和锁，必须保留准入页的只读边界，不得创建替代文档；`Publisher.initialize()` 是发布流程为新建页定位（必要时创建）系统树的路径，不用于在控制页缺失时顶替。
 5. 在 `wiki-ingest` 建立本轮运行目录后，先运行只读 `source-baseline --out <run-id>/source_baseline.json`，再运行 `wiki-ingest` 生成任务局部 `_manifest.json`；该投影包含远端索引和准入排除快照，不取锁、不写远端。
 6. 运行 `prepare`，读取原始库节点并校验 `wiki-ingest` 生成的候选清单；它只写任务局部 run 目录，不接触目标库，也不持有锁。

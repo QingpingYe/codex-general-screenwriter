@@ -72,6 +72,7 @@ def system_metadata(skill_id, medium_id="all"):
 
 
 SYSTEM_METADATA_SCOPES = {
+    "setup": "all",
     "general-screenwriter": "all",
     "stage-orchestration": "all",
     "wiki-ingest": "all",

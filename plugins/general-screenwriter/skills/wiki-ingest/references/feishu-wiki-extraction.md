@@ -12,39 +12,11 @@
 4. 飞书文档不得用普通网页抓取替代 `docs +fetch`；网页通道只能用于用户确认后的非飞书外链。
 5. 提取失败要报告，不得静默截断或用部分内容假装完整。
 
-## CLI 与认证
+## Setup Gate
 
-先运行兼容检查：
+本协议只会在 setup 为 `ready` 后执行。开始提取前，AI 先检查 setup 状态；若运行时、兼容 CLI、named profile、应用配置、用户授权、知识库配置或源资源 ACL 尚未完成，由 setup 在内部闭环并恢复原提取任务。不得向用户展示或要求用户执行安装、认证、配置或刷新路径命令。
 
-```bash
-python <plugin>/skills/feishu-knowledge-store/scripts/lark_cli_bootstrap.py
-```
-
-脚本按以下顺序解析 lark-cli：
-
-1. `LARK_CLI_PATH`
-2. PATH 中的 `lark-cli`
-3. `%APPDATA%\npm` 中的 `lark-cli.cmd` 及包内二进制
-4. `%ProgramFiles%\nodejs\lark-cli.cmd`
-5. Unix 标准位置：`~/.local/bin`、`/usr/local/bin`、`/opt/homebrew/bin`
-
-若返回 `missing`，先向用户说明安装来源和影响，获得明确批准后运行：
-
-```bash
-python <plugin>/skills/feishu-knowledge-store/scripts/lark_cli_bootstrap.py --install
-```
-
-安装使用官方命令 `npx @larksuite/cli@latest install`，要求本机有 Node.js 16+。若返回 `unsupported`，终止并报告版本和路径，不自动替换已有 CLI。
-
-找到兼容候选后先运行：
-
-```bash
-lark-cli auth status --json --verify
-```
-
-认证失败时提示用户本人运行 `lark-cli auth login`，本次提取终止。安装 CLI 不会自动完成认证。不要保存、输出或转发令牌。
-
-配置中的 `source_wiki_url` 是输入。提取根节点 token 时清理 URL 查询参数和 hash 片段；节点 token 是 URL 中 `/wiki/` 后的段。
+setup 完成后的真实状态必须同时满足：当前会话使用兼容 CLI 的绝对路径、用户身份已核验、源根节点及采样内容可读。认证或资源权限失败时进入对应的等待状态，批准后重新读取真实状态再继续；不得保存、输出或转发令牌。
 
 ## 节点枚举
 

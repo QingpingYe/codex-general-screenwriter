@@ -74,32 +74,28 @@ The plugin supports:
 
 ## Feishu knowledge setup
 
-每位使用者需要自己的 lark-cli 登录身份，以及原始飞书 Wiki 的读取权限；执行同步还需要目标 Wiki 的写入权限。
+首次使用不需要用户执行飞书命令，也无须手工准备配置文件或刷新当前会话。安装插件后直接说：
 
-先检查 lark-cli 兼容性，再由本人登录：
-
-```powershell
-python .\plugins\general-screenwriter\skills\feishu-knowledge-store\scripts\lark_cli_bootstrap.py
-lark-cli auth login
+```text
+帮我初始化编剧插件
 ```
 
-兼容检查当前支持 `1.0.95` / `1.0.96`，检查 `LARK_CLI_PATH`、PATH 和标准安装位置，包括 Windows 的 `%APPDATA%\npm`、`%ProgramFiles%\nodejs`，以及 Unix 的 `~/.local/bin`、`/usr/local/bin`、`/opt/homebrew/bin`。若返回 `missing`，它会给出安装命令；只有用户明确批准后才用 `--install` 执行 `npx @larksuite/cli@latest install`。安装器需要 Node.js 16+ 提供 `npx`，安装后仍需本人登录；`unsupported` 表示当前版本未获支持，不自动替换已有 CLI。
+也可以直接发起创作、知识检索或同步；涉及飞书的入口会先检查 setup 状态，缺什么就由 AI 在内部补齐，完成后继续原来的请求。
 
-将 [配置模板](plugins/general-screenwriter/config/feishu-knowledge-base.example.json) 复制为 `<workspace>/feishu-knowledge-base.json`，或放入下节列出的用户配置目录。`<workspace>` 是实际项目或系列工作区，不是插件缓存目录。
+正常首次使用流程：
 
-配置使用 schema v2。使用前替换所有占位值，并确认：
+1. AI 检查本机的宿主/系统/用户 Python、兼容飞书 CLI、named profile、应用配置、用户授权和现有知识库配置。
+2. 缺少兼容 CLI 时，AI 只进入用户级私有运行环境；已有兼容 CLI 直接复用，不覆盖其他 profile，不修改 PATH，不要求刷新会话。
+3. 需要创建或选择应用时，AI 把链接和二维码展示给你。你只需打开链接、扫码、选择账号并完成飞书页面上的必要同意。
+4. 没有可用知识库配置时，AI 只询问原始 Wiki 链接和目标 Wiki 链接。你粘贴两个链接即可，不需要填写 token、space_id 或 JSON。
+5. AI 分别检查应用 scope、用户授权和具体资源 ACL。缺少源库读取或目标库写入权限时，会明确说明需要谁授予什么范围；授权后重新验证。
+6. 空目标库由指定维护者确认后初始化；其他使用者等待并复用。已有控制树直接读取，缺页、重复页或歧义状态不会被自动覆盖。
+7. 每位使用者都要通过自己的用户身份完成专用写入验收。验收写入会先显示具体动作，得到当前会话明确批准后执行并回读。
 
-- `source.space_id`：原始 Wiki 空间 ID。
-- `source.wiki_url`：原始 Wiki URL；将模板中的 `<tenant>` 和 `<source-wiki-token>` 替换为实际值。
-- `source.root_mode`：来源范围模式，模板使用 `space`。
-- `target.space_id`：目标 Wiki 空间 ID。
-- `target.root_mode`：`space` 表示系统容器位于空间根目录，此时省略 `target.root_token`；`node` 表示容器位于指定节点下，此时填写实际 `target.root_token`。
-
-不要提交真实配置或运行产物到 Git，也不要把持久配置存入插件缓存。
-
-原始资料库只读。目标 Wiki 是共享权威，页面正文以同步候选为准：忽略纯排版标记后正文相同则保留，不同则发布。含资源、评论或未知块的页面标记为 `needs_review`；成功覆盖人工编辑时，在报告 `overwritten_human_edits` 中披露。
-
+只有运行时、CLI、profile、应用配置、用户身份、必要权限、控制树和写入验收全部完成后，setup 才会报告 `ready`，然后恢复原任务。appSecret、accessToken、refreshToken 和 device_code 不进入普通状态、文档、Git 或导出物。原始 Wiki 始终只读；目标 Wiki 是共享权威。
 ## Configuration discovery
+
+首次使用由 AI 根据用户提供的原始和目标 Wiki 链接生成 schema v2 配置；生成的原始来源记录在 `source.wiki_url`，用户不需要手工填写空间 ID 或 JSON。
 
 配置按以下顺序发现：
 
@@ -113,7 +109,7 @@ lark-cli auth login
 
 ## Feishu runtime commands
 
-以下 PowerShell 示例从仓库根目录运行。将 `<workspace>` 替换为项目工作区的绝对路径，并将 `<project_id>`、`<series_id>` 替换为实际标识；后续命令在同一终端中复用这些变量。
+以下内容是维护者与高级诊断参考，不是首次使用步骤；正常使用者无需运行任何命令。将 `<workspace>` 替换为项目工作区的绝对路径，并将 `<project_id>`、`<series_id>` 替换为实际标识。
 
 ```powershell
 $workspace = '<workspace>'

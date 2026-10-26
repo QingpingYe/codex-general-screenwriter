@@ -12,13 +12,14 @@
     "short drama",
     "tv series",
     "children books",
-    "creative writing"
+    "creative writing",
+    "first-use setup"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "General Screenwriter Workshop",
     "shortDescription": "通用编剧创作插件（飞书知识库版）",
-    "longDescription": "A Codex-native general screenwriting workspace with 多人协作飞书知识库同步与权威检索, active picturebook/shortdrama/longform TV type packs, content-level shortdrama/longform validators, deterministic media exporters, editorial workflow, text craft methodology, benchmark checks, staging planning, structured illustration prompts, explicitly confirmed image generation, and self-contained HTML 预览.",
+    "longDescription": "A Codex-native general screenwriting workspace with first-use guided setup and 首次初始化, 多人协作飞书知识库同步与权威检索, active picturebook/shortdrama/longform TV type packs, content-level shortdrama/longform validators, deterministic media exporters, editorial workflow, text craft methodology, benchmark checks, staging planning, structured illustration prompts, explicitly confirmed image generation, and self-contained HTML 预览.",
     "developerName": "YeQingping",
     "category": "Productivity",
     "capabilities": [
@@ -26,6 +27,7 @@
       "Write"
     ],
     "defaultPrompt": [
+      "帮我初始化编剧插件",
       "帮我从零开始策划一个绘本故事",
       "帮我用短剧类型包规划一集强钩子短剧",
       "帮我用长篇类型包核对角色状态和伏笔连续性",

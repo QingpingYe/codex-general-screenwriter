@@ -5,6 +5,9 @@ description: General screenwriting workshop entry workflow for picturebook, shor
 
 # General Screenwriter Workshop
 
+## Setup Gate
+
+任何涉及飞书知识检索、同步、素材提取或知识库链接的请求，都先检查 setup 状态。先检查 setup，再路由到 `knowledge-loader`、`wiki-ingest` 或 `feishu-knowledge-store`；若尚未 `ready`，由 AI 在内部补齐运行时、账户、授权、配置、资源权限和写入验收，只向用户请求必要的链接、选择、可见链接/二维码操作或写入批准。完成后恢复原任务，不要求用户重新描述请求。
 ## Creative Context Foundation
 
 新项目在进入类型创作前记录 `medium_id`、`genre_ids`、`series_id` 和 `project_id`。首批媒介标识为 `picturebook`、`shortdrama` 和 `tv_longform`，类型目录位于 `config/type-packs.json`。三个类型包均为 active 且可派发；`picturebook` 是完整编辑路径，短剧和长篇连续剧是最小可用结构化路径。

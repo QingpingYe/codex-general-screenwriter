@@ -5,13 +5,17 @@ description: 只读检索飞书权威知识库，为编剧工作流提供带 rev
 
 # Knowledge Loader
 
+## Setup Gate
+
+任何飞书权威知识读取请求都先检查 setup 状态。先检查 setup，再读取远端索引或页面；若尚未 `ready`，由 AI 在内部补齐运行时、账户、授权、知识库链接配置和资源 ACL。完成后恢复原任务，不要求用户重复已给上下文。
+
 ## 目标
 
 在创作或修改绘本前，从目标飞书 Wiki 读取权威知识，并输出可追溯的证据包。
 
 ## 使用规则
 
-1. 远端读取前先运行 `../feishu-knowledge-store/scripts/lark_cli_bootstrap.py`。若结果为 `missing`，先向用户说明将执行官方安装器，获得明确批准后加 `--install` 重跑；若为 `unsupported`，按目标 Wiki 不可用处理。
+1. 远端读取前先检查 setup 状态；只有 `ready` 后才继续读取。运行时、CLI、授权和配置缺口均由 setup 在内部闭环。
 2. Use `scripts/authority_cli.py load` as the standard entry point. Pass `--workspace` for the current project workspace; it discovers the nearest ancestor config. Add `--allow-offline-cache` only when the user explicitly approves offline fallback; its output is non-authoritative.
 3. 默认从远端索引和 docx 页面读取，不使用本地 staging；本技能只读，不写飞书。
 4. 创作依赖必须使用 `scripts/authority.py` 的 `AuthorityLoader.load()`。它会校验页面系统元数据的 `key`、`source_revisions` 和 `last_ai_revision_id` 与索引一致；缺失必需页时报告“权威知识缺失”。页面 revision 落后于索引 `last_seen_revision_id` 时必须失败，页面前移时标记 `index_synced=false` 并警告“索引尚未同步”。
@@ -37,4 +41,3 @@ description: 只读检索飞书权威知识库，为编剧工作流提供带 rev
 `built_against` 是本地产物元数据，只允许追加到已获用户批准的 Markdown 产物正文末尾，并且必须是文件最后一个章节。格式由 `render_dependency_record()` 生成，后续用 `parse_dependency_record()` 提取并重新校验。
 
 允许的 `artifact_type` 为：`positioning`、`topic_plan`、`worldview`、`characters`、`outline`、`script`。
-

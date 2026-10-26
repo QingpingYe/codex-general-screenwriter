@@ -2,6 +2,8 @@
 
 这是原「绘本编剧工坊」升级后的 Codex 原生通用编剧创作插件，不依赖 WorkBuddy 团队运行时。当前包名和入口 Skill 都是 `general-screenwriter`；旧插件名不再是当前标识。旧配置路径、旧 run manifest 和旧 lead owner 保留兼容读取。当前支持通用创作内核、类型包工作流、飞书权威知识库、量化质量门、文字工艺、分镜规划、结构化插画提示词、显式确认后的图片生成和插画导出预览。
 
+首次使用时直接说“帮我初始化编剧插件”；涉及飞书知识库的请求会先检查 setup 状态，由 AI 在内部补齐运行时、账户、授权、链接配置和写入验收，完成后继续原任务。正常流程不需要用户执行飞书命令、手工准备配置文件或重开会话。
+
 ## 已支持
 
 - 通用编剧创作内核：类型解析、阶段编排、确认门、修订轮次、质量门和解析快照
@@ -16,6 +18,7 @@
 - `session-export`：仅在用户明确要求时导出会话证据，且必须使用用户提供的绝对输出目录
 - `knowledge-loader`：只读检索多人协作飞书权威知识库
 - `feishu-knowledge-store`：正文内容权威、写后回读与远端租约
+- setup：首次使用自检、私有运行时、named profile、设备授权、链接配置、共享目标初始化与写验收
 - 通用创作上下文基础：注册媒介类型、题材与系列/项目标识，并兼容旧绘本运行记录
 - 通用创作 DAG 与质量门 v1：类型包解析核心阶段/负责人/门，快照携带质量规则，结构化报告区分阻断与确认风险
 - 类型包创作工作流：`picturebook` 为完整路径，`shortdrama` 与 `tv_longform` 为最小可用结构化路径
@@ -51,5 +54,5 @@
 - [使用插件](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#use-the-plugin)
 - [飞书知识库准备](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#feishu-knowledge-setup)
 - [配置发现规则](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#configuration-discovery)
-- [飞书操作命令](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#feishu-runtime-commands)
+- [飞书维护与诊断命令](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#feishu-runtime-commands)
 - [本地验证与发布](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#verify-locally)

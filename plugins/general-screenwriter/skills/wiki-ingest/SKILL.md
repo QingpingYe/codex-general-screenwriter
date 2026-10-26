@@ -8,6 +8,10 @@ applies_to:
 
 # Wiki Ingest Skill
 
+## Setup Gate
+
+任何飞书素材提取请求都先检查 setup 状态。先检查 setup，再读取源库或生成候选；若尚未 `ready`，由 AI 在内部补齐运行时、账户、授权和知识库配置，只向用户请求必要链接或可见授权操作。完成后恢复原任务，不要求用户重新描述来源和目标。
+
 ## 目标
 
 `wiki-ingest` 从配置的原始飞书知识库读取多人上传的资料，按系列、项目和页面类型归纳为候选 Markdown。它只负责三件事：读取原始资料、生成候选、验证候选。所有远程写入、并发控制、合并和发布由 `feishu-knowledge-store` 完成。
@@ -26,10 +30,10 @@ applies_to:
 运行前必须确认：
 
 1. 已知配置文件路径，且其中的 `source_wiki_url` 指向原始飞书知识库。
-2. 先运行 `../feishu-knowledge-store/scripts/lark_cli_bootstrap.py` 检查兼容的 lark-cli。若结果为 `missing`，先向用户说明将执行官方安装器，获得明确批准后加 `--install` 重跑；若为 `unsupported`，终止并报告版本和路径。
-3. `lark-cli auth status --json --verify` 返回用户身份认证成功。安装 CLI 不会自动登录；认证失败时由用户本人执行 `lark-cli auth login`。
+2. setup 为 `ready` 后，才进入源库只读预检；运行时和兼容 CLI 由 setup 内部处理。
+3. 当前用户的真实授权状态已通过 setup 复查。
 4. 当前用户对原始知识库根节点有读取权限。
-5. `LARK_CLI_PATH`、`PATH` 中的 `lark-cli`，或标准 npm 安装位置（Windows 检查 `%APPDATA%\npm` 与 `%ProgramFiles%\nodejs`；Unix 检查 `~/.local/bin`、`/usr/local/bin`、`/opt/homebrew/bin`）至少一个可用；安装场景还要求 Node.js 16+ 提供 `npx`。
+5. setup 已确认当前会话使用的是兼容 CLI 的绝对路径，无需用户手动刷新 PATH。
 
 除 `auth status` 外，所有 lark-cli 读写命令使用 `--as user`，以保留实际读取者身份。
 
