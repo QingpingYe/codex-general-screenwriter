@@ -33,6 +33,7 @@ CONTROL_TREE = (
 )
 
 TREE_ORDER = ("00_使用说明", "01_知识内容", "02_导航与日志", "99_系统控制台")
+WRITE_VERIFICATION_TITLE = "AI_KB_WRITE_VERIFICATION_V1"
 
 
 class Publisher:
@@ -53,6 +54,14 @@ class Publisher:
     def initialize(self) -> dict[str, str]:
         if self.tokens is not None:
             return self.tokens
+        inspection = self.inspect_control_tree()
+        if inspection["status"] == "control_tree_complete":
+            self.tokens = dict(inspection["tokens"])
+            return self.tokens
+        if inspection["status"] == "control_tree_ambiguous" or inspection["present"]:
+            raise NeedsReview(
+                "system tree is partial or ambiguous; refusing to repair it automatically"
+            )
         tokens: dict[str, str] = {}
         for title in TREE_ORDER:
             parent, _ = self._find_or_create_root(title)
@@ -77,6 +86,173 @@ class Publisher:
             return self.initialize()
         finally:
             control_plane.release_lock(lease)
+
+    def inspect_control_tree(self) -> dict[str, Any]:
+        """Inspect the expected control tree without resolving or writing it."""
+        root_parent = None if self.root_mode == "space" else self.target_root
+        root_label = "<space-root>" if self.root_mode == "space" else str(self.target_root)
+        present: list[str] = []
+        missing: list[str] = []
+        duplicates: list[dict[str, Any]] = []
+        tokens: dict[str, str] = {}
+        children_by_parent: dict[str, list[Mapping[str, Any]]] = {}
+
+        def identify(node: Mapping[str, Any]) -> str | None:
+            return next(
+                (node[key] for key in ("node_token", "obj_token", "token") if node.get(key)),
+                None,
+            )
+
+        def inspect_level(
+            parent_label: str,
+            items: Iterable[Mapping[str, Any]],
+            expected: Iterable[str],
+        ) -> dict[str, str]:
+            matches: dict[str, list[Mapping[str, Any]]] = {}
+            expected_titles = tuple(expected)
+            for node in items:
+                title = node.get("title")
+                if title in expected_titles:
+                    matches.setdefault(title, []).append(node)
+            resolved: dict[str, str] = {}
+            for title in expected_titles:
+                found = matches.get(title, [])
+                if len(found) > 1:
+                    duplicates.append({
+                        "parent": parent_label,
+                        "title": title,
+                        "count": len(found),
+                    })
+                    continue
+                if not found:
+                    missing.append(title)
+                    continue
+                token = identify(found[0])
+                if token is None:
+                    duplicates.append({
+                        "parent": parent_label,
+                        "title": title,
+                        "count": len(found),
+                        "reason": "missing node identity",
+                    })
+                    continue
+                present.append(title)
+                tokens[title] = token
+                resolved[title] = token
+            return resolved
+
+        root_items = list(self.cli.list_nodes(
+            self.space_id, parent_node_token=root_parent,
+        ))
+        roots = inspect_level(root_label, root_items, TREE_ORDER)
+        for parent_title in TREE_ORDER:
+            expected_children = dict(CONTROL_TREE).get(parent_title, ())
+            if not expected_children:
+                continue
+            parent_token = roots.get(parent_title)
+            if parent_token is None:
+                missing.extend(
+                    child for child in expected_children if child not in missing
+                )
+                continue
+            children = list(self.cli.list_nodes(
+                self.space_id, parent_node_token=parent_token,
+            ))
+            children_by_parent[parent_title] = children
+            inspect_level(parent_title, children, expected_children)
+
+        verification_token: str | None = None
+        console_token = roots.get("99_系统控制台")
+        if console_token and "99_系统控制台" in children_by_parent:
+            verification = [
+                node for node in children_by_parent["99_系统控制台"]
+                if node.get("title") == WRITE_VERIFICATION_TITLE
+            ]
+            if len(verification) > 1:
+                duplicates.append({
+                    "parent": "99_系统控制台",
+                    "title": WRITE_VERIFICATION_TITLE,
+                    "count": len(verification),
+                })
+            elif verification:
+                verification_token = identify(verification[0])
+                if verification_token is None:
+                    duplicates.append({
+                        "parent": "99_系统控制台",
+                        "title": WRITE_VERIFICATION_TITLE,
+                        "count": 1,
+                        "reason": "missing node identity",
+                    })
+                else:
+                    tokens["verification"] = verification_token
+                    present.append(WRITE_VERIFICATION_TITLE)
+
+        if duplicates:
+            status = "control_tree_ambiguous"
+            state = "ambiguous"
+        elif missing:
+            if present:
+                status = "control_tree_ambiguous"
+                state = "incomplete"
+            else:
+                status = "control_tree_missing"
+                state = "missing"
+        else:
+            status = "control_tree_complete"
+            state = "complete"
+            tokens["content"] = tokens["01_知识内容"]
+            tokens["index"] = tokens["AI_KB_INDEX_V1"]
+            tokens["lock"] = tokens["AI_KB_LOCK_V1"]
+
+        return {
+            "status": status,
+            "state": state,
+            "present": present,
+            "missing": missing,
+            "duplicates": duplicates,
+            "tokens": tokens,
+            "verification_token": verification_token,
+            "root_parent": root_parent,
+        }
+
+    def preview_initialization(self) -> dict[str, Any]:
+        """Return the exact system pages initialization would create, without writing."""
+        inspection = self.inspect_control_tree()
+        planned_titles: list[str] = []
+        planned_writes: list[dict[str, str]] = []
+        root_parent = inspection["root_parent"]
+        for title in TREE_ORDER:
+            planned_titles.append(title)
+            planned_writes.append({
+                "title": title,
+                "parent": "<space-root>" if root_parent is None else str(root_parent),
+            })
+            for child in dict(CONTROL_TREE).get(title, ()):
+                planned_titles.append(child)
+                planned_writes.append({"title": child, "parent": title})
+
+        if inspection["status"] == "control_tree_complete":
+            status = "already_initialized"
+            planned_titles = []
+            planned_writes = []
+        elif inspection["state"] == "missing":
+            status = "ready_to_initialize"
+        else:
+            status = "control_tree_ambiguous"
+            planned_titles = []
+            planned_writes = []
+
+        return {
+            "status": status,
+            "planned_titles": planned_titles,
+            "planned_writes": planned_writes,
+            "control_tree": inspection,
+            "write_verification": {
+                "title": WRITE_VERIFICATION_TITLE,
+                "parent": "99_系统控制台",
+                "action": "create_or_update_then_read_back",
+            },
+        }
 
     def resolve_control_plane(self, require_admission: bool = False) -> dict[str, str]:
         tokens: dict[str, str] = {}

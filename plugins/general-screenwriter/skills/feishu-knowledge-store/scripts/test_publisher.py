@@ -656,5 +656,94 @@ source_revision_parts: [r1]
 
 
 
+    def test_inspect_control_tree_reports_missing_without_writes(self):
+        inspection = self.publisher.inspect_control_tree()
+
+        self.assertEqual(inspection["status"], "control_tree_missing")
+        self.assertEqual(inspection["state"], "missing")
+        self.assertEqual(inspection["present"], [])
+        self.assertEqual(set(inspection["missing"]), {
+            "00_使用说明",
+            "AI知识库编辑说明",
+            "01_知识内容",
+            "02_导航与日志",
+            "知识导航索引",
+            "同步日志",
+            "99_系统控制台",
+            "AI_KB_INDEX_V1", "AI_KB_LOCK_V1",
+        })
+        self.assertEqual(self.cli.created_titles, [])
+
+    def test_inspect_control_tree_reports_complete_tokens(self):
+        tokens = self.publisher.initialize()
+
+        inspection = self.publisher.inspect_control_tree()
+
+        self.assertEqual(inspection["status"], "control_tree_complete")
+        self.assertEqual(inspection["state"], "complete")
+        self.assertEqual(inspection["tokens"]["index"], tokens["index"])
+        self.assertEqual(inspection["tokens"]["lock"], tokens["lock"])
+        self.assertEqual(inspection["tokens"]["content"], tokens["content"])
+
+    def test_inspect_control_tree_reports_partial_and_duplicate_pages(self):
+        self.cli.nodes["root"] = [
+            {"title": "00_使用说明", "node_token": "node-guide"},
+        ]
+        partial = self.publisher.inspect_control_tree()
+
+        self.cli.nodes["root"] = [
+            {"title": "00_使用说明", "node_token": "node-a"},
+            {"title": "00_使用说明", "node_token": "node-b"},
+        ]
+        duplicate = self.publisher.inspect_control_tree()
+
+        self.assertEqual(partial["status"], "control_tree_ambiguous")
+        self.assertEqual(partial["state"], "incomplete")
+        self.assertEqual(partial["present"], ["00_使用说明"])
+        self.assertEqual(duplicate["status"], "control_tree_ambiguous")
+        self.assertEqual(
+            duplicate["duplicates"][0]["title"], "00_使用说明",
+        )
+
+    def test_preview_initialization_lists_planned_system_pages_without_writes(self):
+        preview = self.publisher.preview_initialization()
+
+        self.assertEqual(preview["status"], "ready_to_initialize")
+        self.assertEqual(preview["planned_titles"], [
+            "00_使用说明",
+            "AI知识库编辑说明",
+            "01_知识内容",
+            "02_导航与日志",
+            "知识导航索引",
+            "同步日志",
+            "99_系统控制台",
+            "AI_KB_INDEX_V1", "AI_KB_LOCK_V1",
+        ])
+        self.assertEqual(
+            preview["write_verification"]["title"],
+            "AI_KB_WRITE_VERIFICATION_V1",
+        )
+        self.assertEqual(self.cli.created_titles, [])
+
+    def test_preview_initialization_is_read_only_when_tree_is_complete(self):
+        self.publisher.initialize()
+        created = list(self.cli.created_titles)
+
+        preview = self.publisher.preview_initialization()
+
+        self.assertEqual(preview["status"], "already_initialized")
+        self.assertEqual(preview["planned_titles"], [])
+        self.assertEqual(self.cli.created_titles, created)
+
+    def test_initialize_refuses_partial_tree_without_repair(self):
+        self.cli.nodes["root"] = [
+            {"title": "00_使用说明", "node_token": "node-guide"},
+        ]
+
+        with self.assertRaises(NeedsReview):
+            self.publisher.initialize()
+
+        self.assertEqual(self.cli.created_titles, [])
+
 if __name__ == "__main__":
     unittest.main()

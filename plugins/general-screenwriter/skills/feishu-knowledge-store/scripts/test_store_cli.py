@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from models import IndexEntry
+from resource_access import ResourceAccessReport
 
 SCRIPTS = Path(__file__).parent
 if str(SCRIPTS) not in sys.path:
@@ -74,8 +75,20 @@ class FakePublisher:
     def __init__(self, tokens=None, error=None):
         self.tokens = tokens or {"index": "index-doc", "lock": "lock-doc"}
         self.error = error
+        self.resolve_calls = 0
+
+    def inspect_control_tree(self):
+        return {
+            "status": "control_tree_complete",
+            "state": "complete",
+            "present": ["00_使用说明"],
+            "missing": [],
+            "duplicates": [],
+            "tokens": {"index": "index-doc", "lock": "lock-doc"},
+        }
 
     def resolve_control_plane(self):
+        self.resolve_calls += 1
         if self.error:
             raise self.error
         return self.tokens
@@ -151,11 +164,14 @@ class StoreCliTests(unittest.TestCase):
 
     def test_preflight_uses_user_identity_and_reports_root(self):
         stdout = StringIO()
-        exit_code = store_cli.main(
-            ["preflight", "--config", str(self.config_path)],
-            stdout=stdout,
-            components_factory=fake_factory,
-        )
+        with patch.object(
+                store_cli, "check_resource_access",
+                return_value=ResourceAccessReport("ok", (), ("readable",))):
+            exit_code = store_cli.main(
+                ["preflight", "--config", str(self.config_path)],
+                stdout=stdout,
+                components_factory=fake_factory,
+            )
         payload = json.loads(stdout.getvalue())
         self.assertEqual(exit_code, 0)
         self.assertEqual(payload["identity"], "user")
@@ -495,5 +511,134 @@ class StoreCliTests(unittest.TestCase):
         self.assertEqual(payload["status"], "unsupported_command")
         self.assertEqual(payload["command"], "future-command")
 
+    def test_preflight_does_not_resolve_or_load_the_control_plane(self):
+        publisher = FakePublisher()
+
+        def factory(config_path, environ=None, workspace=None):
+            return SimpleNamespace(
+                config=config(Path(config_path)), config_path=Path(config_path),
+                cli=FakeCli(), publisher=publisher,
+                control_plane=AssertionError("preflight must not load ControlPlane"),
+            )
+
+        stdout = StringIO()
+        with patch.object(
+                store_cli, "check_resource_access",
+                return_value=ResourceAccessReport("ok", (), ("readable",))):
+            exit_code = store_cli.main(
+                ["preflight", "--config", str(self.config_path)],
+                stdout=stdout,
+                components_factory=factory,
+            )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["status"], "read_ready")
+        self.assertEqual(payload["identity"], "user")
+        self.assertEqual(payload["root"], "root-token")
+        self.assertEqual(payload["control_tree"]["status"], "control_tree_complete")
+        self.assertEqual(publisher.resolve_calls, 0)
+
+    def test_doctor_command_does_not_build_eager_components(self):
+        seen = {}
+
+        def doctor(**kwargs):
+            seen.update(kwargs)
+            return {"schema_version": 1, "status": "waiting_initializer", "ready": False, "checks": []}
+
+        stdout = StringIO()
+        with patch.object(
+                store_cli, "build_components",
+                side_effect=AssertionError("doctor must not build the control plane")):
+            with patch.object(store_cli, "run_doctor", side_effect=doctor):
+                exit_code = store_cli.main(
+                    ["doctor", "--config", str(self.config_path), "--initializer"],
+                    stdout=stdout,
+                )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["status"], "waiting_initializer")
+        self.assertEqual(seen["config_path"], str(self.config_path))
+        self.assertTrue(seen["initializer"])
+
+    def test_init_target_command_passes_initializer_and_authorization(self):
+        seen = {}
+
+        def initialize(**kwargs):
+            seen.update(kwargs)
+            return {"status": "write_verification_required", "ready": False, "checks": []}
+
+        stdout = StringIO()
+        with patch.object(
+                store_cli, "build_components",
+                side_effect=AssertionError("init-target must not build the control plane")):
+            with patch.object(store_cli, "init_target", side_effect=initialize):
+                exit_code = store_cli.main([
+                    "init-target", "--config", str(self.config_path),
+                    "--initializer", "--authorized",
+                ], stdout=stdout)
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["status"], "write_verification_required")
+        self.assertTrue(seen["initializer_confirmed"])
+        self.assertTrue(seen["authorized"])
+
+    def test_write_verify_command_passes_authorization(self):
+        seen = {}
+
+        def verify(**kwargs):
+            seen.update(kwargs)
+            return {"status": "ready", "ready": True, "checks": []}
+
+        stdout = StringIO()
+        with patch.object(
+                store_cli, "build_components",
+                side_effect=AssertionError("write-verify must not build a sync control plane")):
+            with patch.object(store_cli, "verify_write_access", side_effect=verify):
+                exit_code = store_cli.main([
+                    "write-verify", "--config", str(self.config_path), "--authorized",
+                ], stdout=stdout)
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["ready"])
+        self.assertTrue(seen["authorized"])
+
+    def test_build_read_components_stops_before_control_plane(self):
+        resolved = SimpleNamespace(
+            path=self.config_path, origin="explicit", searched=(self.config_path,),
+        )
+        context = SimpleNamespace(
+            binary=Path(r"C:\工具 目录\lark-cli.exe"), version="1.0.95",
+            profile="team-a", capabilities=frozenset({"help", "wiki"}),
+        )
+        seen = {}
+
+        class FakeCli:
+            def __init__(self, binary, identity="user", runner=None, profile=None):
+                seen["cli"] = (binary, identity, profile)
+
+        class FakePublisher:
+            def __init__(self, cli, root_token, space_id, root_mode=None):
+                seen["publisher"] = (cli, root_token, space_id, root_mode)
+
+        with patch.object(store_cli, "resolve_config_path", return_value=resolved), \
+                patch.object(store_cli, "load_config", return_value=config(self.config_path)), \
+                patch.object(store_cli, "resolve_cli_context", return_value=context), \
+                patch.object(store_cli, "LarkCli", FakeCli), \
+                patch.object(store_cli, "Publisher", FakePublisher), \
+                patch.object(
+                    store_cli, "ControlPlane",
+                    side_effect=AssertionError("read-only components must not load ControlPlane")):
+            components = store_cli.build_read_components(
+                config_path=self.config_path, environ={"TEST_ENV": "1"},
+                profile="team-a",
+            )
+
+        self.assertEqual(seen["cli"], (context.binary, "user", "team-a"))
+        self.assertEqual(seen["publisher"][1:], ("root-token", "target-space", "node"))
+        self.assertFalse(hasattr(components, "control_plane"))
 if __name__ == "__main__":
     unittest.main()
