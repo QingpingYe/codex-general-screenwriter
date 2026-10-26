@@ -67,6 +67,16 @@ class LarkCliContractTests(unittest.TestCase):
             (1, 0, 94),
         )
 
+    def test_parse_version_reads_the_explicit_cli_version_clause(self):
+        self.assertEqual(parse_version("lark-cli version 1.0.95"), (1, 0, 95))
+        self.assertEqual(
+            parse_version("lark-cli requires Node v22.10.0; lark-cli version 1.0.95"),
+            (1, 0, 95),
+        )
+
+    def test_parse_version_rejects_unrelated_runtime_version_diagnostic(self):
+        self.assertIsNone(parse_version("lark-cli requires Node v22.10.0"))
+
     def test_parse_version_rejects_ambiguous_lark_cli_output(self):
         self.assertIsNone(
             parse_version("lark-cli version 1.0.95\nlark-cli version 1.0.96\n")

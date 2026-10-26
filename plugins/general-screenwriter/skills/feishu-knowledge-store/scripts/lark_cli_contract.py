@@ -17,8 +17,9 @@ _VERSION_TOKEN = (
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?))"
 )
 _LARK_CLI_VERSION = re.compile(
-    r"(?i)(?<![0-9A-Za-z_-])(?:lark[-_ ]cli|@larksuite/cli)(?![0-9A-Za-z_-])"
-    r"[^\r\n0-9]{0,40}?" + _VERSION_TOKEN + r"(?![-0-9A-Za-z_.+])"
+    r"(?i)(?<![0-9A-Za-z_-])(?:lark[-_ ]cli(?:\.exe)?|@larksuite/cli)(?![0-9A-Za-z_-])"
+    r"(?:[ \t]+(?:version[ \t]*[:=]?[ \t]*|v[ \t]*)?|[/:=@][ \t]*)"
+    + _VERSION_TOKEN + r"(?![-0-9A-Za-z_.+])"
 )
 _BARE_VERSION = re.compile(r"^\s*" + _VERSION_TOKEN + r"\s*$")
 _CAPABILITY_PROBES = (

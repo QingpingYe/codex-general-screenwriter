@@ -241,6 +241,17 @@ class LarkCliBootstrapTests(unittest.TestCase):
         self.assertEqual(result["status"], "unsupported")
         self.assertEqual(result["version"], "1.0.94")
 
+    def test_runtime_version_diagnostic_is_not_a_cli_version(self):
+        runner = Runner(Completed("lark-cli requires Node v22.10.0\n"))
+        result = ensure_lark_cli(
+            candidates=(Path(r"C:\Tools\lark-cli.exe"),),
+            install=True,
+            runner=runner,
+        )
+        self.assertEqual(result["status"], "version_unparseable")
+        self.assertIsNone(result["version"])
+        self.assertEqual(runner.commands, [[r"C:\Tools\lark-cli.exe", "--version"]])
+
     def test_installer_failure_is_reported_with_redacted_output(self):
         runner = Runner(
             Completed("not found", returncode=1),
