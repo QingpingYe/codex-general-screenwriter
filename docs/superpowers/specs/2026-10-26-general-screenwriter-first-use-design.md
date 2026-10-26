@@ -6,6 +6,8 @@
 
 状态：设计提案；本次未修改运行逻辑、安装依赖或操作真实飞书资源
 
+> 注：若 §1-§12 的旧文字与 §13 的收束约束冲突，以 §13 为准；实施计划也以 §13 和 Global Constraints 为共同基线。
+
 ## 1. 目标与已确认要求
 
 同事安装插件后，直接用自然语言开始使用。AI 负责环境探测、补装依赖、飞书 CLI 应用配置、授权发起与续跑、知识库配置生成、初始化和验收。每位同事都需要读取原始库并同步写入目标知识库，这一点已由用户在本次对话中确认。
@@ -288,3 +290,51 @@ AI 确定本插件所需 scope 后发起非阻塞设备授权。授权范围同�
 - [官方文档权限检查 API](https://open.feishu.cn/document/server-docs/docs/permission/permission-member/auth)：检查当前身份是否具有指定文档权限；[官方 Go SDK 请求模型](https://github.com/larksuite/oapi-sdk-go/blob/v3_main/service/drive/v1/model.go) 可核对 wiki 类型、edit 动作与 auth_result 字段。
 
 需要在实现时收束的工程选择：私有安装路线及具体官方产物、各平台运行时下载校验、实际必要 scope 字符串、专用验收页位置及保留/清理方式。它们都由 AI 结合官方能力和目标库实际结构完成，不转交用户执行命令。涉及真实资源的新增写入在执行前形成具体预览，再按会话已有授权继续。
+
+## 13. 已收束的五项实现约束
+
+### 13.1 用户级私有安装
+
+CLI 默认固定为用户级私有安装。不得调用 `npx @larksuite/cli@latest install` 作为自动初始化主路径；官方安装器会执行全局 npm 安装和 global lark skills 安装。默认路线是：
+
+```text
+npm install --prefix <user-data>/general-screenwriter/runtimes/lark-cli/<version> @larksuite/cli@<resolved-stable>
+```
+
+也可以使用官方发布包/二进制加官方校验值。安装后使用绝对路径，不修改全局 PATH，不安装 global skills，不覆盖已有系统 CLI。
+
+### 13.2 Named Profile 与共享应用边界
+
+没有本机应用配置时，默认创建每用户独立应用：
+
+```text
+lark-cli config init --new --name <profile>
+```
+
+不得省略 `--name`；后续 `auth`、`profile`、`wiki`、`docs`、`drive` 调用都必须显式绑定同一 `--profile`。共享应用只接受组织已批准的本地绑定或密钥管理配置；没有该配置时进入 `waiting_org_app_binding`，不得通过聊天、状态、Git 或配置文件传递 appSecret。
+
+### 13.3 Scope 矩阵
+
+核心 scope：
+
+| 类别 | Scope | 用途 |
+| --- | --- | --- |
+| 文档创建 | `docx:document:create` | `docs +create` |
+| 文档读取 | `docx:document:readonly` | `docs +fetch`、更新前读取 revision |
+| 文档更新 | `docx:document:write_only` | `docs +update` |
+| Wiki 节点读取 | `wiki:node:retrieve` | `wiki +node-get`、`wiki +node-list`、URL 解析 |
+| Wiki 节点创建 | `wiki:node:create` | `wiki +node-create`、目标系统页创建 |
+| Wiki 快捷能力 | `wiki:node:read`, `wiki:space:read` | `wiki +node-create` 的空间解析 |
+| 附件读取 | `drive:file:download` | `drive +download` |
+| 权限诊断 | `docs:permission.member:auth` | `drive.permission.members.auth` |
+
+条件 scope：`drive:drive.metadata:readonly` 仅在需要元数据解析时请求，`docs:document.media:upload` 仅在文档媒体写入时请求。默认不请求 `wiki:wiki`、`drive:drive` 或 `domain all`。
+
+### 13.4 源/目标链接与资源 ACL
+
+无本地配置时，源库和目标库 Wiki 链接是必要用户输入；用户不填写 token、space_id 或手工 JSON。AI 通过 API 解析空间 ID、根节点和 root mode，并分别检查 scope、用户授权和资源 ACL。资源权限不足时进入 `resource_grant_required`，由资源所有者或管理员授权后重新验；scope 已授权不能冒充资源 ACL 已满足。
+
+### 13.5 空库初始化所有权
+
+空库不能先依赖尚不存在的锁页。首次初始化必须确认指定初始化维护者；普通同事看到空库时进入 `waiting_initializer`，不得抢占写入。指定维护者完成后，其他同事重新读取并复用。重复或歧义系统页必须停止并报告，不声称无锁跨机器原子初始化能力。
+
