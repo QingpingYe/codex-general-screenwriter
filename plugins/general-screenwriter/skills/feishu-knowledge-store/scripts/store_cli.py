@@ -11,8 +11,7 @@ from config import ConfigError, load_config
 from config_paths import ConfigResolutionError, resolve_config_path
 from control_plane import ControlPlane
 from lark_cli import LarkCli
-from lark_cli_bootstrap import ensure_lark_cli
-from lark_cli_context import resolve_cli_context
+from lark_cli_context import CliContextError, resolve_cli_context
 from publisher import Publisher
 from source_admission import empty_admission_policy
 from source_baseline import build_source_baseline, read_source_admission, write_source_baseline
@@ -77,13 +76,12 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def config_status(args, stdout, environ=None, cli_probe=None) -> int:
-    cli_probe = cli_probe or ensure_lark_cli
+def config_status(args, stdout, environ=None, context_resolver=None) -> int:
+    context_resolver = context_resolver or resolve_cli_context
     resolved = None
-    config = None
     try:
         resolved = resolve_config_path(args.config, args.workspace, environ)
-        config = load_config(resolved.path, resolved.path.parent, environ)
+        load_config(resolved.path, resolved.path.parent, environ)
         status = "configured"
         origin = resolved.origin
         path = str(resolved.path)
@@ -102,12 +100,23 @@ def config_status(args, stdout, environ=None, cli_probe=None) -> int:
         searched = [str(item) for item in resolved.searched] if resolved is not None else []
 
     try:
-        cli_status = cli_probe(
-            candidates=config.cli_candidates if config is not None else None,
-            environ=environ,
-        )
+        context = context_resolver(environ=environ)
+        cli_status = {
+            "status": "available",
+            "path": str(context.binary),
+            "version": context.version,
+            "profile": context.profile,
+            "capabilities": sorted(context.capabilities),
+            "installed": False,
+        }
+    except CliContextError as error:
+        cli_status = {**error.to_dict(), "available": False}
     except Exception as error:
-        cli_status = {"status": "error", "message": str(error)}
+        cli_status = {
+            "status": "error",
+            "available": False,
+            "message": str(error),
+        }
 
     payload = {
         "configured": status == "configured",

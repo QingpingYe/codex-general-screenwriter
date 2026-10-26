@@ -16,6 +16,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import store_cli
+from lark_cli_context import CliContext, CliContextError
 
 
 def write_config(path: Path) -> None:
@@ -375,10 +376,14 @@ class StoreCliTests(unittest.TestCase):
     def test_config_status_reports_missing_configuration(self):
         stdout = StringIO()
         missing = Path(self.tmp.name) / "missing.json"
-        with patch.dict(os.environ, {"PICTUREBOOK_KB_CONFIG": str(missing)}), patch.object(store_cli, "ensure_lark_cli", return_value={
-            "status": "available", "path": "D:\\lark-cli\\lark-cli.exe",
-            "version": "1.0.95",
-        }):
+        context = CliContext(
+            Path(r"D:\lark-cli\lark-cli.exe"),
+            "1.0.95",
+            None,
+            frozenset({"help"}),
+        )
+        with patch.dict(os.environ, {"PICTUREBOOK_KB_CONFIG": str(missing)}), \
+                patch.object(store_cli, "resolve_cli_context", return_value=context):
             exit_code = store_cli.main(
                 ["config-status", "--workspace", str(self.tmp.name)],
                 stdout=stdout,
@@ -388,6 +393,7 @@ class StoreCliTests(unittest.TestCase):
         self.assertFalse(payload["configured"])
         self.assertEqual(payload["status"], "missing_config")
         self.assertEqual(payload["cli_status"]["version"], "1.0.95")
+        self.assertEqual(payload["cli_status"]["status"], "available")
 
     def test_config_status_reports_placeholder_without_remote_calls(self):
         placeholder_path = Path(self.tmp.name) / "placeholder.json"
@@ -403,10 +409,14 @@ class StoreCliTests(unittest.TestCase):
         }), encoding="utf-8")
         stdout = StringIO()
         missing = Path(self.tmp.name) / "missing.json"
-        with patch.dict(os.environ, {"PICTUREBOOK_KB_CONFIG": str(missing)}), patch.object(store_cli, "ensure_lark_cli", return_value={
-            "status": "available", "path": "D:\\lark-cli\\lark-cli.exe",
-            "version": "1.0.95",
-        }):
+        context = CliContext(
+            Path(r"D:\lark-cli\lark-cli.exe"),
+            "1.0.95",
+            None,
+            frozenset({"help"}),
+        )
+        with patch.dict(os.environ, {"PICTUREBOOK_KB_CONFIG": str(missing)}), \
+                patch.object(store_cli, "resolve_cli_context", return_value=context):
             exit_code = store_cli.main(
                 ["config-status", "--config", str(placeholder_path)],
                 stdout=stdout,
@@ -416,6 +426,51 @@ class StoreCliTests(unittest.TestCase):
         self.assertFalse(payload["configured"])
         self.assertEqual(payload["status"], "placeholder_target_token")
         self.assertNotIn("root-token", stdout.getvalue())
+
+    def test_config_status_reports_invalid_explicit_path_consistently(self):
+        stale = Path(r"C:\工具 目录\lark-cli.exe")
+        error = CliContextError(
+            f"lark-cli path is unusable: {stale} (executable not found)",
+            status="cli_missing",
+            path=stale,
+            reason="executable not found",
+            searched=(stale,),
+        )
+        stdout = StringIO()
+        with patch.object(store_cli, "resolve_cli_context", side_effect=error) as resolver:
+            exit_code = store_cli.main(
+                ["config-status", "--config", str(self.config_path)],
+                stdout=stdout,
+            )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["cli_status"]["status"], "cli_missing")
+        self.assertEqual(payload["cli_status"]["path"], str(stale))
+        self.assertIn("not found", payload["cli_status"]["reason"])
+        self.assertNotIn("candidates", resolver.call_args.kwargs)
+        self.assertIsNone(resolver.call_args.kwargs["environ"])
+
+    def test_config_status_delegates_full_default_candidate_resolution(self):
+        private_context = CliContext(
+            Path(r"C:\Users\writer\AppData\Local\general-screenwriter\runtimes\lark-cli\1.0.95\node_modules\.bin\lark-cli.cmd"),
+            "1.0.95",
+            None,
+            frozenset({"help", "wiki"}),
+        )
+        stdout = StringIO()
+        with patch.object(store_cli, "resolve_cli_context", return_value=private_context) as resolver:
+            exit_code = store_cli.main(
+                ["config-status", "--config", str(self.config_path)],
+                stdout=stdout,
+            )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["cli_status"]["path"], str(private_context.binary))
+        self.assertEqual(payload["cli_status"]["status"], "available")
+        self.assertNotIn("candidates", resolver.call_args.kwargs)
+        self.assertIsNone(resolver.call_args.kwargs["environ"])
 
     def test_documented_operator_commands_use_store_cli(self):
         repo_root = Path(__file__).parents[5]
