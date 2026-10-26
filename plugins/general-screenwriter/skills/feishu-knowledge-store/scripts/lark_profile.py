@@ -18,6 +18,7 @@ from lark_cli_context import CliContext, CliContextError, build_cli_command, res
 
 ProfileSource = Literal["existing", "created", "bound"]
 _URL_RE = re.compile(r"https?://[^\s<>\"']+")
+APP_CONFIG_PHASE_ONE_TIMEOUT_SECONDS = 35.0
 
 
 @dataclass(frozen=True)
@@ -59,12 +60,40 @@ class AppConfigError(ProfileError):
             self.status = status
 
 
+class AppConfigRequired(ProfileError):
+    """The caller must start the asynchronous named-app creation flow."""
+
+    status = "app_unconfigured"
+
+    def __init__(self, profile_name: str) -> None:
+        super().__init__(
+            f"profile {profile_name!r} does not exist; call begin_app_config()"
+        )
+        self.profile_name = profile_name
+
+    def to_dict(self) -> dict[str, Any]:
+        value = super().to_dict()
+        value["profile"] = self.profile_name
+        return value
+
+
 class AppConfigTimeout(AppConfigError):
     status = "app_config_timeout"
 
 
 class ProfileAlreadyExists(ProfileError):
     status = "profile_exists"
+
+    def __init__(self, profile_name: str, app_id: str = "") -> None:
+        super().__init__(f"profile {profile_name!r} already exists")
+        self.profile_name = profile_name
+        self.app_id = app_id
+
+    def to_dict(self) -> dict[str, Any]:
+        value = super().to_dict()
+        value["profile"] = self.profile_name
+        value["app_id"] = self.app_id
+        return value
 
 
 @dataclass(frozen=True)
@@ -82,16 +111,17 @@ def ensure_named_profile(
     mode: str = "per_user",
     runner: Callable[..., Any] = subprocess.run,
 ) -> ProfileState:
-    """Discover or create one explicit named profile.
+    """Discover or bind one explicit named profile without blocking on setup.
 
-    Per-user mode creates a named profile only when that exact name is absent.
-    Shared mode is deliberately non-creating: it accepts only a pre-existing
-    local binding and otherwise reports ``waiting_org_app_binding``.
+    Missing per-user profiles deliberately raise ``AppConfigRequired``.  The
+    caller must start ``begin_app_config()`` and resume via ``wait_app_config()``
+    instead of blocking this turn on the CLI's browser flow.
     """
     _validate_profile_name(profile_name)
     selected_mode = _normalise_mode(mode)
+    target_context = replace(context, profile=profile_name)
 
-    profiles = _list_profiles(context, runner)
+    profiles = _list_profiles(target_context, runner)
     existing = _find_profile(profiles, profile_name)
     if existing is not None:
         app_id = _profile_app_id(existing) or ""
@@ -104,48 +134,34 @@ def ensure_named_profile(
     if selected_mode == "shared":
         raise OrgAppBindingRequired(profile_name)
 
-    # A profile being created does not exist yet, so do not bind an unrelated
-    # global profile while invoking the CLI's append-only creation command.
-    creation_context = _without_profile(context)
-    completed, stdout, stderr = _run_sync(
-        creation_context,
-        ("config", "init", "--new", "--name", profile_name),
-        runner,
-    )
-    if getattr(completed, "returncode", 0) != 0:
-        raise AppConfigError(
-            "lark-cli config init failed: "
-            + redact_sensitive(_diagnostic(stdout, stderr))
-        )
-
-    app_id = _extract_app_id(stdout) or _extract_app_id(stderr)
-    if not app_id:
-        # Some CLI builds print the profile update to stderr and the masked
-        # app data to stdout.  Re-read the canonical list when possible, but
-        # never turn a successful creation into a second write.
-        try:
-            profiles = _list_profiles(context, runner)
-            refreshed = _find_profile(profiles, profile_name)
-            if refreshed is not None:
-                app_id = _profile_app_id(refreshed) or ""
-        except (IndexError, ProfileError):
-            app_id = ""
-
-    return ProfileState(profile_name, app_id, "created")
+    raise AppConfigRequired(profile_name)
 
 
 def begin_app_config(
     context: CliContext,
     profile_name: str,
     runner: Callable[..., Any] = subprocess.Popen,
+    *,
+    state_runner: Callable[..., Any] | None = None,
+    timeout_seconds: float = APP_CONFIG_PHASE_ONE_TIMEOUT_SECONDS,
 ) -> AppConfigChallenge:
     """Start the official named app-creation flow in the background.
 
-    The command's stdout/stderr are held in an owner-only temporary file.  The
-    first usable verification URL is extracted verbatim; query parameters are
-    never reconstructed by this module.
+    The exact named profile is checked against real CLI state before ``--new``
+    is launched.  The command's stdout/stderr are held in an owner-only
+    temporary file; the first verification URL is extracted verbatim.
     """
     _validate_profile_name(profile_name)
+    timeout = float(timeout_seconds)
+    if timeout < 0:
+        raise ValueError("timeout_seconds must be non-negative")
+    check_runner = subprocess.run if state_runner is None else state_runner
+    target_context = replace(context, profile=profile_name)
+    profiles = _list_profiles(target_context, check_runner)
+    existing = _find_profile(profiles, profile_name)
+    if existing is not None:
+        raise ProfileAlreadyExists(profile_name, _profile_app_id(existing) or "")
+
     output_path = _private_output_path()
     command = build_cli_command(
         _without_profile(context),
@@ -175,7 +191,12 @@ def begin_app_config(
         ) from error
 
     _append_inline_output(output_path, process)
-    output = _wait_for_challenge_output(output_path, process)
+    output, timed_out = _wait_for_challenge_output(output_path, process, timeout)
+    if timed_out:
+        _terminate_quietly(process)
+        raise AppConfigTimeout(
+            "lark-cli config init exceeded the phase-one verification URL window"
+        )
     if output is None:
         _terminate_quietly(process)
         raise AppConfigError("lark-cli config init did not emit a verification URL")
@@ -350,32 +371,6 @@ def _profile_app_id(profile: dict[str, Any]) -> str | None:
     return None
 
 
-def _extract_app_id(text: str) -> str | None:
-    for payload in _iter_json(text):
-        if isinstance(payload, dict):
-            value = _find_key(payload, ("appId", "app_id", "appID"))
-            if isinstance(value, str) and value:
-                return value
-    match = re.search(r"\bcli_[A-Za-z0-9]+\b", text)
-    return match.group(0) if match else None
-
-
-def _find_key(value: Any, keys: Sequence[str]) -> Any:
-    if isinstance(value, dict):
-        for key in keys:
-            if key in value:
-                return value[key]
-        for nested in value.values():
-            found = _find_key(nested, keys)
-            if found is not None:
-                return found
-    elif isinstance(value, list):
-        for item in value:
-            found = _find_key(item, keys)
-            if found is not None:
-                return found
-    return None
-
 
 def _iter_json(text: str) -> Iterable[Any]:
     decoder = json.JSONDecoder()
@@ -403,19 +398,23 @@ def _private_output_path() -> Path:
     return path
 
 
-def _wait_for_challenge_output(output_path: Path, process: Any) -> str | None:
-    deadline = time.monotonic() + 10.0
+def _wait_for_challenge_output(
+    output_path: Path,
+    process: Any,
+    timeout_seconds: float,
+) -> tuple[str | None, bool]:
+    deadline = time.monotonic() + timeout_seconds
     while True:
         output = _read_text(output_path)
         fields = _extract_challenge_fields(output)
         if fields.verification_url is not None:
-            return output
+            return output, False
         if callable(getattr(process, "poll", None)) and process.poll() is not None:
-            return output if output.strip() else None
+            return (output if output.strip() else None), False
         if getattr(process, "returncode", None) is not None:
-            return output if output.strip() else None
+            return (output if output.strip() else None), False
         if time.monotonic() >= deadline:
-            return output if output.strip() else None
+            return (output if output.strip() else None), True
         time.sleep(0.05)
 
 

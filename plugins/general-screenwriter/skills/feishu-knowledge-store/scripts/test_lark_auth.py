@@ -134,6 +134,7 @@ class LarkAuthTests(unittest.TestCase):
 
         self.assertEqual(result["missing"], ["wiki:node:read"])
         self.assertNotIn("access-secret", json.dumps(result, ensure_ascii=False))
+
     def test_write_qr_png_preserves_opaque_url(self):
         url = "https://open.feishu.cn/page/cli?user_code=AB-12&x=1&next=https%3A%2F%2Fexample.test%2Fa%3Fb%3D1"
         with tempfile.TemporaryDirectory() as directory:
@@ -154,6 +155,26 @@ class LarkAuthTests(unittest.TestCase):
             self.assertIn(url, runner.command)
             self.assertIn(str(destination), runner.command)
 
+    def test_write_qr_png_rejects_missing_empty_and_invalid_png(self):
+        cases = {
+            "missing": None,
+            "empty": b"",
+            "invalid": b"not-a-png",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            for name, payload in cases.items():
+                with self.subTest(name=name):
+                    destination = Path(directory) / f"{name}.png"
+
+                    class QRRunner:
+                        def __call__(self, command, **kwargs):
+                            if payload is not None:
+                                Path(command[command.index("--output") + 1]).write_bytes(payload)
+                            return Completed('{"ok":true}')
+
+                    with self.assertRaises(DeviceAuthorizationError):
+                        write_qr_png(context(), "https://example.test/verify", destination, runner=QRRunner())
+
     def test_expired_device_authorization_can_restart_with_same_scopes(self):
         scopes = ("scope:one", "scope:two")
         first_runner = FakeRunner(Completed(json.dumps({
@@ -168,25 +189,32 @@ class LarkAuthTests(unittest.TestCase):
             returncode=1,
         ))
         with self.assertRaises(DeviceAuthorizationExpired) as raised:
-            complete_device_auth(context(), first.device_code, runner=expired_runner)
+            complete_device_auth(
+                context(),
+                first.device_code,
+                runner=expired_runner,
+                scopes=first.scopes,
+            )
         self.assertEqual(raised.exception.status, "device_code_expired")
-        self.assertEqual(raised.exception.scopes, REQUIRED_SCOPES)
+        self.assertEqual(raised.exception.scopes, scopes)
 
         second_runner = FakeRunner(Completed(json.dumps({
             "verification_url": "https://example.test/verify?user_code=two",
             "device_code": "second-device-code",
             "expires_in": 600,
         })))
-        second = begin_device_auth(context(), first.scopes, runner=second_runner)
+        second = begin_device_auth(context(), raised.exception.scopes, runner=second_runner)
         self.assertEqual(second.scopes, scopes)
         first_scope = first_runner.calls[0][first_runner.calls[0].index("--scope") + 1]
         second_scope = second_runner.calls[0][second_runner.calls[0].index("--scope") + 1]
         self.assertEqual(first_scope, second_scope)
+
     def test_complete_error_redacts_exact_device_code_without_key(self):
         runner = FakeRunner(Completed("authorization failed: short-device-code", returncode=1))
         with self.assertRaises(DeviceAuthorizationError) as raised:
             complete_device_auth(context(), "short-device-code", runner=runner)
         self.assertNotIn("short-device-code", str(raised.exception))
+
     def test_auth_errors_do_not_expose_secrets(self):
         runner = FakeRunner(Completed(
             "failed device_code=device-secret access_token=access-secret refresh_token=refresh-secret",

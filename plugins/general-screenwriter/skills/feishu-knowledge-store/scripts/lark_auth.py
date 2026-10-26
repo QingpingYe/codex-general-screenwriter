@@ -107,21 +107,36 @@ def complete_device_auth(
     context: CliContext,
     device_code: str,
     runner: Callable[..., Any] = subprocess.run,
+    *,
+    scopes: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """Resume a previously started split-flow authorization."""
+    """Resume a previously started split-flow authorization.
+
+    ``scopes`` must be the original ``DeviceAuthorization.scopes`` when the
+    caller is retrying after expiry; otherwise a custom authorization would
+    silently fall back to the core scope set.
+    """
     _require_profile(context)
     if not isinstance(device_code, str) or not device_code.strip():
         raise ValueError("device_code must be a non-empty string")
+    selected_scopes = _normalise_scopes(
+        REQUIRED_SCOPES if scopes is None else scopes
+    )
 
     args = ("auth", "login", "--device-code", device_code, "--json")
     completed, stdout, stderr = _run_sync(context, args, runner)
-    payload = _command_payload(
-        completed,
-        stdout,
-        stderr,
-        operation="device authorization completion",
-        secret_values=(device_code,),
-    )
+    try:
+        payload = _command_payload(
+            completed,
+            stdout,
+            stderr,
+            operation="device authorization completion",
+            secret_values=(device_code,),
+        )
+    except DeviceAuthorizationExpired as error:
+        raise DeviceAuthorizationExpired(
+            str(error), scopes=selected_scopes
+        ) from error
     if not isinstance(payload, dict):
         raise DeviceAuthorizationError("device authorization completion returned no JSON object")
     return _sanitize_payload(payload)
@@ -151,7 +166,23 @@ def write_qr_png(
     payload = _select_json_payload(stdout, "device authorization")
     if payload is not None and _is_error_payload(payload):
         _raise_command_error("qr code generation", stdout, stderr, payload)
+    _verify_png(target)
     return target
+
+
+def _verify_png(path: Path) -> None:
+    signature = b"\x89PNG\r\n\x1a\n"
+    try:
+        valid = path.is_file() and path.stat().st_size > 0
+        if valid:
+            with path.open("rb") as stream:
+                valid = stream.read(len(signature)) == signature
+    except OSError:
+        valid = False
+    if not valid:
+        raise DeviceAuthorizationError(
+            "lark-cli auth qrcode did not produce a valid non-empty PNG"
+        )
 
 
 def _require_profile(context: CliContext) -> None:

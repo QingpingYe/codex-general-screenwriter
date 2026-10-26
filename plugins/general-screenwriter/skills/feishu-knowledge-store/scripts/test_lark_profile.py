@@ -1,3 +1,5 @@
+import copy
+import inspect
 import json
 import os
 import sys
@@ -13,7 +15,10 @@ if str(SCRIPTS) not in sys.path:
 from lark_cli_context import CliContext
 from lark_profile import (
     AppConfigChallenge,
+    AppConfigRequired,
+    AppConfigTimeout,
     OrgAppBindingRequired,
+    ProfileAlreadyExists,
     ProfileState,
     begin_app_config,
     ensure_named_profile,
@@ -59,6 +64,22 @@ class FakePopen:
         return self.returncode
 
 
+class SilentPopen:
+    def __init__(self):
+        self.calls = []
+        self.terminated = False
+
+    def __call__(self, command, **kwargs):
+        self.calls.append(command)
+        return self
+
+    def poll(self):
+        return None
+
+    def terminate(self):
+        self.terminated = True
+
+
 class FakeClock:
     def __init__(self):
         self.now = 0.0
@@ -79,38 +100,43 @@ def context(profile=None):
     )
 
 
-class LarkProfileTests(unittest.TestCase):
-    def test_existing_named_profile_is_reused_without_creation(self):
-        runner = FakeRunner(Completed(json.dumps([
+def profile_state():
+    return {
+        "profiles": [
             {"name": "other", "appId": "cli_other"},
             {"name": "team-a", "appId": "cli_team"},
-        ])))
+        ],
+        "secrets": {"other": "other-secret", "team-a": "team-secret"},
+        "user_tokens": {"other": "other-token", "team-a": "team-token"},
+    }
+
+
+class LarkProfileTests(unittest.TestCase):
+    def test_existing_named_profile_is_reused_without_creation_and_target_bound(self):
+        runner = FakeRunner(Completed(json.dumps(profile_state()["profiles"])))
 
         state = ensure_named_profile(context(), "team-a", runner=runner)
 
         self.assertEqual(state, ProfileState("team-a", "cli_team", "existing"))
         self.assertEqual(len(runner.calls), 1)
+        self.assertEqual(runner.calls[0][:3], ["lark-cli", "--profile", "team-a"])
         self.assertEqual(runner.calls[0][-2:], ["profile", "list"])
         self.assertFalse(any("config" in call for call in runner.calls))
 
-    def test_missing_per_user_profile_creates_exactly_one_named_app(self):
-        runner = FakeRunner(
-            Completed(json.dumps([{"name": "other", "appId": "cli_other"}])),
-            Completed(
-                '{"appId":"cli_created","appSecret":"****","brand":"feishu"}\n',
-                "Configuration saved\n",
-            ),
-        )
+    def test_missing_per_user_profile_refuses_sync_creation_and_preserves_state(self):
+        config_state = profile_state()
+        config_state["profiles"] = [{"name": "other", "appId": "cli_other"}]
+        snapshot = copy.deepcopy(config_state)
+        runner = FakeRunner(Completed(json.dumps(config_state["profiles"])))
 
-        state = ensure_named_profile(context(), "team-a", runner=runner)
+        with self.assertRaises(AppConfigRequired) as raised:
+            ensure_named_profile(context(), "team-a", runner=runner)
 
-        self.assertEqual(state, ProfileState("team-a", "cli_created", "created"))
-        self.assertIn(["lark-cli", "config", "init", "--new", "--name", "team-a"], runner.calls)
-        creation = next(call for call in runner.calls if "config" in call)
-        self.assertNotIn("--force", creation)
-        self.assertNotIn("--force-init", creation)
-        self.assertNotIn("profile", creation)
-        self.assertFalse(any("remove" in call or "rename" in call for call in runner.calls))
+        self.assertEqual(raised.exception.status, "app_unconfigured")
+        self.assertEqual(raised.exception.profile_name, "team-a")
+        self.assertEqual(len(runner.calls), 1)
+        self.assertFalse(any("config" in call for call in runner.calls))
+        self.assertEqual(config_state, snapshot)
 
     def test_existing_shared_profile_is_bound_without_creation(self):
         runner = FakeRunner(Completed(json.dumps([
@@ -136,15 +162,48 @@ class LarkProfileTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, "waiting_org_app_binding")
         self.assertEqual(len(runner.calls), 1)
 
-    def test_begin_app_config_preserves_urls_and_uses_private_output_file(self):
+    def test_begin_app_config_rejects_existing_profile_before_new(self):
+        config_state = profile_state()
+        snapshot = copy.deepcopy(config_state)
+        state_runner = FakeRunner(Completed(json.dumps(config_state["profiles"])))
+        process_runner = FakePopen("unused")
+
+        with self.assertRaises(ProfileAlreadyExists) as raised:
+            begin_app_config(
+                context(),
+                "team-a",
+                runner=process_runner,
+                state_runner=state_runner,
+            )
+
+        self.assertEqual(raised.exception.status, "profile_exists")
+        self.assertEqual(raised.exception.profile_name, "team-a")
+        self.assertEqual(raised.exception.app_id, "cli_team")
+        self.assertEqual(process_runner.calls, [])
+        self.assertEqual(state_runner.calls[0][:3], ["lark-cli", "--profile", "team-a"])
+        self.assertEqual(config_state, snapshot)
+
+    def test_begin_app_config_preserves_urls_and_unrelated_state(self):
+        config_state = {
+            "profiles": [{"name": "other", "appId": "cli_other"}],
+            "secrets": {"other": "other-secret"},
+            "user_tokens": {"other": "other-token"},
+        }
+        snapshot = copy.deepcopy(config_state)
+        state_runner = FakeRunner(Completed(json.dumps(config_state["profiles"])))
         output = (
             "Open this link:\n"
             "  https://open.feishu.cn/page/cli?user_code=AB-12&x=1&next=https%3A%2F%2Fexample.test%2Fa%3Fb%3D1\n"
             "console_url: https://open.feishu.cn/app/cli_new?foo=1&bar=2\n"
         )
-        runner = FakePopen(output)
+        process_runner = FakePopen(output)
 
-        challenge = begin_app_config(context(), "team-a", runner=runner)
+        challenge = begin_app_config(
+            context(),
+            "team-a",
+            runner=process_runner,
+            state_runner=state_runner,
+        )
 
         self.assertIsInstance(challenge, AppConfigChallenge)
         self.assertEqual(challenge.profile_name, "team-a")
@@ -157,13 +216,33 @@ class LarkProfileTests(unittest.TestCase):
             "https://open.feishu.cn/app/cli_new?foo=1&bar=2",
         )
         self.assertEqual(
-            runner.calls[0],
+            process_runner.calls[0],
             ["lark-cli", "config", "init", "--new", "--name", "team-a"],
         )
+        self.assertEqual(state_runner.calls[0][:3], ["lark-cli", "--profile", "team-a"])
+        self.assertEqual(config_state, snapshot)
         self.assertTrue(challenge.output_path.exists())
         self.assertEqual(challenge.output_path.read_text(encoding="utf-8"), output)
         if os.name != "nt":
             self.assertEqual(challenge.output_path.stat().st_mode & 0o777, 0o600)
+
+    def test_phase_one_timeout_is_configurable_and_allows_cli_network_window(self):
+        default_timeout = inspect.signature(begin_app_config).parameters["timeout_seconds"].default
+        self.assertGreaterEqual(default_timeout, 30.0)
+
+        state_runner = FakeRunner(Completed("[]"))
+        process_runner = SilentPopen()
+        with self.assertRaises(AppConfigTimeout) as raised:
+            begin_app_config(
+                context(),
+                "team-a",
+                runner=process_runner,
+                state_runner=state_runner,
+                timeout_seconds=0.01,
+            )
+
+        self.assertEqual(raised.exception.status, "app_config_timeout")
+        self.assertTrue(process_runner.terminated)
 
     def test_wait_app_config_polls_real_named_profile_state(self):
         challenge = AppConfigChallenge(
