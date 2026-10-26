@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Check for a compatible Lark CLI and optionally run its official installer."""
+"""Check for a compatible Lark CLI and install it only into user-private paths."""
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -8,17 +10,20 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping
 
-from lark_cli import LarkCli
-from lark_cli_contract import inspect_capabilities, parse_version, version_meets_minimum
-
-
-INSTALL_COMMAND = ("npx", "@larksuite/cli@latest", "install")
+from lark_cli_context import CliContext, CliContextError, resolve_cli_context
+from lark_cli_contract import MIN_LARK_CLI_VERSION, inspect_capabilities
+from lark_runtime import (
+    CliInstallResult,
+    install_private_cli,
+    private_install_command,
+    resolve_runtime_paths,
+)
 
 
 class BootstrapError(RuntimeError):
-    pass
+    """Compatibility exception for callers that wrap unexpected setup errors."""
 
 
 def ensure_lark_cli(
@@ -27,72 +32,59 @@ def ensure_lark_cli(
     runner: Callable[..., Any] = subprocess.run,
     environ: Mapping[str, str] | None = None,
     which: Callable[[str], str | None] = shutil.which,
-    installer_command: Sequence[str] | None = None,
+    version: str = MIN_LARK_CLI_VERSION,
 ) -> dict[str, Any]:
-    """Return CLI status, installing only when explicitly requested."""
+    """Return CLI status, installing only into the user-private runtime.
+
+    An explicit ``LARK_CLI_PATH`` is authoritative: if it is unusable, the
+    error is returned without silently installing a different executable.
+    """
     environment = os.environ if environ is None else environ
-    selected = tuple(candidates) if candidates is not None else default_cli_candidates(environment, which)
-    installed = False
-    found = _inspect_candidates(selected, runner)
-
-    if found["status"] == "available":
-        return {**found, "installed": installed}
-    if found["status"] in {"unsupported", "version_unparseable"}:
-        return {**found, "installed": installed}
-    if not install:
-        return {
-            "status": "missing",
-            "installed": installed,
-            "install_command": list(installer_command or INSTALL_COMMAND),
-        }
-
-    command = list(installer_command or INSTALL_COMMAND)
+    selected = tuple(candidates) if candidates is not None else None
     try:
-        completed = runner(
-            command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
+        context = resolve_cli_context(
+            candidates=selected,
+            environ=environment,
+            runner=runner,
+            which=which,
         )
-    except FileNotFoundError as error:
-        raise BootstrapError(
-            "lark-cli installer unavailable: npx not found. Install Node.js 16 or newer, then retry."
-        ) from error
-    except OSError as error:
-        raise BootstrapError("could not execute lark-cli installer: " + LarkCli._redact(str(error))) from error
+    except CliContextError as error:
+        explicit_failure = _is_explicit_path_failure(error, environment)
+        if explicit_failure or not install:
+            return _context_error_result(
+                error,
+                private_install_command(resolve_runtime_paths(environment), version),
+            )
 
-    if getattr(completed, "returncode", 1) != 0:
-        output = " ".join(
-            part for part in (
-                str(getattr(completed, "stderr", "") or ""),
-                str(getattr(completed, "stdout", "") or ""),
-            ) if part
-        )
-        raise BootstrapError("lark-cli installer failed: " + LarkCli._redact(output))
+        paths = resolve_runtime_paths(environment)
+        installation = install_private_cli(paths, version, runner=runner)
+        if not installation.ok:
+            return _installation_result(installation)
+        try:
+            context = resolve_cli_context(
+                candidates=(installation.path,),
+                environ=environment,
+                runner=runner,
+                which=which,
+            )
+        except CliContextError as recheck_error:
+            return _context_error_result(
+                recheck_error,
+                private_install_command(paths, version),
+            )
+        return _context_result(context, installed=installation.installed, runner=runner)
 
-    installed = True
-    recheck_candidates: list[Path] = []
-    for candidate in (*default_cli_candidates(environment, which), *selected):
-        if candidate not in recheck_candidates:
-            recheck_candidates.append(candidate)
-    rechecked = _inspect_candidates(recheck_candidates, runner)
-    if rechecked["status"] == "available":
-        return {**rechecked, "installed": installed}
-    if rechecked["status"] in {"unsupported", "version_unparseable"}:
-        return {**rechecked, "installed": installed}
-    return {
-        "status": "missing",
-        "installed": installed,
-        "reason": "installer completed, but no supported lark-cli was found; reopen the terminal and run the check again",
-        "install_command": command,
-    }
+    return _context_result(context, installed=False, runner=runner)
 
 
 def default_cli_candidates(
     environment: Mapping[str, str], which: Callable[[str], str | None]
 ) -> tuple[Path, ...]:
+    """Return system-visible compatibility candidates.
+
+    Private runtime discovery belongs to ``resolve_cli_context`` so there is a
+    single search and verification contract.
+    """
     candidates: list[Path] = []
     for candidate in (
         environment.get("LARK_CLI_PATH"),
@@ -116,7 +108,7 @@ def _platform_candidates(environment: Mapping[str, str]) -> tuple[Path, ...]:
                 npm_bin / "lark-cli.cmd",
                 npm_bin / "node_modules" / "@larksuite" / "cli" / "bin" / "lark-cli.exe",
             ))
-        program_files = environment.get("ProgramFiles")
+        program_files = environment.get("ProgramFiles") or environment.get("PROGRAMFILES")
         if program_files:
             candidates.append(Path(program_files) / "nodejs" / "lark-cli.cmd")
         return tuple(candidates)
@@ -132,80 +124,80 @@ def _platform_candidates(environment: Mapping[str, str]) -> tuple[Path, ...]:
     return tuple(candidates)
 
 
-def _inspect_candidates(candidates: Iterable[Path | str], runner: Callable[..., Any]) -> dict[str, Any]:
-    unsupported: dict[str, Any] | None = None
-    unparseable: dict[str, Any] | None = None
-    for candidate in candidates:
-        path = Path(candidate)
-        try:
-            completed = runner(
-                [str(path), "--version"],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                check=False,
-            )
-        except FileNotFoundError:
-            continue
-        except OSError as error:
-            raise BootstrapError("could not execute lark-cli: " + LarkCli._redact(str(error))) from error
-
-        output = " ".join(
-            part for part in (
-                str(getattr(completed, "stdout", "") or ""),
-                str(getattr(completed, "stderr", "") or ""),
-            ) if part
-        )
-        version_parts = parse_version(output)
-        if version_parts is None:
-            if getattr(completed, "returncode", 0) != 0:
-                continue
-            unparseable = {
-                "status": "version_unparseable",
-                "path": str(path),
-                "version": None,
-                "reason": "lark-cli version could not be parsed unambiguously",
-            }
-            continue
-        version = ".".join(str(part) for part in version_parts)
-        if version_meets_minimum(version):
-            report = inspect_capabilities(path, runner)
-            return {
-                "status": "available",
-                "path": str(path),
-                "version": version,
-                "capability_report": report.to_dict(),
-            }
-        unsupported = {"status": "unsupported", "path": str(path), "version": version}
-    if unsupported is not None:
-        return unsupported
-    if unparseable is not None:
-        return unparseable
-    return {"status": "missing"}
+def _context_result(
+    context: CliContext,
+    *,
+    installed: bool,
+    runner: Callable[..., Any],
+) -> dict[str, Any]:
+    report = inspect_capabilities(context.binary, runner)
+    return {
+        "status": "available",
+        "path": str(context.binary),
+        "version": context.version,
+        "installed": installed,
+        "capability_report": report.to_dict(),
+    }
 
 
-def _resolved_installer_command() -> list[str]:
-    command = list(INSTALL_COMMAND)
-    executable = shutil.which(command[0])
-    if executable:
-        command[0] = executable
-    return command
+def _context_error_result(
+    error: CliContextError,
+    install_command: tuple[str, ...],
+) -> dict[str, Any]:
+    status = {
+        "cli_missing": "missing",
+        "unsupported_version": "unsupported",
+    }.get(error.status, error.status)
+    version = next(
+        (failure.version for failure in error.failures if failure.version is not None),
+        None,
+    )
+    result: dict[str, Any] = {
+        "status": status,
+        "installed": False,
+        "install_command": list(install_command),
+    }
+    if error.path is not None:
+        result["path"] = str(error.path)
+    if version is not None or error.status == "version_unparseable":
+        result["version"] = version
+    if error.reason:
+        result["reason"] = error.reason
+    return result
+
+
+def _installation_result(result: CliInstallResult) -> dict[str, Any]:
+    data = result.to_dict()
+    data["install_command"] = data.pop("command")
+    return data
+
+
+def _is_explicit_path_failure(
+    error: CliContextError,
+    environment: Mapping[str, str],
+) -> bool:
+    explicit = environment.get("LARK_CLI_PATH")
+    if not explicit or error.path is None:
+        return False
+    return os.path.normcase(str(Path(explicit).expanduser().absolute())) == os.path.normcase(
+        str(error.path.expanduser().absolute())
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Check and optionally install the Feishu Lark CLI")
+    parser = argparse.ArgumentParser(description="Check and privately install the Feishu Lark CLI")
     parser.add_argument(
         "--install",
         action="store_true",
-        help="run the official installer when no compatible CLI is found",
+        help="install a pinned CLI version into the user-private runtime when needed",
+    )
+    parser.add_argument(
+        "--version",
+        default=MIN_LARK_CLI_VERSION,
+        help="stable lark-cli version to install privately (default: %(default)s)",
     )
     arguments = parser.parse_args(argv)
-    try:
-        result = ensure_lark_cli(install=arguments.install, installer_command=_resolved_installer_command())
-    except BootstrapError as error:
-        print(json.dumps({"status": "error", "message": str(error)}, ensure_ascii=False), file=sys.stderr)
-        return 2
+    result = ensure_lark_cli(install=arguments.install, version=arguments.version)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result["status"] == "available" else 1
 
