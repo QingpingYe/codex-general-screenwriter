@@ -205,30 +205,40 @@ def _ready_check(check_id: str, message: str) -> SetupCheck:
     return SetupCheck(check_id, "ready", None, message, (), None)
 
 
-def _inspect_control_tree(publisher: Publisher) -> dict[str, Any]:
-    try:
-        return publisher.inspect_control_tree()
-    except NeedsReview as error:
-        return {
-            "status": "control_tree_ambiguous",
-            "state": "ambiguous",
-            "present": [],
-            "missing": [],
-            "duplicates": [{"reason": _safe_error(error)}],
-            "tokens": {},
-            "verification_token": None,
-        }
-    except Exception as error:
-        return {
-            "status": "network_blocked",
-            "state": "unavailable",
-            "present": [],
-            "missing": [],
-            "duplicates": [],
-            "tokens": {},
-            "verification_token": None,
-            "error": _safe_error(error),
-        }
+def _inspect_control_tree(
+    publisher: Publisher,
+    *,
+    retry_transient: bool = False,
+) -> dict[str, Any]:
+    attempts = 2 if retry_transient else 1
+    for attempt in range(attempts):
+        try:
+            return publisher.inspect_control_tree()
+        except NeedsReview as error:
+            return {
+                "status": "control_tree_ambiguous",
+                "state": "ambiguous",
+                "present": [],
+                "missing": [],
+                "duplicates": [{"reason": _safe_error(error)}],
+                "tokens": {},
+                "verification_token": None,
+            }
+        except Exception as error:
+            transient = _exception_status(error) == "network_blocked"
+            if attempt + 1 < attempts and transient:
+                continue
+            return {
+                "status": "network_blocked",
+                "state": "unavailable",
+                "present": [],
+                "missing": [],
+                "duplicates": [],
+                "tokens": {},
+                "verification_token": None,
+                "error": _safe_error(error),
+            }
+    raise AssertionError("control-tree inspection did not return a result")
 
 
 def _tree_check(tree: Mapping[str, Any], initializer: bool) -> SetupCheck:
@@ -544,7 +554,7 @@ def _run_doctor_with_context(
     checks: list[SetupCheck],
 ) -> dict[str, Any]:
     """Append resource/tree/write checks to a fully resolved setup context."""
-    tree = _inspect_control_tree(context.publisher)
+    tree = _inspect_control_tree(context.publisher, retry_transient=True)
     authenticated_identity, identity_error = _current_identity(context)
     verification_result = None
     if (

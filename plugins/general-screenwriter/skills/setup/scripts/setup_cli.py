@@ -317,7 +317,12 @@ def auth_start(
                 human_action="Ask the organisation owner to provide the approved local app binding.",
             )
         try:
-            challenge = begin_app_config(context, selected_profile, runner=popen)
+            challenge = begin_app_config(
+                context,
+                selected_profile,
+                runner=popen,
+                state_runner=runner,
+            )
         except ProfileError as error:
             return _error_report(
                 SetupCommandError(

@@ -1,0 +1,594 @@
+import copy
+import json
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+ROOT = Path(__file__).parents[1]
+FEISHU_SCRIPTS = ROOT / "skills" / "feishu-knowledge-store" / "scripts"
+SETUP_SCRIPTS = ROOT / "skills" / "setup" / "scripts"
+for location in (FEISHU_SCRIPTS, SETUP_SCRIPTS):
+    if str(location) not in sys.path:
+        sys.path.insert(0, str(location))
+
+import setup_cli
+from lark_auth import REQUIRED_SCOPES
+
+
+class Completed:
+    def __init__(self, stdout="", stderr="", returncode=0):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+
+class FakeSession:
+    def __init__(self, profiles=None, version="1.0.95"):
+        self.version = version
+        self.profiles = [dict(item) for item in (profiles or [])]
+        self.authenticated = False
+        self.open_id = "ou_owner"
+        self.target_edit = True
+        self.nodes = {"target-node": [], "source-root": []}
+        self.docs = {}
+        self.created_titles = []
+        self.create_attempts = {}
+        self.verification_create_attempts = 0
+        self.fail_verification_create_once = False
+        self.fail_next_list_nodes = 0
+        self.fail_always_list_nodes = False
+        self.list_node_attempts = 0
+        self.device_attempts = 0
+        self.expired_codes = set()
+        self.last_binary = None
+        self.private_binary = None
+        self._next = 0
+
+    def add_profile(self, name, app_id="cli_offline"):
+        if not any(item.get("name") == name for item in self.profiles):
+            self.profiles.append({"name": name, "appId": app_id})
+
+    def _new_document(self, parent, title, content):
+        self._next += 1
+        doc_token = f"doc-{self._next}"
+        node_token = f"node-{self._next}"
+        document = {"revision_id": 3, "content": content}
+        self.docs[doc_token] = dict(document)
+        self.docs[node_token] = dict(document)
+        self.nodes.setdefault(parent, []).append({
+            "title": title,
+            "node_token": node_token,
+            "obj_token": node_token,
+        })
+        self.created_titles.append(title)
+        self.create_attempts[title] = self.create_attempts.get(title, 0) + 1
+        return doc_token, node_token
+
+    def node_payload(self, token):
+        if token == "source-node":
+            return {"data": {"node": {
+                "space_id": "source-space",
+                "node_token": "source-node",
+                "obj_token": "source-doc",
+            }}}
+        if token == "target-node":
+            return {"data": {"node": {
+                "space_id": "target-space",
+                "node_token": "target-node",
+                "obj_token": "target-doc",
+            }}}
+        return {"data": {"node": {
+            "space_id": "target-space",
+            "node_token": token,
+            "obj_token": token,
+        }}}
+
+    def fetch_document(self, token):
+        if token == "source-doc":
+            return {"revision_id": 1, "content": "# source"}
+        document = self.docs.get(token)
+        if document is None:
+            raise RuntimeError(f"unknown document: {token}")
+        return dict(document)
+
+
+class FakeRunner:
+    def __init__(self, session, environ, global_cli=None):
+        self.session = session
+        self.environ = environ
+        self.calls = []
+        self.allowed_binaries = set()
+        if global_cli is not None:
+            self.allowed_binaries.add(Path(global_cli).resolve())
+
+    def _npm(self, command):
+        prefix = Path(command[command.index("--prefix") + 1])
+        binary_name = "lark-cli.cmd" if os.name == "nt" else "lark-cli"
+        binary = prefix / "node_modules" / ".bin" / binary_name
+        binary.parent.mkdir(parents=True, exist_ok=True)
+        binary.write_bytes(b"offline fake cli\n")
+        self.session.private_binary = binary
+        self.allowed_binaries.add(binary.resolve())
+        return Completed()
+
+    @staticmethod
+    def _args(command):
+        arguments = list(command[1:])
+        if arguments[:2] == ["--profile", arguments[1] if len(arguments) > 1 else ""]:
+            arguments = arguments[2:]
+        return arguments
+
+    def _profile_list(self):
+        return Completed(json.dumps(self.session.profiles))
+
+    def _node_list(self, arguments):
+        self.session.list_node_attempts += 1
+        if self.session.fail_always_list_nodes:
+            raise TimeoutError("offline node-list timeout")
+        if self.session.fail_next_list_nodes:
+            self.session.fail_next_list_nodes -= 1
+            raise TimeoutError("offline node-list timeout")
+        parent = None
+        if "--parent-node-token" in arguments:
+            parent = arguments[arguments.index("--parent-node-token") + 1]
+        return Completed(json.dumps({"data": {
+            "items": list(self.session.nodes.get(parent, [])),
+        }}))
+
+    def _verification_create(self, title, parent, content):
+        self.session.verification_create_attempts += 1
+        if self.session.fail_verification_create_once:
+            self.session.fail_verification_create_once = False
+            raise TimeoutError("offline verification write timeout")
+        return self._create_document(title, parent, content)
+
+    def _create_document(self, title, parent, content):
+        doc_token, node_token = self.session._new_document(parent, title, content)
+        return Completed(json.dumps({"code": 0, "data": {"document": {
+            "document_id": doc_token,
+            "revision_id": 3,
+            "node_token": node_token,
+        }}}))
+
+    def __call__(self, command, **_kwargs):
+        self.calls.append(list(command))
+        if command[0] == "npm":
+            return self._npm(command)
+
+        binary = Path(command[0])
+        if binary.resolve() not in self.allowed_binaries:
+            raise FileNotFoundError(str(binary))
+        self.session.last_binary = binary
+        arguments = self._args(command)
+
+        if arguments == ["--version"]:
+            return Completed(f"lark-cli version {self.session.version}\n")
+        if arguments in (
+            ["help"],
+            ["schema"],
+            ["auth", "login", "--help"],
+            ["wiki", "--help"],
+            ["docs", "--help"],
+            ["drive", "--help"],
+        ):
+            return Completed()
+
+        if arguments == ["profile", "list"]:
+            return self._profile_list()
+
+        if arguments[:2] == ["auth", "qrcode"]:
+            output = arguments[arguments.index("--output") + 1]
+            Path(output).write_bytes(b"\x89PNG\r\n\x1a\n")
+            return Completed('{"ok":true}')
+
+        if arguments[:2] == ["auth", "login"] and "--no-wait" in arguments:
+            self.session.device_attempts += 1
+            code = f"device-{self.session.device_attempts}"
+            scopes = arguments[arguments.index("--scope") + 1]
+            return Completed(json.dumps({
+                "verification_url": f"https://example.test/device/{code}",
+                "device_code": code,
+                "expires_in": 600,
+                "scopes": scopes.split(),
+            }))
+
+        if arguments[:2] == ["auth", "login"] and "--device-code" in arguments:
+            code = arguments[arguments.index("--device-code") + 1]
+            if code in self.session.expired_codes:
+                return Completed(
+                    '{"ok":false,"error":{"subtype":"token_expired"}}',
+                    returncode=1,
+                )
+            self.session.authenticated = True
+            return Completed(json.dumps({
+                "event": "authorization_complete",
+                "user_open_id": self.session.open_id,
+            }))
+
+        if arguments[:2] == ["auth", "status"]:
+            return Completed(json.dumps({"data": {"user": {
+                "open_id": self.session.open_id,
+            }}}))
+
+        if arguments[:2] == ["wiki", "+node-get"]:
+            token = arguments[arguments.index("--node-token") + 1]
+            return Completed(json.dumps(self.session.node_payload(token)))
+
+        if arguments[:2] == ["wiki", "+node-list"]:
+            return self._node_list(arguments)
+
+        if arguments[:2] == ["docs", "+fetch"]:
+            token = arguments[arguments.index("--doc") + 1]
+            return Completed(json.dumps({"data": {
+                "document": self.session.fetch_document(token),
+            }}))
+
+        if arguments[:2] == ["docs", "+create"]:
+            title = arguments[arguments.index("--title") + 1]
+            parent = arguments[arguments.index("--parent-token") + 1]
+            content_ref = arguments[arguments.index("--content") + 1]
+            content = Path(content_ref[1:]).read_text(encoding="utf-8")
+            if title == "AI_KB_WRITE_VERIFICATION_V1":
+                return self._verification_create(title, parent, content)
+            return self._create_document(title, parent, content)
+
+        if arguments[:2] == ["docs", "+update"]:
+            token = arguments[arguments.index("--doc") + 1]
+            revision = int(arguments[arguments.index("--revision-id") + 1])
+            content_ref = arguments[arguments.index("--content") + 1]
+            content = Path(content_ref[1:]).read_text(encoding="utf-8")
+            document = self.session.docs.get(token)
+            if document is None:
+                raise RuntimeError(f"unknown document: {token}")
+            if document["revision_id"] != revision:
+                return Completed(
+                    '{"code":1,"error":"revision conflict"}',
+                    returncode=1,
+                )
+            document["revision_id"] = revision + 2
+            document["content"] = content
+            return Completed(json.dumps({"code": 0, "data": {"document": {
+                "revision_id": document["revision_id"],
+            }}}))
+
+        if arguments[:3] == ["drive", "permission.members", "auth"]:
+            return Completed(json.dumps({"data": {
+                "auth_result": self.session.target_edit,
+            }}))
+
+        raise AssertionError(f"unexpected offline CLI command: {arguments}")
+
+
+class FakePopen:
+    def __init__(self, session):
+        self.session = session
+        self.calls = []
+        self.returncode = 0
+
+    def __call__(self, command, **kwargs):
+        self.calls.append(list(command))
+        if "--name" in command:
+            self.session.add_profile(command[command.index("--name") + 1])
+        stream = kwargs.get("stdout")
+        if stream is not None:
+            stream.write(json.dumps({
+                "verification_url": "https://example.test/app-config",
+                "console_url": "https://example.test/console",
+            }))
+            stream.flush()
+        return self
+
+    def poll(self):
+        return self.returncode
+
+
+class FirstUseHarness:
+    def __init__(self, *, profiles=None, global_cli=None):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.user_data = self.root / "user-data"
+        self.user_data.mkdir()
+        self.environ = {
+            "GENERAL_SCREENWRITER_USER_DATA": str(self.user_data),
+            "APPDATA": "",
+            "LOCALAPPDATA": "",
+            "PATH": "",
+        }
+        self.global_cli = Path(global_cli) if global_cli else None
+        if self.global_cli is not None:
+            self.environ["LARK_CLI_PATH"] = str(self.global_cli)
+        self.session = FakeSession(profiles=profiles)
+        self.runner = FakeRunner(self.session, self.environ, self.global_cli)
+        self.popen = FakePopen(self.session)
+        self.config_path = self.root / "feishu-knowledge-base.json"
+        self._patches = [
+            mock.patch.dict(os.environ, {"PATH": ""}, clear=False),
+            mock.patch("lark_runtime.shutil.which", return_value="npm"),
+        ]
+        for patch in self._patches:
+            patch.start()
+
+    def _cleanup(self):
+        for patch in reversed(self._patches):
+            patch.stop()
+        self.temp.cleanup()
+
+    @property
+    def which(self):
+        if self.global_cli is None:
+            return lambda _name: None
+        return lambda name: str(self.global_cli) if name == "lark-cli" else None
+
+    def auth_start(self, profile="team-a"):
+        return setup_cli.auth_start(
+            profile=profile,
+            environ=self.environ,
+            runner=self.runner,
+            popen=self.popen,
+            which=self.which,
+        )
+
+    def auth_complete(self, device_code, profile="team-a"):
+        return setup_cli.auth_complete(
+            device_code=device_code,
+            profile=profile,
+            environ=self.environ,
+            runner=self.runner,
+            which=self.which,
+        )
+
+    def config_from_links(self, profile="team-a"):
+        return setup_cli.config_from_links(
+            source_url="https://team.feishu.cn/wiki/source-node",
+            target_url="https://team.feishu.cn/wiki/target-node",
+            profile=profile,
+            config_path=str(self.config_path),
+            environ=self.environ,
+            runner=self.runner,
+            which=self.which,
+        )
+
+    def doctor(self, profile="team-a"):
+        return setup_cli.doctor_report(
+            config_path=str(self.config_path),
+            environ=self.environ,
+            profile=profile,
+            runner=self.runner,
+        )
+
+    def target_init(self, *, initializer, authorized, profile="team-a"):
+        return setup_cli.target_init(
+            initializer=initializer,
+            authorized=authorized,
+            profile=profile,
+            config_path=str(self.config_path),
+            environ=self.environ,
+            runner=self.runner,
+        )
+
+    def write_verify(self, *, authorized, profile="team-a"):
+        return setup_cli.write_verify(
+            authorized=authorized,
+            profile=profile,
+            config_path=str(self.config_path),
+            environ=self.environ,
+            runner=self.runner,
+        )
+
+    def authorize(self):
+        first = self.auth_start()
+        assert first["status"] == "waiting_user", first
+        if first["stage"] == "app_config":
+            second = self.auth_start()
+        else:
+            assert first["stage"] == "device_auth", first
+            second = first
+        assert second["status"] == "waiting_user", second
+        assert second["stage"] == "device_auth", second
+        self.session.expired_codes.add(second["device_code"])
+        expired = self.auth_complete(second["device_code"])
+        assert expired["status"] == "device_code_expired", expired
+        assert tuple(expired["scopes"]) == tuple(REQUIRED_SCOPES), expired
+        third = self.auth_start()
+        assert third["status"] == "waiting_user", third
+        assert third["stage"] == "device_auth", third
+        completed = self.auth_complete(third["device_code"])
+        assert completed["status"] == "authorized", completed
+        return second, third
+
+    def configure_and_initialize(self):
+        self.authorize()
+        configured = self.config_from_links()
+        assert configured["status"] == "configured", configured
+        self.session.target_edit = True
+        initialized = self.target_init(initializer=True, authorized=True)
+        assert initialized["status"] == "write_verification_required", initialized
+        return initialized
+
+
+def resume_original_request(original_request, report):
+    if not report.get("ready"):
+        return None
+    return copy.deepcopy(original_request)
+
+
+class FirstUseEndToEndTests(unittest.TestCase):
+    def test_private_install_full_first_use_reaches_ready(self):
+        harness = FirstUseHarness()
+        self.addCleanup(harness._cleanup)
+        original_request = {"kind": "sync", "source": "https://team.feishu.cn/wiki/source-node"}
+
+        first = harness.auth_start()
+        self.assertEqual(first["status"], "waiting_user")
+        self.assertEqual(first["stage"], "app_config")
+        npm_calls = [call for call in harness.runner.calls if call[0] == "npm"]
+        self.assertEqual(len(npm_calls), 1)
+        self.assertNotIn("-g", npm_calls[0])
+        self.assertNotIn("skills", npm_calls[0])
+        self.assertIn(str(harness.user_data), npm_calls[0][npm_calls[0].index("--prefix") + 1])
+        self.assertTrue(harness.session.private_binary.is_file())
+
+        second, third = harness.authorize()
+        self.assertIsNot(first, second)
+        self.assertIsNot(second, third)
+        scopes = [
+            call[call.index("--scope") + 1]
+            for call in harness.runner.calls
+            if call[0] != "npm" and "auth" in call and "login" in call and "--scope" in call
+        ]
+        self.assertGreaterEqual(len(scopes), 2)
+        self.assertEqual(scopes[0], scopes[1])
+
+        configured = harness.config_from_links()
+        assert configured["status"] == "configured", configured
+        self.assertTrue(harness.config_path.is_file())
+
+        harness.session.target_edit = False
+        blocked = harness.doctor()
+        self.assertEqual(blocked["status"], "resource_grant_required")
+        self.assertIn("resource_access", blocked["blocking_checks"])
+        harness.session.target_edit = True
+
+        waiting = harness.target_init(initializer=False, authorized=True)
+        self.assertEqual(waiting["status"], "waiting_initializer")
+        self.assertEqual(harness.session.created_titles, [])
+
+        initialized = harness.target_init(initializer=True, authorized=True)
+        assert initialized["status"] == "write_verification_required", initialized
+        self.assertGreater(len(harness.session.created_titles), 0)
+
+        verified = harness.write_verify(authorized=True)
+        self.assertTrue(verified["ready"])
+        final = harness.doctor()
+        self.assertTrue(final["ready"])
+        self.assertEqual(resume_original_request(original_request, final), original_request)
+
+    def test_existing_global_cli_is_reused_without_installing(self):
+        global_cli = Path(tempfile.gettempdir()) / "offline-global-lark-cli.cmd"
+        harness = FirstUseHarness(
+            profiles=[{"name": "team-a", "appId": "cli_existing"}],
+            global_cli=global_cli,
+        )
+        self.addCleanup(harness._cleanup)
+
+        result = harness.auth_start()
+
+        self.assertEqual(result["status"], "waiting_user")
+        self.assertEqual(result["stage"], "device_auth")
+        self.assertFalse(any(call[0] == "npm" for call in harness.runner.calls))
+        self.assertEqual(harness.session.last_binary, global_cli)
+
+    def test_new_profile_preserves_existing_profiles(self):
+        global_cli = Path(tempfile.gettempdir()) / "offline-global-lark-cli.cmd"
+        harness = FirstUseHarness(
+            profiles=[{"name": "other", "appId": "cli_other"}],
+            global_cli=global_cli,
+        )
+        self.addCleanup(harness._cleanup)
+        before = copy.deepcopy(harness.session.profiles)
+
+        first = harness.auth_start()
+        self.assertEqual(first["status"], "waiting_user")
+        self.assertEqual(first["stage"], "app_config")
+        self.assertEqual(harness.session.profiles[0], before[0])
+        self.assertTrue(any(item["name"] == "team-a" for item in harness.session.profiles))
+        self.assertFalse(any("config" in call and "rename" in call for call in harness.runner.calls))
+
+    def test_device_code_expiry_restarts_with_same_scope_set(self):
+        harness = FirstUseHarness()
+        self.addCleanup(harness._cleanup)
+        first = harness.auth_start()
+        self.assertEqual(first["stage"], "app_config")
+        device = harness.auth_start()
+        self.assertEqual(device["stage"], "device_auth")
+        first_scope = next(
+            call[call.index("--scope") + 1]
+            for call in reversed(harness.runner.calls)
+            if "auth" in call and "login" in call and "--scope" in call
+        )
+        harness.session.expired_codes.add(device["device_code"])
+
+        expired = harness.auth_complete(device["device_code"])
+        retry = harness.auth_start()
+        retry_scope = next(
+            call[call.index("--scope") + 1]
+            for call in reversed(harness.runner.calls)
+            if "auth" in call and "login" in call and "--scope" in call
+        )
+
+        self.assertEqual(expired["status"], "device_code_expired")
+        self.assertEqual(expired["scopes"], list(REQUIRED_SCOPES))
+        self.assertEqual(retry["stage"], "device_auth")
+        self.assertEqual(retry_scope, first_scope)
+
+    def test_ambiguous_target_stops_before_writes(self):
+        harness = FirstUseHarness()
+        self.addCleanup(harness._cleanup)
+        harness.authorize()
+        self.assertEqual(harness.config_from_links()["status"], "configured")
+        harness.session.nodes["target-node"] = [
+            {"title": "00_使用说明", "node_token": "dup-a"},
+            {"title": "00_使用说明", "node_token": "dup-b"},
+        ]
+
+        report = harness.target_init(initializer=True, authorized=True)
+
+        self.assertEqual(report["status"], "control_tree_ambiguous")
+        self.assertEqual(harness.session.created_titles, [])
+        self.assertTrue(report["preview"]["control_tree"]["duplicates"])
+        doctor = harness.doctor()
+        self.assertEqual(doctor["status"], "control_tree_ambiguous")
+        self.assertEqual(harness.session.created_titles, [])
+
+    def test_write_result_uncertain_reads_back_without_blind_retry(self):
+        harness = FirstUseHarness()
+        self.addCleanup(harness._cleanup)
+        harness.configure_and_initialize()
+        original_request = {"kind": "ingest", "input": "already-provided-links"}
+        snapshot = copy.deepcopy(original_request)
+
+        harness.session.fail_verification_create_once = True
+        uncertain = harness.write_verify(authorized=True)
+        self.assertEqual(uncertain["status"], "write_result_uncertain")
+        self.assertEqual(harness.session.verification_create_attempts, 1)
+        attempts_after_failure = harness.session.verification_create_attempts
+        command_count = len(harness.runner.calls)
+
+        reread = harness.doctor()
+        self.assertEqual(reread["status"], "write_verification_required")
+        self.assertEqual(harness.session.verification_create_attempts, attempts_after_failure)
+        self.assertTrue(any(
+            "wiki" in call and "+node-list" in call
+            for call in harness.runner.calls[command_count:]
+        ))
+
+        recovered = harness.write_verify(authorized=True)
+        self.assertTrue(recovered["ready"])
+        self.assertEqual(harness.session.verification_create_attempts, 2)
+        self.assertEqual(resume_original_request(original_request, recovered), snapshot)
+
+    def test_transient_tree_read_retries_but_never_loops(self):
+        harness = FirstUseHarness()
+        self.addCleanup(harness._cleanup)
+        harness.configure_and_initialize()
+        self.assertTrue(harness.write_verify(authorized=True)["ready"])
+        harness.session.fail_next_list_nodes = 1
+        before = harness.session.list_node_attempts
+
+        recovered = harness.doctor()
+
+        self.assertTrue(recovered["ready"])
+        self.assertGreaterEqual(harness.session.list_node_attempts - before, 2)
+
+        harness.session.fail_always_list_nodes = True
+        before = harness.session.list_node_attempts
+        blocked = harness.doctor()
+        self.assertEqual(blocked["status"], "network_blocked")
+        self.assertLessEqual(harness.session.list_node_attempts - before, 2)
+
+
+if __name__ == "__main__":
+    unittest.main()
