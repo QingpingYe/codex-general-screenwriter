@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -63,6 +64,8 @@ COMMANDS = (
     "write-verify",
 )
 SETUP_SCHEMA_VERSION = 1
+SETUP_RESUME_SCHEMA_VERSION = 1
+SETUP_CHAIN_MAX_ATTEMPTS = 2
 _PROFILE_ENVIRONMENT_KEYS = (
     "GENERAL_SCREENWRITER_PROFILE",
     "GENERAL_SCREENWRITER_LARK_PROFILE",
@@ -96,6 +99,121 @@ class _JsonArgumentParser(argparse.ArgumentParser):
             message,
             ai_next_actions=("Use one of the documented internal setup commands.",),
         )
+
+
+@dataclass(frozen=True)
+class SetupResumeContext:
+    """Carry the original request across one setup turn.
+
+    The object is intentionally serializable and carries no credentials.  The
+    setup caller may persist this small context between internal commands, then
+    use :func:`restore_original_request` only after the setup report is ready.
+    """
+
+    original_request: str
+    profile: str
+    stage: str = "start"
+    ready: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": SETUP_RESUME_SCHEMA_VERSION,
+            "original_request": self.original_request,
+            "profile": self.profile,
+            "stage": self.stage,
+            "ready": self.ready,
+        }
+
+    def advance(self, command: str, payload: Mapping[str, Any]) -> "SetupResumeContext":
+        profile = payload.get("profile")
+        if not isinstance(profile, str) or not profile.strip():
+            profile = self.profile
+        stage = payload.get("stage")
+        if not isinstance(stage, str) or not stage.strip():
+            stage = command
+        return SetupResumeContext(
+            original_request=self.original_request,
+            profile=profile,
+            stage=stage,
+            ready=bool(payload.get("ready")),
+        )
+
+    @classmethod
+    def from_value(cls, value: Any) -> "SetupResumeContext":
+        if isinstance(value, cls):
+            return value
+        raw: Any = value
+        if isinstance(value, str):
+            try:
+                raw = json.loads(value)
+            except json.JSONDecodeError as error:
+                raise SetupCommandError(
+                    "resume_context_invalid",
+                    "resume context is not valid JSON",
+                    human_action="Restart the setup turn with the saved setup context.",
+                ) from error
+        if not isinstance(raw, Mapping):
+            raise SetupCommandError(
+                "resume_context_invalid",
+                "resume context must be a JSON object",
+                human_action="Restart the setup turn with the saved setup context.",
+            )
+        if raw.get("schema_version") != SETUP_RESUME_SCHEMA_VERSION:
+            raise SetupCommandError(
+                "resume_context_invalid",
+                "resume context schema is not supported",
+                human_action="Restart the setup turn with the saved setup context.",
+            )
+        original_request = raw.get("original_request")
+        profile = raw.get("profile")
+        stage = raw.get("stage", "start")
+        ready = raw.get("ready", False)
+        if not isinstance(original_request, str) or not original_request.strip():
+            raise SetupCommandError(
+                "resume_context_invalid",
+                "resume context is missing the original request",
+                human_action="Restart the setup turn with the saved setup context.",
+            )
+        if not isinstance(profile, str) or not profile.strip():
+            raise SetupCommandError(
+                "resume_context_invalid",
+                "resume context is missing the profile",
+                human_action="Restart the setup turn with the saved setup context.",
+            )
+        if not isinstance(stage, str) or not stage.strip():
+            raise SetupCommandError(
+                "resume_context_invalid",
+                "resume context is missing the setup stage",
+                human_action="Restart the setup turn with the saved setup context.",
+            )
+        if not isinstance(ready, bool):
+            raise SetupCommandError(
+                "resume_context_invalid",
+                "resume context ready flag must be boolean",
+                human_action="Restart the setup turn with the saved setup context.",
+            )
+        return cls(original_request, profile, stage, ready)
+
+
+def restore_original_request(value: Any) -> str:
+    """Return the original request only after a ready setup turn."""
+
+    if value is None:
+        raise SetupCommandError(
+            "resume_context_missing",
+            "the saved setup context is missing",
+            ai_next_actions=("Keep the setup context across turns and retry.",),
+            human_action="Restart the original request if the setup context was lost.",
+        )
+    state = SetupResumeContext.from_value(value)
+    if not state.ready:
+        raise SetupCommandError(
+            "resume_context_not_ready",
+            "the original request cannot resume until setup reports ready",
+            ai_next_actions=("Continue from the first unfinished setup check.",),
+            human_action=None,
+        )
+    return state.original_request
 
 
 def _environment(environ: Mapping[str, str] | None) -> Mapping[str, str]:
@@ -137,6 +255,59 @@ def _error_report(
         ai_next_actions=list(error.ai_next_actions),
         human_action=error.human_action,
     )
+
+
+_TRANSIENT_ERROR_MARKERS = (
+    "timeout",
+    "timed out",
+    "network",
+    "connection",
+    "dns",
+    "temporar",
+    "rate limit",
+    "too many",
+    "429",
+    "quota",
+)
+
+
+def _is_transient_exception(error: Exception) -> bool:
+    message = _safe_error(error).lower()
+    return any(marker in message for marker in _TRANSIENT_ERROR_MARKERS)
+
+
+def _run_with_bounded_retry(
+    operation: Callable[[], dict[str, Any]],
+) -> dict[str, Any]:
+    """Retry only transient failures, never permission/validation/conflicts."""
+
+    last_report: dict[str, Any] | None = None
+    for attempt in range(SETUP_CHAIN_MAX_ATTEMPTS):
+        try:
+            payload = operation()
+        except Exception as error:
+            if not _is_transient_exception(error):
+                raise
+            if attempt + 1 < SETUP_CHAIN_MAX_ATTEMPTS:
+                continue
+            return _error_report(SetupCommandError(
+                "network_blocked",
+                _safe_error(error),
+                ai_next_actions=(
+                    "Retry the incomplete setup step after connectivity recovers.",
+                ),
+                human_action=None,
+            ))
+        last_report = payload
+        if (
+            payload.get("status") == "network_blocked"
+            and attempt + 1 < SETUP_CHAIN_MAX_ATTEMPTS
+        ):
+            continue
+        return payload
+    if last_report is None:
+        raise AssertionError("bounded setup retry produced no report")
+    return last_report
 
 
 def _profile_name(profile: str | None, environ: Mapping[str, str] | None) -> str:
@@ -588,7 +759,7 @@ def target_init(
     runner: Callable[..., Any] = subprocess.run,
 ) -> dict[str, Any]:
     environment = _environment(environ)
-    return init_target(
+    return _run_with_bounded_retry(lambda: init_target(
         config_path=config_path,
         workspace=workspace,
         environ=environment,
@@ -596,7 +767,7 @@ def target_init(
         initializer_confirmed=initializer,
         profile=_profile_name(profile, environment),
         runner=runner,
-    )
+    ))
 
 
 def write_verify(
@@ -609,14 +780,14 @@ def write_verify(
     runner: Callable[..., Any] = subprocess.run,
 ) -> dict[str, Any]:
     environment = _environment(environ)
-    return verify_write_access(
+    return _run_with_bounded_retry(lambda: verify_write_access(
         config_path=config_path,
         workspace=workspace,
         environ=environment,
         authorized=authorized,
         profile=_profile_name(profile, environment),
         runner=runner,
-    )
+    ))
 
 
 def _sanitize_payload(value: Any) -> Any:
@@ -638,6 +809,7 @@ def _add_common(parser: argparse.ArgumentParser, *, include_mode: bool = False) 
     parser.add_argument("--profile")
     if include_mode:
         parser.add_argument("--mode", default="per_user")
+    parser.add_argument("--resume-context")
     parser.add_argument("--json", action="store_true")
 
 
@@ -709,11 +881,17 @@ def main(
     which: Callable[[str], str | None] = shutil.which,
 ) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
+    resume_context: SetupResumeContext | None = None
+    command: str | None = None
     try:
         if arguments and not arguments[0].startswith("-") and arguments[0] not in COMMANDS:
             raise SetupCommandError("invalid_command", f"unsupported command: {arguments[0]}")
         parsed = _parser().parse_args(arguments)
         command = parsed.command
+        resume_context = (
+            SetupResumeContext.from_value(parsed.resume_context)
+            if parsed.resume_context else None
+        )
         if command == "doctor":
             payload = doctor_report(
                 config_path=parsed.config,
@@ -772,13 +950,19 @@ def main(
             )
         else:  # pragma: no cover - argparse owns the command set.
             raise SetupCommandError("invalid_command", f"unsupported command: {command}")
+        if resume_context is not None:
+            payload["resume_context"] = resume_context.advance(command, payload).to_dict()
     except SetupCommandError as error:
         payload = _error_report(error)
         payload["allowed_commands"] = list(COMMANDS)
+        if resume_context is not None and command is not None:
+            payload["resume_context"] = resume_context.advance(command, payload).to_dict()
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 2 if error.status in {"invalid_arguments", "invalid_command"} else 1
     except Exception as error:
         payload = _error_report(SetupCommandError("setup_failed", _safe_error(error)))
+        if resume_context is not None and command is not None:
+            payload["resume_context"] = resume_context.advance(command, payload).to_dict()
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 1
 

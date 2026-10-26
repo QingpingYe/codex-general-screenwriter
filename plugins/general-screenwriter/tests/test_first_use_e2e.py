@@ -1,9 +1,11 @@
 import copy
+import io
 import json
 import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -37,10 +39,14 @@ class FakeSession:
         self.created_titles = []
         self.create_attempts = {}
         self.verification_create_attempts = 0
+        self.verification_fetch_attempts = 0
+        self.verification_tokens = set()
         self.fail_verification_create_once = False
+        self.fail_next_verification_fetch = 0
         self.fail_next_list_nodes = 0
         self.fail_always_list_nodes = False
         self.list_node_attempts = 0
+        self.target_root_list_attempts = 0
         self.device_attempts = 0
         self.expired_codes = set()
         self.last_binary = None
@@ -134,19 +140,25 @@ class FakeRunner:
         parent = None
         if "--parent-node-token" in arguments:
             parent = arguments[arguments.index("--parent-node-token") + 1]
+        if parent == "target-node":
+            self.session.target_root_list_attempts += 1
         return Completed(json.dumps({"data": {
             "items": list(self.session.nodes.get(parent, [])),
         }}))
 
     def _verification_create(self, title, parent, content):
         self.session.verification_create_attempts += 1
+        result = self._create_document(title, parent, content)
         if self.session.fail_verification_create_once:
             self.session.fail_verification_create_once = False
-            raise TimeoutError("offline verification write timeout")
-        return self._create_document(title, parent, content)
+            self.session.fail_next_verification_fetch += 1
+            raise TimeoutError("offline verification write timeout after write")
+        return result
 
     def _create_document(self, title, parent, content):
         doc_token, node_token = self.session._new_document(parent, title, content)
+        if title == "AI_KB_WRITE_VERIFICATION_V1":
+            self.session.verification_tokens.update((doc_token, node_token))
         return Completed(json.dumps({"code": 0, "data": {"document": {
             "document_id": doc_token,
             "revision_id": 3,
@@ -222,6 +234,11 @@ class FakeRunner:
 
         if arguments[:2] == ["docs", "+fetch"]:
             token = arguments[arguments.index("--doc") + 1]
+            if token in self.session.verification_tokens:
+                self.session.verification_fetch_attempts += 1
+                if self.session.fail_next_verification_fetch:
+                    self.session.fail_next_verification_fetch -= 1
+                    raise TimeoutError("offline verification readback timeout")
             return Completed(json.dumps({"data": {
                 "document": self.session.fetch_document(token),
             }}))
@@ -286,11 +303,27 @@ class FakePopen:
 
 
 class FirstUseHarness:
-    def __init__(self, *, profiles=None, global_cli=None):
+    def __init__(
+        self,
+        *,
+        profiles=None,
+        global_cli=None,
+        original_request="offline first-use request",
+    ):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.user_data = self.root / "user-data"
         self.user_data.mkdir()
+        self.original_request = original_request
+        self.state_path = self.root / "setup-resume-context.json"
+        self.resume_context = {
+            "schema_version": 1,
+            "original_request": original_request,
+            "profile": "team-a",
+            "stage": "start",
+            "ready": False,
+        }
+        self.state_path.write_text(json.dumps(self.resume_context), encoding="utf-8")
         self.environ = {
             "GENERAL_SCREENWRITER_USER_DATA": str(self.user_data),
             "APPDATA": "",
@@ -322,61 +355,91 @@ class FirstUseHarness:
             return lambda _name: None
         return lambda name: str(self.global_cli) if name == "lark-cli" else None
 
-    def auth_start(self, profile="team-a"):
-        return setup_cli.auth_start(
-            profile=profile,
-            environ=self.environ,
-            runner=self.runner,
-            popen=self.popen,
-            which=self.which,
+    def _run_command(self, arguments):
+        context_text = self.state_path.read_text(encoding="utf-8")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            setup_cli.main(
+                [*arguments, "--resume-context", context_text],
+                environ=self.environ,
+                runner=self.runner,
+                popen=self.popen,
+                which=self.which,
+            )
+        payload = json.loads(output.getvalue())
+        if "resume_context" not in payload:
+            raise AssertionError(
+                f"setup command dropped resume context: {payload}"
+            )
+        self.state_path.write_text(
+            json.dumps(payload["resume_context"]),
+            encoding="utf-8",
         )
+        self.resume_context = json.loads(
+            self.state_path.read_text(encoding="utf-8")
+        )
+        return payload
+
+    def auth_start(self, profile="team-a"):
+        return self._run_command([
+            "auth-start",
+            "--profile", profile,
+            "--mode", "per_user",
+            "--json",
+        ])
 
     def auth_complete(self, device_code, profile="team-a"):
-        return setup_cli.auth_complete(
-            device_code=device_code,
-            profile=profile,
-            environ=self.environ,
-            runner=self.runner,
-            which=self.which,
-        )
+        return self._run_command([
+            "auth-complete",
+            "--profile", profile,
+            "--device-code", device_code,
+            "--json",
+        ])
 
     def config_from_links(self, profile="team-a"):
-        return setup_cli.config_from_links(
-            source_url="https://team.feishu.cn/wiki/source-node",
-            target_url="https://team.feishu.cn/wiki/target-node",
-            profile=profile,
-            config_path=str(self.config_path),
-            environ=self.environ,
-            runner=self.runner,
-            which=self.which,
-        )
+        return self._run_command([
+            "config-from-links",
+            "--profile", profile,
+            "--config", str(self.config_path),
+            "--source-url", "https://team.feishu.cn/wiki/source-node",
+            "--target-url", "https://team.feishu.cn/wiki/target-node",
+            "--json",
+        ])
 
     def doctor(self, profile="team-a"):
-        return setup_cli.doctor_report(
-            config_path=str(self.config_path),
-            environ=self.environ,
-            profile=profile,
-            runner=self.runner,
-        )
+        return self._run_command([
+            "doctor",
+            "--profile", profile,
+            "--config", str(self.config_path),
+            "--json",
+        ])
 
     def target_init(self, *, initializer, authorized, profile="team-a"):
-        return setup_cli.target_init(
-            initializer=initializer,
-            authorized=authorized,
-            profile=profile,
-            config_path=str(self.config_path),
-            environ=self.environ,
-            runner=self.runner,
-        )
+        arguments = [
+            "target-init",
+            "--profile", profile,
+            "--config", str(self.config_path),
+            "--json",
+        ]
+        if initializer:
+            arguments.append("--initializer")
+        if authorized:
+            arguments.append("--authorized")
+        return self._run_command(arguments)
 
     def write_verify(self, *, authorized, profile="team-a"):
-        return setup_cli.write_verify(
-            authorized=authorized,
-            profile=profile,
-            config_path=str(self.config_path),
-            environ=self.environ,
-            runner=self.runner,
-        )
+        arguments = [
+            "write-verify",
+            "--profile", profile,
+            "--config", str(self.config_path),
+            "--json",
+        ]
+        if authorized:
+            arguments.append("--authorized")
+        return self._run_command(arguments)
+
+    def resume(self):
+        return setup_cli.restore_original_request(self.resume_context)
 
     def authorize(self):
         first = self.auth_start()
@@ -409,17 +472,11 @@ class FirstUseHarness:
         return initialized
 
 
-def resume_original_request(original_request, report):
-    if not report.get("ready"):
-        return None
-    return copy.deepcopy(original_request)
-
-
 class FirstUseEndToEndTests(unittest.TestCase):
     def test_private_install_full_first_use_reaches_ready(self):
-        harness = FirstUseHarness()
+        original_request = "sync the source wiki into the target wiki"
+        harness = FirstUseHarness(original_request=original_request)
         self.addCleanup(harness._cleanup)
-        original_request = {"kind": "sync", "source": "https://team.feishu.cn/wiki/source-node"}
 
         first = harness.auth_start()
         self.assertEqual(first["status"], "waiting_user")
@@ -443,7 +500,7 @@ class FirstUseEndToEndTests(unittest.TestCase):
         self.assertEqual(scopes[0], scopes[1])
 
         configured = harness.config_from_links()
-        assert configured["status"] == "configured", configured
+        self.assertEqual(configured["status"], "configured")
         self.assertTrue(harness.config_path.is_file())
 
         harness.session.target_edit = False
@@ -457,14 +514,14 @@ class FirstUseEndToEndTests(unittest.TestCase):
         self.assertEqual(harness.session.created_titles, [])
 
         initialized = harness.target_init(initializer=True, authorized=True)
-        assert initialized["status"] == "write_verification_required", initialized
+        self.assertEqual(initialized["status"], "write_verification_required")
         self.assertGreater(len(harness.session.created_titles), 0)
 
         verified = harness.write_verify(authorized=True)
         self.assertTrue(verified["ready"])
         final = harness.doctor()
         self.assertTrue(final["ready"])
-        self.assertEqual(resume_original_request(original_request, final), original_request)
+        self.assertEqual(harness.resume(), original_request)
 
     def test_existing_global_cli_is_reused_without_installing(self):
         global_cli = Path(tempfile.gettempdir()) / "offline-global-lark-cli.cmd"
@@ -533,42 +590,43 @@ class FirstUseEndToEndTests(unittest.TestCase):
             {"title": "00_使用说明", "node_token": "dup-a"},
             {"title": "00_使用说明", "node_token": "dup-b"},
         ]
+        before_attempts = harness.session.target_root_list_attempts
 
         report = harness.target_init(initializer=True, authorized=True)
 
         self.assertEqual(report["status"], "control_tree_ambiguous")
         self.assertEqual(harness.session.created_titles, [])
         self.assertTrue(report["preview"]["control_tree"]["duplicates"])
+        self.assertEqual(harness.session.target_root_list_attempts - before_attempts, 1)
         doctor = harness.doctor()
         self.assertEqual(doctor["status"], "control_tree_ambiguous")
         self.assertEqual(harness.session.created_titles, [])
 
     def test_write_result_uncertain_reads_back_without_blind_retry(self):
-        harness = FirstUseHarness()
+        original_request = "ingest the already-selected source and target"
+        harness = FirstUseHarness(original_request=original_request)
         self.addCleanup(harness._cleanup)
         harness.configure_and_initialize()
-        original_request = {"kind": "ingest", "input": "already-provided-links"}
-        snapshot = copy.deepcopy(original_request)
 
         harness.session.fail_verification_create_once = True
+        fetch_attempts_before = harness.session.verification_fetch_attempts
         uncertain = harness.write_verify(authorized=True)
+
         self.assertEqual(uncertain["status"], "write_result_uncertain")
         self.assertEqual(harness.session.verification_create_attempts, 1)
-        attempts_after_failure = harness.session.verification_create_attempts
-        command_count = len(harness.runner.calls)
-
-        reread = harness.doctor()
-        self.assertEqual(reread["status"], "write_verification_required")
-        self.assertEqual(harness.session.verification_create_attempts, attempts_after_failure)
+        self.assertGreater(
+            harness.session.verification_fetch_attempts,
+            fetch_attempts_before,
+        )
         self.assertTrue(any(
-            "wiki" in call and "+node-list" in call
-            for call in harness.runner.calls[command_count:]
+            "docs" in call and "+fetch" in call
+            for call in harness.runner.calls
         ))
 
-        recovered = harness.write_verify(authorized=True)
-        self.assertTrue(recovered["ready"])
-        self.assertEqual(harness.session.verification_create_attempts, 2)
-        self.assertEqual(resume_original_request(original_request, recovered), snapshot)
+        readback = harness.doctor()
+        self.assertTrue(readback["ready"])
+        self.assertEqual(harness.session.verification_create_attempts, 1)
+        self.assertEqual(harness.resume(), original_request)
 
     def test_transient_tree_read_retries_but_never_loops(self):
         harness = FirstUseHarness()
@@ -588,6 +646,59 @@ class FirstUseEndToEndTests(unittest.TestCase):
         blocked = harness.doctor()
         self.assertEqual(blocked["status"], "network_blocked")
         self.assertLessEqual(harness.session.list_node_attempts - before, 2)
+
+    def test_target_init_retries_transient_read_failure(self):
+        harness = FirstUseHarness()
+        self.addCleanup(harness._cleanup)
+        harness.authorize()
+        self.assertEqual(harness.config_from_links()["status"], "configured")
+        harness.session.fail_next_list_nodes = 1
+        before = harness.session.list_node_attempts
+
+        report = harness.target_init(initializer=True, authorized=True)
+
+        self.assertEqual(report["status"], "write_verification_required")
+        self.assertGreaterEqual(harness.session.list_node_attempts - before, 2)
+
+    def test_write_verify_retries_transient_read_failure(self):
+        harness = FirstUseHarness()
+        self.addCleanup(harness._cleanup)
+        harness.configure_and_initialize()
+        harness.session.fail_next_list_nodes = 1
+        before = harness.session.list_node_attempts
+
+        report = harness.write_verify(authorized=True)
+
+        self.assertTrue(report["ready"])
+        self.assertGreaterEqual(harness.session.list_node_attempts - before, 2)
+
+    def test_persistent_network_failure_is_bounded(self):
+        harness = FirstUseHarness()
+        self.addCleanup(harness._cleanup)
+        harness.authorize()
+        self.assertEqual(harness.config_from_links()["status"], "configured")
+        harness.session.fail_always_list_nodes = True
+        before = harness.session.list_node_attempts
+
+        report = harness.target_init(initializer=True, authorized=True)
+
+        self.assertEqual(report["status"], "network_blocked")
+        self.assertLessEqual(harness.session.list_node_attempts - before, 2)
+
+    def test_lost_resume_context_is_rejected(self):
+        with self.assertRaises(setup_cli.SetupCommandError) as missing:
+            setup_cli.restore_original_request(None)
+        self.assertEqual(missing.exception.status, "resume_context_missing")
+
+        with self.assertRaises(setup_cli.SetupCommandError) as incomplete:
+            setup_cli.restore_original_request({
+                "schema_version": 1,
+                "original_request": "keep me",
+                "profile": "team-a",
+                "stage": "device_auth",
+                "ready": False,
+            })
+        self.assertEqual(incomplete.exception.status, "resume_context_not_ready")
 
 
 if __name__ == "__main__":
