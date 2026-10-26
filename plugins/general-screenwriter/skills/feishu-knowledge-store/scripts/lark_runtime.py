@@ -22,12 +22,18 @@ from lark_cli_contract import parse_version, version_meets_minimum
 
 @dataclass(frozen=True)
 class RuntimePaths:
-    """Private runtime locations; ``npm_prefix`` is the version container."""
+    """Private runtime locations and their target platform contract."""
 
     root: Path
     node_dir: Path
     npm_prefix: Path
     cli_bin: Path
+    platform: str = ""
+    arch: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "platform", _platform_name(self.platform or None))
+        object.__setattr__(self, "arch", _architecture_name(self.arch or None))
 
 
 @dataclass(frozen=True)
@@ -71,6 +77,7 @@ class CliInstallResult:
 def resolve_runtime_paths(
     environ: Mapping[str, str] | None = None,
     platform: str | None = None,
+    arch: str | None = None,
 ) -> RuntimePaths:
     """Return private paths under the user's data directory.
 
@@ -80,6 +87,7 @@ def resolve_runtime_paths(
     """
     environment = os.environ if environ is None else environ
     system = _platform_name(platform)
+    architecture = _architecture_name(arch)
     override = (
         environment.get("GENERAL_SCREENWRITER_USER_DATA")
         or environment.get("GENERAL_SCREENWRITER_DATA_DIR")
@@ -109,6 +117,8 @@ def resolve_runtime_paths(
         node_dir=node_dir,
         npm_prefix=runtime_root,
         cli_bin=node_dir / ".bin" / cli_name,
+        platform=system,
+        arch=architecture,
     )
 
 
@@ -219,21 +229,21 @@ def _install_artifact(
     runner: Callable[..., Any],
     artifact: PrivateCliArtifact,
 ) -> CliInstallResult:
-    if _platform_name(artifact.platform) != _current_platform():
+    if _platform_name(artifact.platform) != target.platform:
         return CliInstallResult(
             status="unsupported_platform",
             path=None,
             version=version,
             installed=False,
-            reason=f"artifact platform {artifact.platform!r} is not supported on {_current_platform()}",
+            reason=f"artifact platform {artifact.platform!r} is not supported on {target.platform}",
         )
-    if _architecture_name(artifact.arch) != _current_arch():
+    if _architecture_name(artifact.arch) != target.arch:
         return CliInstallResult(
             status="unsupported_arch",
             path=None,
             version=version,
             installed=False,
-            reason=f"artifact architecture {artifact.arch!r} is not supported on {_current_arch()}",
+            reason=f"artifact architecture {artifact.arch!r} is not supported on {target.arch}",
         )
 
     expected = _normalize_sha256(artifact.sha256)
@@ -246,7 +256,17 @@ def _install_artifact(
             reason="official artifact checksum is not a valid SHA-256 value",
         )
 
-    target.root.mkdir(parents=True, exist_ok=True)
+    try:
+        target.root.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        return CliInstallResult(
+            status="installation_failed",
+            path=None,
+            version=version,
+            installed=False,
+            reason="artifact runtime directory could not be prepared: " + LarkCli._redact(str(error)),
+        )
+
     download_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -261,7 +281,7 @@ def _install_artifact(
                     temporary.write(chunk)
     except (OSError, URLError, ValueError) as error:
         if download_path is not None:
-            download_path.unlink(missing_ok=True)
+            _remove_file(download_path)
         _remove_empty_directory(target.root)
         return CliInstallResult(
             status="download_failed",
@@ -271,11 +291,12 @@ def _install_artifact(
             reason="official artifact download failed: " + LarkCli._redact(str(error)),
         )
 
+    binary: Path | None = None
     try:
         actual = _sha256_file(download_path) if download_path is not None else ""
         if actual != expected:
             if download_path is not None:
-                download_path.unlink(missing_ok=True)
+                _remove_file(download_path)
                 download_path = None
             _remove_empty_directory(target.root)
             return CliInstallResult(
@@ -286,15 +307,21 @@ def _install_artifact(
                 reason="official artifact SHA-256 does not match the supplied checksum",
             )
 
-        binary_name = "lark-cli.exe" if _platform_name(artifact.platform) == "windows" else "lark-cli"
+        binary_name = "lark-cli.exe" if target.platform == "windows" else "lark-cli"
         binary = _absolute(target.root / binary_name)
         binary.parent.mkdir(parents=True, exist_ok=True)
         if download_path is None:
             raise OSError("artifact download produced no file")
         shutil.copy2(download_path, binary)
-        if os.name != "nt":
+        if target.platform != "windows":
             binary.chmod(binary.stat().st_mode | 0o111)
     except OSError as error:
+        if binary is not None:
+            _remove_file(binary)
+        if download_path is not None:
+            _remove_file(download_path)
+            download_path = None
+        _remove_empty_directory(target.root)
         return CliInstallResult(
             status="installation_failed",
             path=None,
@@ -304,11 +331,11 @@ def _install_artifact(
         )
     finally:
         if download_path is not None:
-            download_path.unlink(missing_ok=True)
+            _remove_file(download_path)
 
     result = _verify_installed(binary, version, runner)
     if not result.ok:
-        binary.unlink(missing_ok=True)
+        _remove_file(binary)
         _remove_empty_directory(target.root)
     return result
 
@@ -319,8 +346,9 @@ def _reuse_compatible(
     runner: Callable[..., Any],
 ):
     candidates = (
-        *_private_binary_candidates(target.root),
-        *_private_binary_candidates(paths.root),
+        *_private_binary_candidates(target.root, target.platform),
+        *_sibling_version_candidates(paths.root, target.platform),
+        *_private_binary_candidates(paths.root, target.platform),
         paths.cli_bin,
         target.cli_bin,
     )
@@ -338,8 +366,28 @@ def _reuse_compatible(
     return None
 
 
-def _private_binary_candidates(root: Path) -> tuple[Path, ...]:
-    if _current_platform() == "windows":
+def _sibling_version_candidates(root: Path, platform: str) -> tuple[Path, ...]:
+    container = root.parent if parse_version(root.name) is not None else root
+    try:
+        version_dirs = [
+            path for path in container.iterdir()
+            if path.is_dir() and parse_version(path.name) is not None
+        ]
+    except OSError:
+        return ()
+    version_dirs.sort(
+        key=lambda path: (parse_version(path.name) or (0, 0, 0), path.name),
+        reverse=True,
+    )
+    return tuple(
+        candidate
+        for version_dir in version_dirs
+        for candidate in _private_binary_candidates(version_dir, platform)
+    )
+
+
+def _private_binary_candidates(root: Path, platform: str) -> tuple[Path, ...]:
+    if platform == "windows":
         return (
             root / "lark-cli.cmd",
             root / "lark-cli.exe",
@@ -394,12 +442,14 @@ def _version_paths(paths: RuntimePaths, version: str) -> RuntimePaths:
     if prefix.name != version:
         prefix = _absolute(prefix / version)
     node_dir = prefix / "node_modules"
-    cli_name = "lark-cli.cmd" if _current_platform() == "windows" else "lark-cli"
+    cli_name = "lark-cli.cmd" if paths.platform == "windows" else "lark-cli"
     return RuntimePaths(
         root=prefix,
         node_dir=node_dir,
         npm_prefix=prefix,
         cli_bin=node_dir / ".bin" / cli_name,
+        platform=paths.platform,
+        arch=paths.arch,
     )
 
 
@@ -429,6 +479,15 @@ def _normalize_sha256(value: str) -> str | None:
     if len(candidate) != 64 or any(character not in "0123456789abcdef" for character in candidate):
         return None
     return candidate
+
+
+def _remove_file(path: Path | None) -> None:
+    if path is None:
+        return
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def _remove_empty_directory(path: Path) -> None:

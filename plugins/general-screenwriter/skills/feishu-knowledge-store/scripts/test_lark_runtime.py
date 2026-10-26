@@ -147,6 +147,27 @@ class PrivateCliInstallTests(unittest.TestCase):
             self.assertEqual(result.path, nested.resolve())
             which.assert_not_called()
 
+    def test_compatible_sibling_version_is_reused_without_npm(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "lark-cli"
+            sibling = root / "1.0.96" / "node_modules" / ".bin" / (
+                "lark-cli.cmd" if os.name == "nt" else "lark-cli"
+            )
+            sibling.parent.mkdir(parents=True)
+            sibling.write_text("fake cli", encoding="utf-8")
+            requested = root / "1.0.95" / "node_modules" / ".bin" / (
+                "lark-cli.cmd" if os.name == "nt" else "lark-cli"
+            )
+            paths = RuntimePaths(root, root / "node_modules", root, requested)
+            runner = RuntimeRunner(version="1.0.96")
+
+            with mock.patch("lark_runtime.shutil.which", return_value=None) as which:
+                result = install_private_cli(paths, "1.0.95", runner=runner)
+
+            self.assertEqual(result.status, "available")
+            self.assertEqual(result.path, sibling.resolve())
+            which.assert_not_called()
+
     def test_missing_npm_returns_runtime_missing(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "lark-cli"
@@ -298,6 +319,60 @@ class PrivateCliInstallTests(unittest.TestCase):
             self.assertEqual(result.path.read_bytes(), content)
             self.assertIn((root / "1.0.95").resolve(), result.path.parents)
 
+    def test_artifact_runtime_directory_failure_returns_installation_failed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            blocked_parent = Path(directory) / "blocked"
+            blocked_parent.write_text("not a directory", encoding="utf-8")
+            root = blocked_parent / "lark-cli"
+            cli_bin = root / "node_modules" / ".bin" / "lark-cli"
+            paths = RuntimePaths(root, root / "node_modules", root, cli_bin)
+            source = Path(directory) / "artifact.bin"
+            content = b"official artifact bytes"
+            source.write_bytes(content)
+            artifact = PrivateCliArtifact(
+                url=source.as_uri(),
+                sha256=hashlib.sha256(content).hexdigest(),
+                platform=current_artifact_platform(),
+                arch=current_artifact_arch(),
+            )
+
+            result = install_private_cli(
+                paths,
+                "1.0.95",
+                runner=RuntimeRunner(),
+                artifact=artifact,
+            )
+
+            self.assertEqual(result.status, "installation_failed")
+            self.assertFalse(result.installed)
+            self.assertIn("artifact", result.reason or "")
+
+    def test_artifact_copy_failure_cleans_partial_runtime(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "lark-cli"
+            cli_bin = root / "node_modules" / ".bin" / "lark-cli"
+            paths = RuntimePaths(root, root / "node_modules", root, cli_bin)
+            source = Path(directory) / "artifact.bin"
+            content = b"official artifact bytes"
+            source.write_bytes(content)
+            artifact = PrivateCliArtifact(
+                url=source.as_uri(),
+                sha256=hashlib.sha256(content).hexdigest(),
+                platform=current_artifact_platform(),
+                arch=current_artifact_arch(),
+            )
+
+            with mock.patch("lark_runtime.shutil.copy2", side_effect=OSError("disk full")):
+                result = install_private_cli(
+                    paths,
+                    "1.0.95",
+                    runner=RuntimeRunner(),
+                    artifact=artifact,
+                )
+
+            self.assertEqual(result.status, "installation_failed")
+            self.assertFalse((root / "1.0.95").exists())
+
     def test_unsupported_artifact_platform_and_arch_are_distinct(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "lark-cli"
@@ -325,6 +400,35 @@ class PrivateCliInstallTests(unittest.TestCase):
             self.assertEqual(platform_result.status, "unsupported_platform")
             self.assertEqual(arch_result.status, "unsupported_arch")
             self.assertNotEqual(platform_result.status, arch_result.status)
+
+    def test_artifact_checks_use_runtime_path_platform_and_arch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = resolve_runtime_paths(
+                environ={"LOCALAPPDATA": directory},
+                platform="windows",
+                arch="arm64",
+            )
+            self.assertEqual(paths.platform, "windows")
+            self.assertEqual(paths.arch, "arm64")
+            source = Path(directory) / "artifact.bin"
+            content = b"official artifact bytes"
+            source.write_bytes(content)
+            artifact = PrivateCliArtifact(
+                url=source.as_uri(),
+                sha256=hashlib.sha256(content).hexdigest(),
+                platform="windows",
+                arch="arm64",
+            )
+
+            result = install_private_cli(
+                paths,
+                "1.0.95",
+                runner=RuntimeRunner(version="1.0.95"),
+                artifact=artifact,
+            )
+
+            self.assertEqual(result.status, "installed")
+            self.assertTrue(result.path.is_absolute())
 
     def test_successful_install_never_mutates_process_path(self):
         with tempfile.TemporaryDirectory() as directory:
