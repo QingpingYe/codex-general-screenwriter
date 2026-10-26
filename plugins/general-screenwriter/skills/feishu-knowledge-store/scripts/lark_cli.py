@@ -56,11 +56,20 @@ class RevisionConflict(LarkCliError):
     pass
 
 
-_TOKEN_VALUE = re.compile(
-    r"(?i)(\b(?:access[_-]?token|refresh[_-]?token|token|authorization|bearer)\b[\"']?\s*(?:=|:)+\s*[\"']?)([^\s,}\]\"']+)"
+_SENSITIVE_VALUE = re.compile(
+    r"(?i)(\b(?:app[_-]?secret|client[_-]?secret|access[_-]?token|refresh[_-]?token|device[_-]?code|user[_-]?code|token|authorization|bearer)\b[\"']?\s*(?:=|:)+\s*[\"']?)([^\s,}\]\"']+)"
 )
+# Backward-compatible name for callers that imported the old private regex.
+_TOKEN_VALUE = _SENSITIVE_VALUE
 _BEARER_CREDENTIAL = re.compile(r"(?i)(\bauthorization\b\s*:\s*bearer\s+|\bbearer\s+)(\S+)")
 _LONG_SECRET = re.compile(r"(?<![\w-])[A-Za-z0-9_=-]{24,}(?![\w-])")
+
+
+def redact_sensitive(value: str) -> str:
+    """Redact credential-shaped values before surfacing CLI diagnostics."""
+    redacted = _BEARER_CREDENTIAL.sub(r"\1[REDACTED]", value)
+    redacted = _SENSITIVE_VALUE.sub(r"\1[REDACTED]", redacted)
+    return _LONG_SECRET.sub("[REDACTED]", redacted)
 
 
 class LarkCli:
@@ -281,6 +290,4 @@ class LarkCli:
 
     @staticmethod
     def _redact(value: str) -> str:
-        value = _BEARER_CREDENTIAL.sub(r"\1[REDACTED]", value)
-        value = _TOKEN_VALUE.sub(r"\1[REDACTED]", value)
-        return _LONG_SECRET.sub("[REDACTED]", value)
+        return redact_sensitive(value)

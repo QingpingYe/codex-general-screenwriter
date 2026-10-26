@@ -216,6 +216,17 @@ class LarkCliTests(unittest.TestCase):
             LarkCli(Path("lark-cli"), "user", runner).get_node("doccnSensitiveToken")
         self.assertNotIn("shortsecret", str(raised.exception))
 
+    def test_error_messages_redact_app_and_device_credentials_regardless_of_length(self):
+        runner = FakeRunner(Completed(
+            "appSecret=shortsecret device_code=shortcode access_token=shortaccess refresh_token=shortrefresh",
+            returncode=1,
+        ))
+        with self.assertRaises(AuthenticationError) as raised:
+            LarkCli(Path("lark-cli"), "user", runner).get_node("doccnSensitiveToken")
+        message = str(raised.exception)
+        for secret in ("shortsecret", "shortcode", "shortaccess", "shortrefresh"):
+            self.assertNotIn(secret, message)
+
     def test_final_json_accepts_diagnostics_before_pretty_printed_payload(self):
         stdout = "diagnostic line\n{\n  \"data\": {\n    \"node\": {\"token\": \"root\"}\n  }\n}\n"
         result = LarkCli(Path("lark-cli"), "user", FakeRunner(Completed(stdout))).get_node("root")
