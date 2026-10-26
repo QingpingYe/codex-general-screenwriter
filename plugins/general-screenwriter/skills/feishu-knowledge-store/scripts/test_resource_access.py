@@ -167,7 +167,7 @@ class ResourceAccessTests(unittest.TestCase):
         self.assertIn("target.edit", report.missing)
 
 
-    def test_missing_scope_is_reported_as_waiting_admin(self):
+    def test_missing_scope_is_reported_as_permission_missing(self):
         cli = FakeCli(
             nodes={
                 "source-root": node_payload("source-space", "source-root", "source-doc"),
@@ -182,7 +182,7 @@ class ResourceAccessTests(unittest.TestCase):
         )
         report = check_resource_access(config(), cli)
 
-        self.assertEqual(report.status, "waiting_admin")
+        self.assertEqual(report.status, "permission_missing")
         self.assertIn("scope:docs:permission.member:auth", report.missing)
 
 
@@ -242,7 +242,7 @@ class ResourceAccessTests(unittest.TestCase):
         ))
 
 
-    def test_target_space_missing_permission_auth_scope_is_waiting_admin(self):
+    def test_target_space_missing_permission_auth_scope_is_permission_missing(self):
         cli = FakeCli(
             nodes={
                 "source-root": node_payload("source-space", "source-root", "source-doc"),
@@ -259,7 +259,7 @@ class ResourceAccessTests(unittest.TestCase):
         ]
         report = check_resource_access(config(target_mode="space"), cli)
 
-        self.assertEqual(report.status, "waiting_admin")
+        self.assertEqual(report.status, "permission_missing")
         self.assertIn("scope:docs:permission.member:auth", report.missing)
         self.assertNotIn("target.create", report.missing)
 
@@ -282,7 +282,7 @@ class ResourceAccessTests(unittest.TestCase):
         ))
 
 
-    def test_empty_target_space_missing_permission_auth_scope_is_waiting_admin(self):
+    def test_empty_target_space_missing_permission_auth_scope_is_permission_missing(self):
         cli = FakeCli(
             nodes={
                 "source-root": node_payload("source-space", "source-root", "source-doc"),
@@ -297,7 +297,7 @@ class ResourceAccessTests(unittest.TestCase):
         cli.list_nodes = lambda space_id, parent_node_token=None, page_limit=10: []
         report = check_resource_access(config(target_mode="space"), cli)
 
-        self.assertEqual(report.status, "waiting_admin")
+        self.assertEqual(report.status, "permission_missing")
         self.assertIn("scope:docs:permission.member:auth", report.missing)
 
     def test_target_node_space_must_match_configured_target_space(self):

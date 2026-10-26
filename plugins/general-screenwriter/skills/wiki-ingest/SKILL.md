@@ -66,11 +66,12 @@ applies_to:
 读取配置，提取 `source_wiki_url`。生成 `run_id` 并创建任务局部目录。然后执行只读预检：
 
 ```bash
-lark-cli auth status --json --verify
-lark-cli wiki +node-get --node-token <source_root_token> --as user --format json
+"<resolved-cli-path>" --profile "<profile>" auth status --json --verify
+"<resolved-cli-path>" --profile "<profile>" wiki +node-get \
+  --node-token <source_root_token> --as user --format json
 ```
 
-认证失败、CLI 不兼容、根节点不可读取时，终止运行并报告具体原因；若 setup 尚未 `ready`，先回到 setup 内部补齐运行时、CLI、授权和配置，再恢复本任务。不得尝试创建替代知识库。
+`<resolved-cli-path>` 必须是 setup/`store_cli` 解析出的绝对路径（例如 `store_cli config-status` 返回的 `cli_status.path`），`<profile>` 必须与 setup 绑定的 named profile 相同；不得使用 PATH 上的裸 `lark-cli`，也不得退回 CLI 默认 profile。认证失败、CLI 不兼容、根节点不可读取时，终止运行并报告具体原因；若 setup 尚未 `ready`，先回到 setup 内部补齐运行时、CLI、授权和配置，再恢复本任务。不得尝试创建替代知识库。
 
 ### 2. 枚举源节点
 

@@ -16,8 +16,11 @@ for location in (FEISHU_SCRIPTS, SETUP_SCRIPTS):
     if str(location) not in sys.path:
         sys.path.insert(0, str(location))
 
+import lark_cli_context
 import setup_cli
+import store_cli
 from lark_auth import REQUIRED_SCOPES
+from lark_cli import LarkCli
 
 
 class Completed:
@@ -684,6 +687,100 @@ class FirstUseEndToEndTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "network_blocked")
         self.assertLessEqual(harness.session.list_node_attempts - before, 2)
+
+    def test_operational_sync_path_keeps_the_setup_profile(self):
+        harness = FirstUseHarness(original_request="sync the source wiki into the target wiki")
+        self.addCleanup(harness._cleanup)
+        harness.authorize()
+        self.assertEqual(harness.config_from_links()["status"], "configured")
+        self.assertEqual(
+            harness.target_init(initializer=True, authorized=True)["status"],
+            "write_verification_required",
+        )
+        self.assertTrue(harness.write_verify(authorized=True)["ready"])
+        harness.session.nodes[None] = [{
+            "title": "src", "node_token": "src", "obj_token": "src-doc",
+            "obj_type": "docx",
+        }]
+
+        profiles_seen = []
+
+        def bound_resolve(**kwargs):
+            # Keep the real search order and profile resolution; only the
+            # process boundary is the harness' offline runner.
+            kwargs.setdefault("runner", harness.runner)
+            kwargs.setdefault("which", harness.which)
+            return lark_cli_context.resolve_cli_context(**kwargs)
+
+        def bound_cli(binary, identity="user", runner=None, profile=None):
+            profiles_seen.append(profile)
+            return LarkCli(binary, identity=identity, runner=harness.runner, profile=profile)
+
+        run_dir = harness.root / "run-1"
+        staging = run_dir / "wiki_staging"
+        staging.mkdir(parents=True)
+        (staging / "page.md").write_text(
+            "---\n"
+            "title: 世界观\n"
+            "series_id: s\n"
+            "project_id: p\n"
+            "page_type: worldview\n"
+            "source_node_tokens:\n"
+            "  - src\n"
+            "source_revision_parts:\n"
+            "  - \"1\"\n"
+            "source_edit_time_parts:\n"
+            "  - 1756572300000\n"
+            "---\n"
+            "AI content\n",
+            encoding="utf-8",
+        )
+        (staging / "_manifest.json").write_text(json.dumps({
+            "version": 9, "series": {}, "root": [],
+            "entries": [{
+                "path": "page.md", "key": "s/p/worldview",
+                "source_revisions": {"src": "1"}, "page_type": "worldview",
+                "series_id": "s", "project_id": "p",
+            }],
+        }, ensure_ascii=False), encoding="utf-8")
+
+        baseline = len(harness.runner.calls)
+        with mock.patch.object(store_cli, "resolve_cli_context", side_effect=bound_resolve), \
+                mock.patch.object(store_cli, "LarkCli", side_effect=bound_cli):
+            commands = (
+                ["preflight", "--config", str(harness.config_path), "--profile", "team-a"],
+                ["source-baseline", "--config", str(harness.config_path),
+                 "--profile", "team-a", "--out", str(run_dir / "source_baseline.json")],
+                ["prepare", "--config", str(harness.config_path),
+                 "--profile", "team-a", "--run-dir", str(run_dir)],
+                ["publish", "--config", str(harness.config_path),
+                 "--profile", "team-a", "--run-dir", str(run_dir)],
+                ["verify", "--config", str(harness.config_path),
+                 "--profile", "team-a", "--run-dir", str(run_dir)],
+            )
+            payloads = [
+                self._run_store_command(harness, command) for command in commands
+            ]
+
+        self.assertEqual([code for code, _ in payloads], [0] * len(commands))
+        self.assertEqual(payloads[0][1]["status"], "read_ready")
+        self.assertEqual(payloads[3][1]["published"], 1)
+        self.assertEqual(payloads[4][1]["status"], "verified")
+        self.assertEqual(set(profiles_seen), {"team-a"})
+
+        operational_calls = harness.runner.calls[baseline:]
+        self.assertTrue(operational_calls)
+        for call in operational_calls:
+            self.assertEqual(call[1:3], ["--profile", "team-a"], call)
+
+    @staticmethod
+    def _run_store_command(harness, arguments):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = store_cli.main(
+                arguments, stdout=output, environ=harness.environ,
+            )
+        return code, json.loads(output.getvalue())
 
     def test_lost_resume_context_is_rejected(self):
         with self.assertRaises(setup_cli.SetupCommandError) as missing:

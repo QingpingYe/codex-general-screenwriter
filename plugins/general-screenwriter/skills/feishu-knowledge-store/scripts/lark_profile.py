@@ -67,7 +67,8 @@ class AppConfigRequired(ProfileError):
 
     def __init__(self, profile_name: str) -> None:
         super().__init__(
-            f"profile {profile_name!r} does not exist; call begin_app_config()"
+            f"profile {profile_name!r} has no application configuration; "
+            "call begin_app_config()"
         )
         self.profile_name = profile_name
 
@@ -79,6 +80,26 @@ class AppConfigRequired(ProfileError):
 
 class AppConfigTimeout(AppConfigError):
     status = "app_config_timeout"
+
+
+class ProfileAmbiguousError(ProfileError):
+    """More than one local entry matches the selected profile name."""
+
+    status = "profile_ambiguous"
+
+    def __init__(self, profile_name: str, matches: int) -> None:
+        super().__init__(
+            f"local profile state is ambiguous: {profile_name!r} matches "
+            f"{matches} entries; refusing to guess"
+        )
+        self.profile_name = profile_name
+        self.matches = matches
+
+    def to_dict(self) -> dict[str, Any]:
+        value = super().to_dict()
+        value["profile"] = self.profile_name
+        value["matches"] = self.matches
+        return value
 
 
 class ProfileAlreadyExists(ProfileError):
@@ -129,6 +150,12 @@ def ensure_named_profile(
             if not app_id:
                 raise OrgAppBindingRequired(profile_name)
             return ProfileState(profile_name, app_id, "bound")
+        if not app_id:
+            # A listed profile without an application id is the surviving state
+            # of an interrupted ``config init --new --name``.  Treat it exactly
+            # like a missing profile so the caller resumes app configuration
+            # instead of proceeding to device authorization.
+            raise AppConfigRequired(profile_name)
         return ProfileState(profile_name, app_id, "existing")
 
     if selected_mode == "shared":
@@ -160,7 +187,11 @@ def begin_app_config(
     profiles = _list_profiles(target_context, check_runner)
     existing = _find_profile(profiles, profile_name)
     if existing is not None:
-        raise ProfileAlreadyExists(profile_name, _profile_app_id(existing) or "")
+        app_id = _profile_app_id(existing) or ""
+        if app_id:
+            raise ProfileAlreadyExists(profile_name, app_id)
+        # A listed profile with an empty app id is a resumable interrupted
+        # creation: re-enter the named ``--new`` flow instead of failing.
 
     output_path = _private_output_path()
     command = build_cli_command(
@@ -244,6 +275,9 @@ def wait_app_config(
                 app_id = _profile_app_id(profile) or ""
                 if app_id:
                     return ProfileState(profile_name, app_id, "created")
+        except ProfileAmbiguousError:
+            # Ambiguity is terminal until the local state is repaired.
+            raise
         except ProfileError as error:
             last_error = error
 
@@ -349,10 +383,16 @@ def _profile_entries(payload: Any) -> list[dict[str, Any]] | None:
 
 
 def _find_profile(profiles: Iterable[dict[str, Any]], name: str) -> dict[str, Any] | None:
-    for profile in profiles:
-        if _profile_name(profile) == name:
-            return profile
-    return None
+    matches = _matching_profiles(profiles, name)
+    if len(matches) > 1:
+        raise ProfileAmbiguousError(name, len(matches))
+    return matches[0] if matches else None
+
+
+def _matching_profiles(
+    profiles: Iterable[dict[str, Any]], name: str,
+) -> list[dict[str, Any]]:
+    return [profile for profile in profiles if _profile_name(profile) == name]
 
 
 def _profile_name(profile: dict[str, Any]) -> str | None:

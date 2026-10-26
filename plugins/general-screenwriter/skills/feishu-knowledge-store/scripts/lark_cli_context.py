@@ -62,6 +62,42 @@ class CliContextError(RuntimeError):
 # Compatibility-friendly alias for consumers that prefer a descriptive name.
 CliContextResolutionError = CliContextError
 
+DEFAULT_PROFILE = "general-screenwriter"
+PROFILE_ENVIRONMENT_KEYS = (
+    "GENERAL_SCREENWRITER_PROFILE",
+    "GENERAL_SCREENWRITER_LARK_PROFILE",
+    "LARK_CLI_PROFILE",
+)
+
+
+def profile_from_environment(
+    environ: Mapping[str, str] | None = None,
+    default: str | None = None,
+) -> str | None:
+    """Return the explicitly bound profile name from the injected environment."""
+    environment = os.environ if environ is None else environ
+    for key in PROFILE_ENVIRONMENT_KEYS:
+        value = environment.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return default
+
+
+def resolve_profile_name(
+    profile: str | None = None,
+    environ: Mapping[str, str] | None = None,
+    default: str | None = DEFAULT_PROFILE,
+) -> str | None:
+    """Return the explicit flag, the environment binding, or the shared default.
+
+    Every operational entry point resolves the same named profile so the
+    identity that passed setup and write verification is the identity that
+    reads sources and publishes targets.
+    """
+    if isinstance(profile, str) and profile.strip():
+        return profile.strip()
+    return profile_from_environment(environ, default)
+
 
 def build_cli_command(context: CliContext, *arguments: str) -> list[str]:
     """Build a command that explicitly binds the context's profile when present."""
@@ -100,8 +136,7 @@ def resolve_cli_context(
     explicit = _absolute_path(explicit_raw) if explicit_raw else None
 
     if candidates is None:
-        ordered: list[Path] = list(cli_candidates_from_environment(environment, which))
-        ordered.extend(_standard_candidates(environment))
+        ordered: list[Path] = list(standard_cli_candidates(environment, which))
         ordered.extend(_private_runtime_candidates(environment))
     else:
         ordered = list(candidates)
@@ -191,6 +226,26 @@ def _normalize_profile(profile: str | None) -> str | None:
     if not isinstance(profile, str) or not profile.strip():
         raise ValueError("profile must be a non-empty string")
     return profile
+
+
+def standard_cli_candidates(
+    environment: Mapping[str, str],
+    which: Callable[[str], str | None],
+) -> tuple[Path, ...]:
+    """Return explicit, PATH-derived, then platform-standard CLI candidates.
+
+    Both ``resolve_cli_context`` and the bootstrap search order use this single
+    implementation so probes and diagnostics cannot diverge.
+    """
+    ordered: list[Path] = []
+    for candidate in (environment.get("LARK_CLI_PATH"), which("lark-cli")):
+        if not candidate:
+            continue
+        path = Path(candidate)
+        if path not in ordered:
+            ordered.append(path)
+    ordered.extend(_standard_candidates(environment))
+    return tuple(ordered)
 
 
 def _standard_candidates(environment: Mapping[str, str]) -> tuple[Path, ...]:

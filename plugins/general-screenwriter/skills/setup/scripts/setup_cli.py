@@ -403,13 +403,60 @@ def ensure_cli_context(
         ) from error
 
 
+def _safe_component(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-")
+
+
+def _restrict_to_owner(path: Path, mode: int) -> None:
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        # Windows ACLs are inherited from the user profile; best effort only.
+        pass
+
+
 def qr_destination(profile: str, stage: str) -> Path:
-    """Return a durable-enough, non-secret QR path for the visible challenge."""
-    safe_profile = re.sub(r"[^A-Za-z0-9._-]+", "-", profile).strip("-") or "profile"
-    safe_stage = re.sub(r"[^A-Za-z0-9._-]+", "-", stage).strip("-") or "setup"
+    """Return a durable-enough, non-secret QR path for the visible challenge.
+
+    Challenge images live in a per-user temporary directory that is not
+    world-readable, and every file is created owner-only.
+    """
+    safe_profile = _safe_component(profile) or "profile"
+    safe_stage = _safe_component(stage) or "setup"
     root = Path(tempfile.gettempdir()) / "general-screenwriter" / "setup-qr"
     root.mkdir(parents=True, exist_ok=True)
+    _restrict_to_owner(root.parent, 0o700)
+    _restrict_to_owner(root, 0o700)
     return root / f"{safe_profile}-{safe_stage}-{uuid.uuid4().hex}.png"
+
+
+def _clear_qr_challenges(profile: str) -> int:
+    """Remove this setup profile's challenge images once setup is ready."""
+    safe_profile = _safe_component(profile)
+    if not safe_profile:
+        return 0
+    root = Path(tempfile.gettempdir()) / "general-screenwriter" / "setup-qr"
+    removed = 0
+    try:
+        candidates = sorted(root.glob(f"{safe_profile}-*.png"))
+    except OSError:
+        return 0
+    for candidate in candidates:
+        try:
+            candidate.unlink()
+            removed += 1
+        except OSError:
+            continue
+    try:
+        remaining = any(root.iterdir())
+    except OSError:
+        remaining = True
+    if not remaining:
+        try:
+            root.rmdir()
+        except OSError:
+            pass
+    return removed
 
 
 def _visible_qr(
@@ -424,6 +471,7 @@ def _visible_qr(
         write_qr_png(context, url, destination, runner=runner)
     except Exception as error:
         return None, _safe_error(error)
+    _restrict_to_owner(destination, 0o600)
     return str(destination), None
 
 
@@ -950,6 +998,15 @@ def main(
             )
         else:  # pragma: no cover - argparse owns the command set.
             raise SetupCommandError("invalid_command", f"unsupported command: {command}")
+        if payload.get("ready"):
+            # Setup is complete: the visible challenge images are no longer
+            # needed and must not linger in the shared temp directory.
+            try:
+                cleanup_profile = _profile_name(parsed.profile, environ)
+            except SetupCommandError:
+                cleanup_profile = None
+            if cleanup_profile:
+                _clear_qr_challenges(cleanup_profile)
         if resume_context is not None:
             payload["resume_context"] = resume_context.advance(command, payload).to_dict()
     except SetupCommandError as error:

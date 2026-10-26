@@ -26,6 +26,24 @@ FORBIDDEN_USER_COMMANDS = (
     r"\bconfig\s+init\b",
     r"\bnpx\b[^\n`]*\binstall\b",
 )
+FEISHU_STORE_DOC = ROOT / "skills" / "feishu-knowledge-store" / "SKILL.md"
+WIKI_INGEST_CLI_DOCS = (
+    ROOT / "skills" / "wiki-ingest" / "SKILL.md",
+    ROOT / "skills" / "wiki-ingest" / "references" / "feishu-wiki-extraction.md",
+)
+BARE_CLI_COMMAND = re.compile(r"""^\s*["']?lark-cli(?:\.exe|\.cmd)?["']?(?=\s|$)""")
+CLI_SUBCOMMAND_MARKERS = (
+    "auth status",
+    "profile list",
+    "wiki +node-get",
+    "wiki +node-list",
+    "docs +fetch",
+    "docs +create",
+    "docs +update",
+    "drive +download",
+    "drive.permission.members",
+)
+RESOLVED_CLI_PLACEHOLDER = "<resolved-cli-path>"
 FORBIDDEN_USER_INSTRUCTIONS = (
     r"复制[^\n]{0,20}(配置|模板)",
     r"copy[^\n]{0,30}(config|template)",
@@ -100,6 +118,60 @@ class SetupContractTests(unittest.TestCase):
                 for pattern in (*FORBIDDEN_USER_COMMANDS, *FORBIDDEN_USER_INSTRUCTIONS):
                     with self.subTest(pattern=pattern):
                         self.assertIsNone(re.search(pattern, text, re.IGNORECASE))
+
+    def _fenced_blocks(self, text):
+        block: list[str] = []
+        inside = False
+        for line in text.splitlines():
+            if line.strip().startswith("```"):
+                if inside:
+                    yield block
+                    block = []
+                inside = not inside
+                continue
+            if inside:
+                block.append(line)
+
+    def test_feishu_store_doc_binds_the_named_profile_on_the_operational_path(self):
+        text = FEISHU_STORE_DOC.read_text(encoding="utf-8")
+
+        self.assertIn("named profile", text)
+        self.assertIn("--profile <profile>", text)
+        for command in (
+            "preflight", "source-baseline", "prepare", "publish", "verify", "config-status",
+        ):
+            with self.subTest(command=command):
+                self.assertIn(command, text)
+        self.assertIn("不得退回 CLI 默认 profile", text)
+
+    def test_wiki_ingest_docs_never_show_a_bare_cli_command(self):
+        for path in WIKI_INGEST_CLI_DOCS:
+            text = path.read_text(encoding="utf-8")
+            for number, line in enumerate(text.splitlines(), start=1):
+                with self.subTest(path=path, line=number):
+                    self.assertIsNone(
+                        BARE_CLI_COMMAND.match(line),
+                        f"{path}:{number} must use the resolved absolute binary",
+                    )
+
+    def test_wiki_ingest_cli_examples_bind_the_named_profile(self):
+        for path in WIKI_INGEST_CLI_DOCS:
+            text = path.read_text(encoding="utf-8")
+            checked = 0
+            for block in self._fenced_blocks(text):
+                for line in block:
+                    if not any(marker in line for marker in CLI_SUBCOMMAND_MARKERS):
+                        continue
+                    checked += 1
+                    with self.subTest(path=path, line=line):
+                        self.assertIn(
+                            "--profile", line,
+                            f"{path}: CLI example must bind --profile: {line}",
+                        )
+            with self.subTest(path=path):
+                self.assertGreater(checked, 0, f"{path}: no CLI example found")
+                self.assertIn(RESOLVED_CLI_PLACEHOLDER, text)
+                self.assertIn("不得", text)
 
     def test_setup_cli_exposes_only_the_internal_json_commands(self):
         sys.path.insert(0, str(ROOT / "skills" / "setup" / "scripts"))

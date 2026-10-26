@@ -181,6 +181,47 @@ class SetupCliTests(unittest.TestCase):
         self.assertTrue(qr_path.exists())
         qr_path.unlink(missing_ok=True)
 
+    def test_listed_unconfigured_profile_resumes_app_configuration(self):
+        challenge = SimpleNamespace(
+            profile_name="general-screenwriter",
+            verification_url="https://open.feishu.cn/app-register?x=1",
+            console_url=None,
+        )
+
+        class Completed:
+            returncode = 0
+            stderr = ""
+
+            def __init__(self, stdout):
+                self.stdout = stdout
+
+        def runner(command, **_kwargs):
+            if list(command)[-2:] == ["profile", "list"]:
+                return Completed(json.dumps([
+                    {"name": "general-screenwriter", "appId": ""},
+                ]))
+            raise AssertionError(f"unexpected command: {command}")
+
+        output = io.StringIO()
+        with (
+            mock.patch.object(setup_cli, "ensure_cli_context", return_value=context()),
+            mock.patch.object(setup_cli, "begin_app_config", return_value=challenge) as begin,
+            mock.patch.object(setup_cli, "write_qr_png", return_value=None),
+            mock.patch.object(
+                setup_cli, "qr_destination",
+                return_value=Path(tempfile.gettempdir()) / "unused-qr.png",
+            ),
+            redirect_stdout(output),
+        ):
+            code = setup_cli.main(["auth-start", "--json"], runner=runner)
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["stage"], "app_config")
+        self.assertEqual(payload["status"], "waiting_user")
+        self.assertNotIn("device_code", payload)
+        self.assertTrue(begin.called)
+
     def test_auth_complete_outputs_json_and_redacts_device_code(self):
         with (
             mock.patch.object(setup_cli, "ensure_cli_context", return_value=context()),
@@ -266,6 +307,40 @@ class SetupCliTests(unittest.TestCase):
         self.assertTrue(init.call_args.kwargs["authorized"])
         self.assertEqual(verify_code, 0)
         self.assertTrue(verify_payload["ready"])
+
+    def test_qr_challenge_files_are_owner_only_and_cleared_when_ready(self):
+        root = Path(tempfile.gettempdir()) / "general-screenwriter" / "setup-qr"
+        root.mkdir(parents=True, exist_ok=True)
+        stale = root / "team-qr-device-auth-stale.png"
+        stale.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        destination = setup_cli.qr_destination("team-qr", "device-auth")
+        destination.write_bytes(b"\x89PNG\r\n\x1a\n")
+        self.assertTrue(destination.parent == root)
+        self.assertTrue(destination.name.startswith("team-qr-device-auth-"))
+        if os.name != "nt":
+            self.assertEqual(root.stat().st_mode & 0o777, 0o700)
+
+        other = root / "other-profile-device-auth.png"
+        other.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        report = {
+            "schema_version": 1, "status": "ready", "ready": True,
+            "blocking_checks": [], "checks": [], "ai_next_actions": [],
+            "human_action": None,
+        }
+        with mock.patch.object(setup_cli, "verify_write_access", return_value=report):
+            code, payload = self.run_main([
+                "write-verify", "--authorized", "--profile", "team-qr", "--json",
+            ])
+
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["ready"])
+        self.assertFalse(destination.exists())
+        self.assertFalse(stale.exists())
+        # Another profile's challenge is untouched.
+        self.assertTrue(other.exists())
+        other.unlink(missing_ok=True)
 
     def test_unknown_command_returns_json_and_usage_exit(self):
         code, payload = self.run_main(["not-a-command", "--json"])

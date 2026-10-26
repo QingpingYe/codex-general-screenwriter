@@ -1,3 +1,4 @@
+import json
 import sys
 import unittest
 from contextlib import ExitStack, contextmanager
@@ -39,6 +40,13 @@ def space_config():
         45,
         (),
     )
+
+
+class Completed:
+    def __init__(self, stdout="", returncode=0):
+        self.stdout = stdout
+        self.stderr = ""
+        self.returncode = returncode
 
 
 class FakeCli:
@@ -243,6 +251,82 @@ class SetupDoctorTests(unittest.TestCase):
         ]
         self.assertTrue(profiles)
         self.assertEqual(set(profiles), {"team-z"})
+    def test_missing_scope_reports_permission_missing(self):
+        report = None
+        with patched_runtime(resource_report=ResourceAccessReport(
+                "permission_missing", ("scope:docs:permission.member:auth",),
+                ("target edit permission needs an application scope",))):
+            report = run_doctor(config_path="config.json", profile="team-a")
+
+        self.assertEqual(report["status"], "permission_missing")
+        self.assertEqual(check(report, "resource_access")["status"], "permission_missing")
+        self.assertIn(
+            "scope:docs:permission.member:auth",
+            report["resource_access"]["missing"],
+        )
+
+    def test_duplicate_profile_entries_report_profile_ambiguous(self):
+        profiles = json.dumps([
+            {"name": "team-a", "appId": "cli_one"},
+            {"name": "team-a", "appId": "cli_two"},
+        ])
+
+        def profile_runner(command, **_kwargs):
+            if list(command)[-2:] == ["profile", "list"]:
+                return Completed(profiles)
+            raise AssertionError(f"unexpected command: {command}")
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(
+                setup_doctor, "resolve_config_path",
+                return_value=SimpleNamespace(
+                    path=Path("C:/tmp/feishu-knowledge-base.json"),
+                    origin="explicit",
+                    searched=(Path("C:/tmp/feishu-knowledge-base.json"),),
+                ),
+            ))
+            stack.enter_context(patch.object(
+                setup_doctor, "load_config", return_value=config(),
+            ))
+            stack.enter_context(patch.object(
+                setup_doctor, "resolve_cli_context",
+                return_value=CliContext(
+                    Path("lark-cli"), "1.0.95", "team-a",
+                    frozenset(REQUIRED_CAPABILITIES),
+                ),
+            ))
+            stack.enter_context(patch.object(
+                setup_doctor, "LarkCli", return_value=FakeCli(),
+            ))
+            stack.enter_context(patch.object(
+                setup_doctor, "check_resource_access",
+                return_value=ResourceAccessReport("ok", (), ("verified",)),
+            ))
+            stack.enter_context(patch.object(
+                setup_doctor, "Publisher", return_value=SimpleNamespace(
+                    inspect_control_tree=lambda: {
+                        "status": "control_tree_missing",
+                        "state": "missing",
+                        "present": [],
+                        "missing": list(setup_doctor.TREE_ORDER),
+                        "duplicates": [],
+                        "tokens": {},
+                        "verification_token": None,
+                    },
+                ),
+            ))
+            report = run_doctor(
+                config_path="config.json", profile="team-a", runner=profile_runner,
+            )
+
+        self.assertEqual(report["status"], "profile_ambiguous")
+        self.assertEqual(check(report, "profile")["status"], "profile_ambiguous")
+        self.assertEqual(check(report, "app")["status"], "needs_context")
+        self.assertFalse(any(
+            item["status"] == "ready" and item["check_id"] in {"profile", "app"}
+            for item in report["checks"]
+        ))
+
     def test_run_doctor_uses_setup_default_profile_when_none_is_supplied(self):
         context = CliContext(
             Path("lark-cli"), "1.0.95", None,

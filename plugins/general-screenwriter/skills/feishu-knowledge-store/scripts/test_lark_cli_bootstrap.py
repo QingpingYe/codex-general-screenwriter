@@ -10,6 +10,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 from lark_cli_bootstrap import default_cli_candidates, ensure_lark_cli
+from lark_cli_context import standard_cli_candidates
 from lark_runtime import CliInstallResult, RuntimePaths
 
 
@@ -128,6 +129,20 @@ class LarkCliBootstrapTests(unittest.TestCase):
         text = "\n".join(str(path) for path in candidates)
         self.assertNotIn("C:\\lark-cli", text)
         self.assertNotIn("D:\\lark-cli", text)
+
+    def test_default_candidates_delegate_to_the_shared_search_order(self):
+        environ = {
+            "LARK_CLI_PATH": r"C:\Explicit\lark-cli.exe",
+            "APPDATA": r"C:\Users\writer\AppData\Roaming",
+            "HOME": r"C:\Users\writer",
+        }
+        which = lambda name: r"C:\Windows\lark-cli.exe" if name == "lark-cli" else None
+
+        # The bootstrap alias must not keep a second, drifting resolver.
+        self.assertEqual(
+            default_cli_candidates(environ, which),
+            standard_cli_candidates(environ, which),
+        )
 
     def test_existing_supported_cli_is_used_without_install(self):
         binary = Path(r"C:\Tools\lark-cli.exe")

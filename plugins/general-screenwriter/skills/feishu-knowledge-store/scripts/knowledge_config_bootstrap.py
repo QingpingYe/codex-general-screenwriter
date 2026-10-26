@@ -33,8 +33,6 @@ ConfigBootstrapError = KnowledgeConfigBootstrapError
 
 
 @dataclass(frozen=True)
-
-
 class WikiReference:
     url: str
     token: str

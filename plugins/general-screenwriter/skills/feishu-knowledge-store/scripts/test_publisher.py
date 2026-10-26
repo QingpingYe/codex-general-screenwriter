@@ -674,6 +674,38 @@ source_revision_parts: [r1]
         })
         self.assertEqual(self.cli.created_titles, [])
 
+    def test_inspect_control_tree_reads_each_parent_once_per_sweep(self):
+        cli = SpaceAwareCli()
+        cli.nodes[None] = [
+            {"title": "00_使用说明", "node_token": "n-00"},
+            {"title": "01_知识内容", "node_token": "n-01"},
+            {"title": "02_导航与日志", "node_token": "n-02"},
+            {"title": "99_系统控制台", "node_token": "n-99"},
+        ]
+        cli.nodes["n-00"] = [{"title": "AI知识库编辑说明", "node_token": "n-00-1"}]
+        cli.nodes["n-02"] = [
+            {"title": "知识导航索引", "node_token": "n-02-1"},
+            {"title": "同步日志", "node_token": "n-02-2"},
+        ]
+        cli.nodes["n-99"] = [
+            {"title": "AI_KB_INDEX_V1", "node_token": "n-99-1"},
+            {"title": "AI_KB_LOCK_V1", "node_token": "n-99-2"},
+        ]
+        cli.nodes["n-01"] = [{"title": "页面", "node_token": "n-01-1"}]
+        cli.nodes["n-01-1"] = []
+        publisher = Publisher(cli, None, "target-space", root_mode="space")
+
+        inspection = publisher.inspect_control_tree()
+
+        self.assertEqual(inspection["status"], "control_tree_complete")
+        parents = [parent for _space, parent, _limit in cli.list_node_calls]
+        # One read per parent: the expected-level listing and the
+        # misplacement sweep share the same cached reads.
+        self.assertEqual(len(parents), len({str(parent) for parent in parents}))
+        # The content subtree is still swept for misplaced reserved titles.
+        self.assertIn("n-01", parents)
+        self.assertIn("n-01-1", parents)
+
     def test_inspect_control_tree_reports_complete_tokens(self):
         tokens = self.publisher.initialize()
 

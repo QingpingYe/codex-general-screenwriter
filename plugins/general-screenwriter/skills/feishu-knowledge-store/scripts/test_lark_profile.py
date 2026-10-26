@@ -19,6 +19,7 @@ from lark_profile import (
     AppConfigTimeout,
     OrgAppBindingRequired,
     ProfileAlreadyExists,
+    ProfileAmbiguousError,
     ProfileState,
     begin_app_config,
     ensure_named_profile,
@@ -80,6 +81,73 @@ class SilentPopen:
         self.terminated = True
 
 
+class FakeConfigStore:
+    """Stateful stand-in for the CLI's local profile store.
+
+    ``profile list`` reads this object and ``config init`` mutates it, so the
+    preservation tests below assert against state the production code really
+    could have destroyed.  Destructive command semantics are modelled on
+    purpose: an unnamed ``config init`` replaces the default profile store.
+    """
+
+    def __init__(self, profiles, secrets=None, user_tokens=None):
+        self.profiles = copy.deepcopy(profiles)
+        self.secrets = dict(secrets or {})
+        self.user_tokens = dict(user_tokens or {})
+
+    def snapshot(self):
+        return copy.deepcopy({
+            "profiles": self.profiles,
+            "secrets": self.secrets,
+            "user_tokens": self.user_tokens,
+        })
+
+    def apply(self, command):
+        arguments = [str(part) for part in command]
+        if "config" not in arguments or "init" not in arguments:
+            return
+        if "--name" in arguments:
+            name = arguments[arguments.index("--name") + 1]
+            if not any(entry.get("name") == name for entry in self.profiles):
+                self.profiles.append({"name": name, "appId": ""})
+            return
+        self.profiles.clear()
+        self.secrets.clear()
+        self.user_tokens.clear()
+
+
+class StatefulRunner(FakeRunner):
+    """Runner whose ``profile list`` reflects a mutable fake store."""
+
+    def __init__(self, store):
+        super().__init__()
+        self.store = store
+
+    def __call__(self, command, **kwargs):
+        self.calls.append(list(command))
+        self.store.apply(command)
+        if list(command)[-2:] == ["profile", "list"]:
+            return Completed(json.dumps(self.store.profiles))
+        if self.responses:
+            response = self.responses.pop(0)
+            if isinstance(response, BaseException):
+                raise response
+            return response
+        raise AssertionError(f"unexpected command: {command}")
+
+
+class StorePopen(FakePopen):
+    """Background ``config init`` that applies its semantics to the fake store."""
+
+    def __init__(self, store, output, returncode=0):
+        super().__init__(output, returncode)
+        self.store = store
+
+    def __call__(self, command, **kwargs):
+        self.store.apply(command)
+        return super().__call__(command, **kwargs)
+
+
 class FakeClock:
     def __init__(self):
         self.now = 0.0
@@ -123,11 +191,29 @@ class LarkProfileTests(unittest.TestCase):
         self.assertEqual(runner.calls[0][-2:], ["profile", "list"])
         self.assertFalse(any("config" in call for call in runner.calls))
 
+    def test_fake_store_reports_destructive_config_init(self):
+        store = FakeConfigStore(
+            profiles=[{"name": "other", "appId": "cli_other"}],
+            secrets={"other": "other-secret"},
+            user_tokens={"other": "other-token"},
+        )
+
+        store.apply(["lark-cli", "config", "init"])
+
+        # A regression that dropped ``--name`` would destroy unrelated state
+        # instead of adding one named profile.
+        self.assertEqual(store.profiles, [])
+        self.assertEqual(store.secrets, {})
+        self.assertEqual(store.user_tokens, {})
+
     def test_missing_per_user_profile_refuses_sync_creation_and_preserves_state(self):
-        config_state = profile_state()
-        config_state["profiles"] = [{"name": "other", "appId": "cli_other"}]
-        snapshot = copy.deepcopy(config_state)
-        runner = FakeRunner(Completed(json.dumps(config_state["profiles"])))
+        store = FakeConfigStore(
+            profiles=[{"name": "other", "appId": "cli_other"}],
+            secrets={"other": "other-secret"},
+            user_tokens={"other": "other-token"},
+        )
+        before = store.snapshot()
+        runner = StatefulRunner(store)
 
         with self.assertRaises(AppConfigRequired) as raised:
             ensure_named_profile(context(), "team-a", runner=runner)
@@ -136,7 +222,7 @@ class LarkProfileTests(unittest.TestCase):
         self.assertEqual(raised.exception.profile_name, "team-a")
         self.assertEqual(len(runner.calls), 1)
         self.assertFalse(any("config" in call for call in runner.calls))
-        self.assertEqual(config_state, snapshot)
+        self.assertEqual(store.snapshot(), before)
 
     def test_existing_shared_profile_is_bound_without_creation(self):
         runner = FakeRunner(Completed(json.dumps([
@@ -163,10 +249,14 @@ class LarkProfileTests(unittest.TestCase):
         self.assertEqual(len(runner.calls), 1)
 
     def test_begin_app_config_rejects_existing_profile_before_new(self):
-        config_state = profile_state()
-        snapshot = copy.deepcopy(config_state)
-        state_runner = FakeRunner(Completed(json.dumps(config_state["profiles"])))
-        process_runner = FakePopen("unused")
+        store = FakeConfigStore(
+            profiles=profile_state()["profiles"],
+            secrets=profile_state()["secrets"],
+            user_tokens=profile_state()["user_tokens"],
+        )
+        before = store.snapshot()
+        state_runner = StatefulRunner(store)
+        process_runner = StorePopen(store, "unused")
 
         with self.assertRaises(ProfileAlreadyExists) as raised:
             begin_app_config(
@@ -181,22 +271,69 @@ class LarkProfileTests(unittest.TestCase):
         self.assertEqual(raised.exception.app_id, "cli_team")
         self.assertEqual(process_runner.calls, [])
         self.assertEqual(state_runner.calls[0][:3], ["lark-cli", "--profile", "team-a"])
-        self.assertEqual(config_state, snapshot)
+        self.assertEqual(store.snapshot(), before)
+
+    def test_listed_profile_without_app_id_resumes_app_config(self):
+        store = FakeConfigStore(
+            profiles=[{"name": "other", "appId": "cli_other"}, {"name": "team-a", "appId": ""}],
+            secrets={"other": "other-secret"},
+            user_tokens={"other": "other-token"},
+        )
+        state_runner = StatefulRunner(store)
+        process_runner = StorePopen(store, json.dumps({
+            "verification_url": "https://open.feishu.cn/page/cli?user_code=RE-1",
+        }))
+
+        with self.assertRaises(AppConfigRequired) as raised:
+            ensure_named_profile(context(), "team-a", runner=state_runner)
+        self.assertEqual(raised.exception.status, "app_unconfigured")
+
+        challenge = begin_app_config(
+            context(),
+            "team-a",
+            runner=process_runner,
+            state_runner=state_runner,
+        )
+
+        self.assertEqual(challenge.profile_name, "team-a")
+        self.assertIn("user_code=RE-1", challenge.verification_url)
+        self.assertEqual(
+            process_runner.calls[0],
+            ["lark-cli", "config", "init", "--new", "--name", "team-a"],
+        )
+        self.assertEqual(store.secrets, {"other": "other-secret"})
+        self.assertEqual(store.user_tokens, {"other": "other-token"})
+
+    def test_duplicate_profile_entries_are_reported_as_ambiguous(self):
+        store = FakeConfigStore(profiles=[
+            {"name": "team-a", "appId": "cli_one"},
+            {"name": "team-a", "appId": "cli_two"},
+            {"name": "other", "appId": "cli_other"},
+        ])
+        runner = StatefulRunner(store)
+
+        with self.assertRaises(ProfileAmbiguousError) as raised:
+            ensure_named_profile(context(), "team-a", runner=runner)
+
+        self.assertEqual(raised.exception.status, "profile_ambiguous")
+        self.assertEqual(raised.exception.profile_name, "team-a")
+        self.assertEqual(raised.exception.matches, 2)
+        self.assertEqual(raised.exception.to_dict()["matches"], 2)
+        self.assertFalse(any("config" in call for call in runner.calls))
 
     def test_begin_app_config_preserves_urls_and_unrelated_state(self):
-        config_state = {
-            "profiles": [{"name": "other", "appId": "cli_other"}],
-            "secrets": {"other": "other-secret"},
-            "user_tokens": {"other": "other-token"},
-        }
-        snapshot = copy.deepcopy(config_state)
-        state_runner = FakeRunner(Completed(json.dumps(config_state["profiles"])))
+        store = FakeConfigStore(
+            profiles=[{"name": "other", "appId": "cli_other"}],
+            secrets={"other": "other-secret"},
+            user_tokens={"other": "other-token"},
+        )
+        state_runner = StatefulRunner(store)
         output = (
             "Open this link:\n"
             "  https://open.feishu.cn/page/cli?user_code=AB-12&x=1&next=https%3A%2F%2Fexample.test%2Fa%3Fb%3D1\n"
             "console_url: https://open.feishu.cn/app/cli_new?foo=1&bar=2\n"
         )
-        process_runner = FakePopen(output)
+        process_runner = StorePopen(store, output)
 
         challenge = begin_app_config(
             context(),
@@ -220,7 +357,14 @@ class LarkProfileTests(unittest.TestCase):
             ["lark-cli", "config", "init", "--new", "--name", "team-a"],
         )
         self.assertEqual(state_runner.calls[0][:3], ["lark-cli", "--profile", "team-a"])
-        self.assertEqual(config_state, snapshot)
+        # The named creation is applied to the fake store, and everything that
+        # already existed survives it.
+        self.assertEqual(
+            store.profiles,
+            [{"name": "other", "appId": "cli_other"}, {"name": "team-a", "appId": ""}],
+        )
+        self.assertEqual(store.secrets, {"other": "other-secret"})
+        self.assertEqual(store.user_tokens, {"other": "other-token"})
         self.assertTrue(challenge.output_path.exists())
         self.assertEqual(challenge.output_path.read_text(encoding="utf-8"), output)
         if os.name != "nt":

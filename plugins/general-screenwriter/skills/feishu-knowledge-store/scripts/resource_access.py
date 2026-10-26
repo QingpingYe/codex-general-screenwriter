@@ -21,16 +21,14 @@ from models import KnowledgeConfig
 
 
 @dataclass(frozen=True)
-
-
 class ResourceAccessReport:
-    status: Literal["ok", "resource_grant_required", "waiting_admin"]
+    status: Literal[
+        "ok", "resource_grant_required", "permission_missing", "waiting_admin",
+    ]
     missing: tuple[str, ...]
     details: tuple[str, ...]
 
     @property
-
-
     def ok(self) -> bool:
         return self.status == "ok"
 
@@ -225,7 +223,7 @@ def _check_target_write(config: KnowledgeConfig, cli: Any) -> str:
                 raise _AccessFailure(
                     _scope_missing_key(error),
                     _scope_detail(error, "target edit permission"),
-                    status="waiting_admin",
+                    status="permission_missing",
                 ) from error
             raise _AccessFailure(
                 ("target.edit", "target.acceptance_write"),
@@ -292,7 +290,7 @@ def _probe_permission_scope(cli: Any, token: str, context: str) -> None:
             raise _AccessFailure(
                 _scope_missing_key(error),
                 _scope_detail(error, context),
-                status="waiting_admin",
+                status="permission_missing",
             ) from error
         return
     except Exception:
@@ -425,7 +423,7 @@ def _fetch_node_document(cli: Any, node: Mapping[str, Any], missing: str) -> boo
             raise _AccessFailure(
                 _scope_missing_key(error),
                 _scope_detail(error, "source document read"),
-                status="waiting_admin",
+                status="permission_missing",
             ) from error
         raise _AccessFailure(missing, "sample document is not readable") from error
     except Exception as error:
@@ -455,7 +453,7 @@ def _access_error(error: Exception, missing: str, detail: str) -> _AccessFailure
             return _AccessFailure(
                 _scope_missing_key(error),
                 _scope_detail(error, detail),
-                status="waiting_admin",
+                status="permission_missing",
             )
         return _AccessFailure(missing, detail)
     if isinstance(error, LarkCliError):
@@ -467,10 +465,19 @@ def _access_error(error: Exception, missing: str, detail: str) -> _AccessFailure
 
 
 def _waiting_for_scope_or_auth(error: Exception, missing: str) -> ResourceAccessReport:
-    details = (_scope_detail(error, "user authorization"),) if _is_scope_error(error) else (
-        f"user authorization is missing: {_safe_error(error)}",
+    if isinstance(error, PermissionDenied) and _is_scope_error(error):
+        # A denied call that names a missing application/user scope is an
+        # approval gap, not a resource ACL gap and not a plain authorization
+        # state.  AuthenticationError stays waiting_admin: it means the user
+        # has to sign in again before any scope can be evaluated.
+        return _report(
+            "permission_missing", (_scope_missing_key(error),),
+            (_scope_detail(error, "user authorization"),),
+        )
+    return _report(
+        "waiting_admin", (missing,),
+        (f"user authorization is missing: {_safe_error(error)}",),
     )
-    return _report("waiting_admin", (missing,), details)
 
 
 def _is_scope_error(error: Exception) -> bool:
@@ -495,7 +502,9 @@ def _safe_error(error: Exception) -> str:
 
 
 def _report(
-    status: Literal["ok", "resource_grant_required", "waiting_admin"],
+    status: Literal[
+        "ok", "resource_grant_required", "permission_missing", "waiting_admin",
+    ],
     missing: Iterable[str],
     details: Iterable[str],
 ) -> ResourceAccessReport:

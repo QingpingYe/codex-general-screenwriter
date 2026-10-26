@@ -13,11 +13,18 @@ from config import ConfigError, load_config
 from config_paths import ConfigResolutionError, resolve_config_path
 from control_plane import ControlPlane, LockHeld
 from lark_cli import LarkCli, redact_sensitive
-from lark_cli_context import CliContextError, resolve_cli_context
+from lark_cli_context import (
+    CliContextError,
+    DEFAULT_PROFILE,  # Re-exported: the setup default named profile.
+    profile_from_environment,
+    resolve_cli_context,
+    resolve_profile_name,
+)
 from lark_cli_contract import REQUIRED_CAPABILITIES
 from lark_profile import (
     AppConfigRequired,
     OrgAppBindingRequired,
+    ProfileAmbiguousError,
     ProfileError,
     ensure_named_profile,
 )
@@ -28,7 +35,6 @@ from setup_state import SetupCheck, render_setup_report
 
 WRITE_VERIFICATION_PURPOSE = "write-verification"
 WRITE_VERIFICATION_SCHEMA_VERSION = 1
-DEFAULT_PROFILE = "general-screenwriter"
 
 
 @dataclass(frozen=True)
@@ -51,16 +57,7 @@ def _environment(environ: Mapping[str, str] | None) -> Mapping[str, str]:
 
 
 def _profile_from_environment(environ: Mapping[str, str] | None) -> str | None:
-    environment = _environment(environ)
-    for key in (
-        "GENERAL_SCREENWRITER_PROFILE",
-        "GENERAL_SCREENWRITER_LARK_PROFILE",
-        "LARK_CLI_PROFILE",
-    ):
-        value = environment.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
+    return profile_from_environment(_environment(environ))
 
 
 def _safe_error(error: Exception) -> str:
@@ -83,10 +80,7 @@ def _exception_status(error: Exception) -> str:
 
 
 def _selected_profile(profile: str | None, environ: Mapping[str, str] | None) -> str:
-    if isinstance(profile, str) and profile.strip():
-        return profile.strip()
-    from_environment = _profile_from_environment(environ)
-    return from_environment or DEFAULT_PROFILE
+    return resolve_profile_name(profile, environ) or DEFAULT_PROFILE
 
 
 def _resolve_cli_runtime(
@@ -476,6 +470,20 @@ def _profile_and_app_checks(
                 str(error),
                 ("Use the organisation-approved local binding for this profile.",),
                 "Ask the organisation owner to provide the approved binding.",
+            ),
+        )
+    except ProfileAmbiguousError as error:
+        return (
+            SetupCheck(
+                "profile", error.status, error.status, _safe_error(error),
+                (
+                    "Read back the local profiles and stop without guessing which one to use.",
+                ),
+                "Resolve the duplicated local profile with the local administrator.",
+            ),
+            _pending_doctor_check(
+                "app", error.status,
+                "app configuration was not checked while the local profile is ambiguous",
             ),
         )
     except ProfileError as error:

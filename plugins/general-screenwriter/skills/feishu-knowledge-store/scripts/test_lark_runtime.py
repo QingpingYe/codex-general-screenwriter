@@ -186,6 +186,44 @@ class PrivateCliInstallTests(unittest.TestCase):
             self.assertTrue(all(command[1:] == ["--version"] for command in runner.commands))
             self.assertFalse(any(command[1:3] == ["install", "--prefix"] for command in runner.commands))
 
+    def test_npm_resolution_uses_the_injected_environ_path(self):
+        seen = []
+
+        def fake_which(name, path=None):
+            seen.append((name, path))
+            return "npm" if path == r"C:\injected-path" else None
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "lark-cli"
+            cli_bin = root / "node_modules" / ".bin" / (
+                "lark-cli.cmd" if os.name == "nt" else "lark-cli"
+            )
+            paths = RuntimePaths(root, root / "node_modules", root, cli_bin)
+            with mock.patch("lark_runtime.shutil.which", side_effect=fake_which):
+                found = install_private_cli(
+                    paths, "1.0.95", runner=RuntimeRunner(),
+                    environ={"PATH": r"C:\injected-path"},
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "lark-cli"
+            cli_bin = root / "node_modules" / ".bin" / (
+                "lark-cli.cmd" if os.name == "nt" else "lark-cli"
+            )
+            paths = RuntimePaths(root, root / "node_modules", root, cli_bin)
+            with mock.patch("lark_runtime.shutil.which", side_effect=fake_which):
+                missing = install_private_cli(
+                    paths, "1.0.95", runner=RuntimeRunner(),
+                    environ={"PATH": r"D:\other-path"},
+                )
+
+        self.assertEqual(found.status, "installed")
+        self.assertEqual(missing.status, "runtime_missing")
+        self.assertEqual(seen, [
+            ("npm", r"C:\injected-path"),
+            ("npm", r"D:\other-path"),
+        ])
+
     def test_npm_install_uses_versioned_private_prefix_only(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "lark-cli"

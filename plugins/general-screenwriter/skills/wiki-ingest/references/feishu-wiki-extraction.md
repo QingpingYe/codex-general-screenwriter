@@ -6,11 +6,12 @@
 
 必须遵守：
 
-1. 源知识库只读；不执行任何写操作。
-2. 输出只进入当前运行目录，不进入共享权威状态。
-3. lark-cli 以 `--as user` 运行，保留实际用户身份。
-4. 飞书文档不得用普通网页抓取替代 `docs +fetch`；网页通道只能用于用户确认后的非飞书外链。
-5. 提取失败要报告，不得静默截断或用部分内容假装完整。
+1. 每条 CLI 命令都写全 setup/`store_cli` 解析出的绝对可执行路径，并显式绑定 named profile（`"<resolved-cli-path>" --profile "<profile>" ...`）；不得使用 PATH 上的裸 `lark-cli`，也不得退回 CLI 默认 profile。
+2. 源知识库只读；不执行任何写操作。
+3. 输出只进入当前运行目录，不进入共享权威状态。
+4. lark-cli 以 `--as user` 运行，保留实际用户身份。
+5. 飞书文档不得用普通网页抓取替代 `docs +fetch`；网页通道只能用于用户确认后的非飞书外链。
+6. 提取失败要报告，不得静默截断或用部分内容假装完整。
 
 ## Setup Gate
 
@@ -20,8 +21,8 @@ setup 完成后的真实状态必须同时满足：当前会话使用兼容 CLI 
 
 ## 节点枚举
 
-1. 用 `wiki +node-get --node-token <source_root_token>` 读取根节点，得到 `space_id`。
-2. 用 `wiki +node-list --space-id <space_id>` 分页递归列出节点。
+1. 用 `"<resolved-cli-path>" --profile "<profile>" wiki +node-get --node-token <source_root_token> --as user --format json` 读取根节点，得到 `space_id`。
+2. 用 `wiki +node-list --space-id <space_id>` 分页递归列出节点（同一条命令前缀）。
 3. 每个节点记录 `node_token`、`obj_token`、标题、URL、对象类型、扩展名、编辑时间和可用修订号。
 4. 文件夹节点只递归，不进入候选。
 5. 节点数超过 100 时分批处理并报告进度。
@@ -60,7 +61,7 @@ setup 完成后的真实状态必须同时满足：当前会话使用兼容 CLI 
 使用：
 
 ```bash
-lark-cli docs +fetch \
+"<resolved-cli-path>" --profile "<profile>" docs +fetch \
   --doc <doc_url_or_token> \
   --doc-format markdown \
   --as user \
@@ -81,7 +82,7 @@ lark-cli docs +fetch \
 先下载到运行目录：
 
 ```bash
-lark-cli drive +download \
+"<resolved-cli-path>" --profile "<profile>" drive +download \
   --file-token <obj_token> \
   --output .general-screenwriter/tmp/<run_id>/cache/<node_token>.md \
   --as user

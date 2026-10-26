@@ -17,7 +17,7 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import store_cli
-from lark_cli_context import CliContext, CliContextError
+from lark_cli_context import DEFAULT_PROFILE, CliContext, CliContextError
 
 
 def write_config(path: Path) -> None:
@@ -120,7 +120,7 @@ class FakeControlPlane:
         }
 
 
-def fake_factory(config_path, environ=None, workspace=None):
+def fake_factory(config_path, environ=None, workspace=None, profile=None):
     return SimpleNamespace(
         config=config(Path(config_path)),
         config_path=Path(config_path),
@@ -190,7 +190,7 @@ class StoreCliTests(unittest.TestCase):
                     "admission": "admission-doc",
                 }
 
-        def factory(config_path, environ=None, workspace=None):
+        def factory(config_path, environ=None, workspace=None, profile=None):
             return SimpleNamespace(
                 config=config(Path(config_path)), cli=FakeCli(),
                 config_path=Path(config_path),
@@ -226,7 +226,7 @@ class StoreCliTests(unittest.TestCase):
             def resolve_control_plane(self):
                 raise RuntimeError("missing system page: AI_KB_INDEX_V1")
 
-        def missing_factory(config_path, environ=None, workspace=None):
+        def missing_factory(config_path, environ=None, workspace=None, profile=None):
             return SimpleNamespace(
                 config=config(Path(config_path)), cli=FakeCli(),
                 config_path=Path(config_path),
@@ -248,7 +248,7 @@ class StoreCliTests(unittest.TestCase):
         write_manifest(run_dir)
         cli = FakeCli()
 
-        def factory(config_path, environ=None, workspace=None):
+        def factory(config_path, environ=None, workspace=None, profile=None):
             return SimpleNamespace(
                 config=config(Path(config_path)), cli=cli,
                 config_path=Path(config_path),
@@ -283,7 +283,7 @@ class StoreCliTests(unittest.TestCase):
     def test_lint_fixture_writes_tree_index_and_pages(self):
         cli = FakeCli()
 
-        def factory(config_path, environ=None, workspace=None):
+        def factory(config_path, environ=None, workspace=None, profile=None):
             return SimpleNamespace(
                 config=config(Path(config_path)), cli=cli,
                 config_path=Path(config_path),
@@ -310,7 +310,7 @@ class StoreCliTests(unittest.TestCase):
         write_config(workspace_config)
         seen = {}
 
-        def factory(config_path, environ=None, workspace=None):
+        def factory(config_path, environ=None, workspace=None, profile=None):
             seen.update(config_path=config_path, workspace=workspace)
             return SimpleNamespace(
                 config=config(workspace_config), cli=FakeCli(),
@@ -514,7 +514,7 @@ class StoreCliTests(unittest.TestCase):
     def test_preflight_does_not_resolve_or_load_the_control_plane(self):
         publisher = FakePublisher()
 
-        def factory(config_path, environ=None, workspace=None):
+        def factory(config_path, environ=None, workspace=None, profile=None):
             return SimpleNamespace(
                 config=config(Path(config_path)), config_path=Path(config_path),
                 cli=FakeCli(), publisher=publisher,
@@ -631,6 +631,78 @@ class StoreCliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertTrue(payload["ready"])
         self.assertTrue(seen["authorized"])
+
+    def test_operational_commands_forward_one_named_profile(self):
+        seen = []
+
+        def factory(config_path, environ=None, workspace=None, profile=None):
+            seen.append(profile)
+            return SimpleNamespace(
+                config=config(Path(config_path)), cli=FakeCli(),
+                config_path=Path(config_path),
+                publisher=FakePublisher(), control_plane=FakeControlPlane(),
+            )
+
+        run_dir = Path(self.tmp.name) / "profile-run"
+        write_manifest(run_dir)
+        out = Path(self.tmp.name) / "baseline.json"
+        with patch.object(
+                store_cli, "check_resource_access",
+                return_value=ResourceAccessReport("ok", (), ("readable",))):
+            commands = (
+                ["preflight", "--config", str(self.config_path), "--profile", "team-z"],
+                ["source-baseline", "--config", str(self.config_path),
+                 "--profile", "team-z", "--out", str(out)],
+                ["prepare", "--config", str(self.config_path),
+                 "--profile", "team-z", "--run-dir", str(run_dir)],
+                ["publish", "--config", str(self.config_path),
+                 "--profile", "team-z", "--run-dir", str(run_dir)],
+                ["verify", "--config", str(self.config_path),
+                 "--profile", "team-z", "--run-dir", str(run_dir)],
+            )
+            exit_codes = [
+                store_cli.main(
+                    command, stdout=StringIO(), components_factory=factory,
+                )
+                for command in commands
+            ]
+
+        # Every operational step binds the same named profile as setup; a
+        # signature mismatch would surface here as a raised TypeError.
+        self.assertEqual(seen, ["team-z"] * len(commands))
+        self.assertNotIn(2, exit_codes)  # exit 2 means the command was not accepted
+
+    def test_operational_components_bind_the_environment_or_default_profile(self):
+        resolved = SimpleNamespace(
+            path=self.config_path, origin="explicit", searched=(self.config_path,),
+        )
+        def resolve(**kwargs):
+            return SimpleNamespace(
+                binary=Path(r"C:\工具 目录\lark-cli.exe"), version="1.0.95",
+                profile=kwargs.get("profile"), capabilities=frozenset({"help", "wiki"}),
+            )
+
+        selected = []
+        with patch.object(store_cli, "resolve_config_path", return_value=resolved), \
+                patch.object(store_cli, "load_config", return_value=config(self.config_path)), \
+                patch.object(store_cli, "resolve_cli_context", side_effect=resolve) as resolver, \
+                patch.object(
+                    store_cli, "LarkCli",
+                    side_effect=lambda *args, **kwargs: selected.append(kwargs) or kwargs), \
+                patch.object(
+                    store_cli, "Publisher",
+                    side_effect=lambda *args, **kwargs: kwargs):
+            store_cli.build_read_components(
+                config_path=self.config_path,
+                environ={"GENERAL_SCREENWRITER_PROFILE": "team-env"},
+            )
+            store_cli.build_read_components(config_path=self.config_path, environ={})
+
+        bound = [call.kwargs["profile"] for call in resolver.call_args_list]
+        # The environment binding wins, then the shared setup default applies so
+        # the repository callers cannot silently fall back to a CLI default profile.
+        self.assertEqual(bound, ["team-env", DEFAULT_PROFILE])
+        self.assertEqual([item["profile"] for item in selected], ["team-env", DEFAULT_PROFILE])
 
     def test_build_read_components_stops_before_control_plane(self):
         resolved = SimpleNamespace(

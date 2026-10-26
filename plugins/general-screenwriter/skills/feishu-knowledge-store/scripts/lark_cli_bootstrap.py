@@ -12,7 +12,12 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
-from lark_cli_context import CliContext, CliContextError, resolve_cli_context
+from lark_cli_context import (
+    CliContext,
+    CliContextError,
+    resolve_cli_context,
+    standard_cli_candidates,
+)
 from lark_cli_contract import MIN_LARK_CLI_VERSION, inspect_capabilities
 from lark_runtime import (
     CliInstallResult,
@@ -57,7 +62,9 @@ def ensure_lark_cli(
             )
 
         paths = resolve_runtime_paths(environment)
-        installation = install_private_cli(paths, version, runner=runner)
+        installation = install_private_cli(
+            paths, version, runner=runner, environ=environment,
+        )
         if not installation.ok:
             return _installation_result(installation)
         try:
@@ -80,48 +87,13 @@ def ensure_lark_cli(
 def default_cli_candidates(
     environment: Mapping[str, str], which: Callable[[str], str | None]
 ) -> tuple[Path, ...]:
-    """Return system-visible compatibility candidates.
+    """Return the production search candidates for system-visible locations.
 
-    Private runtime discovery belongs to ``resolve_cli_context`` so there is a
-    single search and verification contract.
+    This is a thin alias for the shared resolver so diagnostics can never drift
+    from the order production probes; private runtime discovery stays inside
+    ``resolve_cli_context`` for the same reason.
     """
-    candidates: list[Path] = []
-    for candidate in (
-        environment.get("LARK_CLI_PATH"),
-        which("lark-cli"),
-    ):
-        if candidate:
-            path = Path(candidate)
-            if path not in candidates:
-                candidates.append(path)
-    candidates.extend(_platform_candidates(environment))
-    return tuple(candidates)
-
-
-def _platform_candidates(environment: Mapping[str, str]) -> tuple[Path, ...]:
-    if os.name == "nt":
-        candidates: list[Path] = []
-        appdata = environment.get("APPDATA")
-        if appdata:
-            npm_bin = Path(appdata) / "npm"
-            candidates.extend((
-                npm_bin / "lark-cli.cmd",
-                npm_bin / "node_modules" / "@larksuite" / "cli" / "bin" / "lark-cli.exe",
-            ))
-        program_files = environment.get("ProgramFiles") or environment.get("PROGRAMFILES")
-        if program_files:
-            candidates.append(Path(program_files) / "nodejs" / "lark-cli.cmd")
-        return tuple(candidates)
-
-    home = environment.get("HOME")
-    candidates = []
-    if home:
-        candidates.append(Path(home) / ".local" / "bin" / "lark-cli")
-    candidates.extend((
-        Path("/usr/local/bin/lark-cli"),
-        Path("/opt/homebrew/bin/lark-cli"),
-    ))
-    return tuple(candidates)
+    return standard_cli_candidates(environment, which)
 
 
 def _context_result(

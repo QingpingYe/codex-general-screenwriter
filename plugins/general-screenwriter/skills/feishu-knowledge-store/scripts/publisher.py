@@ -101,6 +101,19 @@ class Publisher:
         duplicates: list[dict[str, Any]] = []
         tokens: dict[str, str] = {}
         children_by_parent: dict[str, list[Mapping[str, Any]]] = {}
+        # One read cache per inspection: the expected-level listing and the
+        # misplacement sweep ask for the same parents, so reuse the first read
+        # without weakening either check.  The cache deliberately never spans
+        # two inspections: the post-write readback has to observe new writes.
+        reads: dict[str | None, list[Mapping[str, Any]]] = {}
+
+        def list_children(parent_token: str | None) -> list[Mapping[str, Any]]:
+            key = None if parent_token is None else str(parent_token)
+            if key not in reads:
+                reads[key] = list(self.cli.list_nodes(
+                    self.space_id, parent_node_token=parent_token,
+                ))
+            return reads[key]
 
         def identify(node: Mapping[str, Any]) -> str | None:
             return next(
@@ -146,9 +159,7 @@ class Publisher:
                 resolved[title] = token
             return resolved
 
-        root_items = list(self.cli.list_nodes(
-            self.space_id, parent_node_token=root_parent,
-        ))
+        root_items = list_children(root_parent)
         roots = inspect_level(root_label, root_items, TREE_ORDER)
         for parent_title in TREE_ORDER:
             expected_children = dict(CONTROL_TREE).get(parent_title, ())
@@ -160,9 +171,7 @@ class Publisher:
                     child for child in expected_children if child not in missing
                 )
                 continue
-            children = list(self.cli.list_nodes(
-                self.space_id, parent_node_token=parent_token,
-            ))
+            children = list_children(parent_token)
             children_by_parent[parent_title] = children
             inspect_level(parent_title, children, expected_children)
 
@@ -231,7 +240,7 @@ class Publisher:
                 pending.append((
                     token,
                     str(title or token),
-                    list(self.cli.list_nodes(self.space_id, parent_node_token=token)),
+                    list_children(token),
                 ))
 
         if duplicates or misplaced:

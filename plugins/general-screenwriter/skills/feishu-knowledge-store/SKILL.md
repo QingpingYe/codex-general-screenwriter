@@ -27,7 +27,7 @@ description: 通过远端租约、docx revision 前提、正文内容比较和�
 ## 使用流程
 
 1. 先检查 setup 状态；未 `ready` 时先完成内部准备，不进入远端同步或写入。
-2. setup 为 `ready` 后，解析持久配置和兼容 CLI，再继续原有同步任务。
+2. setup 为 `ready` 后，解析持久配置和兼容 CLI，再继续原有同步任务。所有远端命令（`preflight`、`source-baseline`、`prepare`、`publish`、`verify`、`config-status`）都必须显式绑定 setup 使用的同一 named profile（`--profile <profile>`，或由 `GENERAL_SCREENWRITER_PROFILE` 等环境绑定提供）；不得退回 CLI 默认 profile，否则读源和写目标的身份可能与写入验收的身份不同。
 3. 运行只读预检，验证用户身份、原始库读取和目标库读写能力；认证或资源权限缺口分别报告，并由 AI 在内部续跑授权和复查。
 4. 控制页位于远端系统树中：`AI_KB_INDEX_V1` 是唯一同步状态权威，`AI_KB_LOCK_V1` 提供租约；只读准入策略来自 `AI_KB_SOURCE_ADMISSION_V1`：未裁定默认纳入，只有 `exclude` 生效并作用于自身、全部后代和后代容器；页缺失表示空排除，损坏则硬失败。远端命令在 `build_components()` 中通过 `Publisher.resolve_control_plane()` 解析索引和锁，必须保留准入页的只读边界，不得创建替代文档；`Publisher.initialize()` 是发布流程为新建页定位（必要时创建）系统树的路径，不用于在控制页缺失时顶替。
 5. 在 `wiki-ingest` 建立本轮运行目录后，先运行只读 `source-baseline --out <run-id>/source_baseline.json`，再运行 `wiki-ingest` 生成任务局部 `_manifest.json`；该投影包含远端索引和准入排除快照，不取锁、不写远端。

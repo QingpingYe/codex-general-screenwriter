@@ -11,8 +11,12 @@ if str(SCRIPTS) not in sys.path:
 from lark_cli_context import (
     CliContext,
     CliContextError,
+    DEFAULT_PROFILE,
     build_cli_command,
+    profile_from_environment,
     resolve_cli_context,
+    resolve_profile_name,
+    standard_cli_candidates,
 )
 
 
@@ -232,6 +236,56 @@ class LarkCliContextTests(unittest.TestCase):
 
         self.assertNotIn("docs", context.capabilities)
         self.assertIn("wiki", context.capabilities)
+
+    def test_explicit_profile_wins_over_the_environment_binding(self):
+        environ = {"GENERAL_SCREENWRITER_PROFILE": "team-env"}
+        self.assertEqual(resolve_profile_name("team-flag", environ), "team-flag")
+
+    def test_environment_profile_binding_precedes_the_shared_default(self):
+        environ = {"LARK_CLI_PROFILE": "team-env"}
+        self.assertEqual(resolve_profile_name(None, environ), "team-env")
+        self.assertEqual(resolve_profile_name(None, {"OTHER": "1"}), DEFAULT_PROFILE)
+        self.assertEqual(
+            resolve_profile_name(None, {"GENERAL_SCREENWRITER_LARK_PROFILE": "team-alt"}),
+            "team-alt",
+        )
+
+    def test_profile_from_environment_ignores_blank_values(self):
+        environ = {"GENERAL_SCREENWRITER_PROFILE": "   ", "LARK_CLI_PROFILE": "team-b"}
+        self.assertEqual(profile_from_environment(environ), "team-b")
+        self.assertIsNone(profile_from_environment({}))
+        self.assertEqual(profile_from_environment({}, "fallback"), "fallback")
+
+    def test_shared_standard_candidates_keep_the_production_search_order(self):
+        candidates = standard_cli_candidates(
+            {
+                "LARK_CLI_PATH": str(self.root / "explicit" / "lark-cli.exe"),
+                "HOME": str(self.root / "home"),
+            },
+            which=lambda name: str(self.root / "path" / "lark-cli") if name == "lark-cli" else None,
+        )
+        self.assertEqual(candidates[0], self.root / "explicit" / "lark-cli.exe")
+        self.assertIn(self.root / "path" / "lark-cli", candidates[:3])
+        if os.name != "nt":
+            self.assertIn(Path("/usr/local/bin/lark-cli"), candidates)
+
+    def test_resolved_context_probe_binds_the_environment_profile(self):
+        binary = self.root / "lark-cli.exe"
+        runner = Runner(responder_for([binary]))
+        environ = {
+            "GENERAL_SCREENWRITER_PROFILE": "team-env",
+            "APPDATA": str(self.root / "appdata"),
+        }
+
+        context = resolve_cli_context(
+            candidates=(binary,),
+            profile=resolve_profile_name(None, environ),
+            environ=environ,
+            runner=runner,
+        )
+
+        self.assertEqual(context.profile, "team-env")
+        self.assertEqual(runner.calls[0][:3], [str(absolute(binary)), "--profile", "team-env"])
 
 
 if __name__ == "__main__":

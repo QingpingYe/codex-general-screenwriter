@@ -8,7 +8,6 @@ from typing import Mapping
 
 
 @dataclass(frozen=True)
-
 class ResolvedConfigPath:
     path: Path
     origin: str

@@ -33,6 +33,7 @@ description: Use when a Feishu-related request needs first-use preparation or re
 - `waiting_user`：链接和二维码必须已经对用户可见；用户完成操作后从当前未完成步骤继续。
 - `waiting_admin`、`waiting_org_app_binding`、`permission_missing`、`resource_grant_required`：分别说明应用、用户、组织绑定还是具体资源权限缺口；批准后重新验证。
 - `config_missing`、`config_invalid`：只补问无法推导的必要链接或选择，不重复索要已提供信息。
+- `profile_ambiguous`：本地同名 profile 出现多条记录时停止并报告，不猜测、不自作清理。
 - `control_tree_missing`：转为一次性维护者初始化；普通使用者等待。
 - `control_tree_ambiguous`、`write_result_uncertain`：先回读确认实际结果，停止写入并报告冲突或不确定状态。
 - `write_verification_required`：展示具体验收动作，按已有授权执行并回读。

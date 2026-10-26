@@ -127,6 +127,7 @@ def install_private_cli(
     version: str,
     runner: Callable[..., Any] = subprocess.run,
     artifact: PrivateCliArtifact | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> CliInstallResult:
     """Reuse a compatible private CLI or install one in a versioned prefix.
 
@@ -157,7 +158,7 @@ def install_private_cli(
     if artifact is not None:
         return _install_artifact(target, requested, runner, artifact)
 
-    npm = shutil.which("npm")
+    npm = _resolve_npm(environ)
     command = _npm_command(paths, requested, npm)
     if npm is None:
         return CliInstallResult(
@@ -213,6 +214,13 @@ def install_private_cli(
         )
 
     return _verify_installed(target.cli_bin, requested, runner, tuple(command))
+
+
+def _resolve_npm(environ: Mapping[str, str] | None) -> str | None:
+    """Resolve npm from the injected environment, never from a foreign PATH."""
+    if environ is None:
+        return shutil.which("npm")
+    return shutil.which("npm", path=str(environ.get("PATH") or ""))
 
 
 def private_install_command(paths: RuntimePaths, version: str) -> tuple[str, ...]:

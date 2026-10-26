@@ -11,7 +11,7 @@ from config import ConfigError, load_config
 from config_paths import ConfigResolutionError, resolve_config_path
 from control_plane import ControlPlane
 from lark_cli import LarkCli
-from lark_cli_context import CliContextError, resolve_cli_context
+from lark_cli_context import CliContextError, resolve_cli_context, resolve_profile_name
 from publisher import Publisher
 from resource_access import check_resource_access
 from setup_doctor import init_target, run_doctor, verify_write_access
@@ -35,10 +35,16 @@ class Components(ReadComponents):
 
 
 def build_read_components(config_path=None, environ=None, workspace=None, profile=None) -> ReadComponents:
-    """Resolve config, one CLI context, and Publisher without touching the control plane."""
+    """Resolve config, one named profile, and Publisher without the control plane.
+
+    The operational path binds the same named profile as setup: an explicit
+    ``--profile`` wins, then the documented environment binding, then the setup
+    default.  A bare CLI default profile is never used implicitly.
+    """
     resolved = resolve_config_path(config_path, workspace, environ)
     config = load_config(resolved.path, resolved.path.parent, environ)
-    cli_context = resolve_cli_context(profile=profile, environ=environ)
+    selected_profile = resolve_profile_name(profile, environ)
+    cli_context = resolve_cli_context(profile=selected_profile, environ=environ)
     cli = LarkCli(
         cli_context.binary,
         identity=config.identity,
@@ -104,22 +110,27 @@ def build_parser() -> argparse.ArgumentParser:
         command = commands.add_parser(name)
         command.add_argument("--config")
         command.add_argument("--workspace")
+        command.add_argument("--profile")
     for name in ("prepare", "publish", "verify"):
         command = commands.add_parser(name)
         command.add_argument("--config")
         command.add_argument("--workspace")
+        command.add_argument("--profile")
         command.add_argument("--run-dir", required=True)
     source_baseline = commands.add_parser("source-baseline")
     source_baseline.add_argument("--config")
     source_baseline.add_argument("--workspace")
+    source_baseline.add_argument("--profile")
     source_baseline.add_argument("--out", required=True)
     fixture = commands.add_parser("lint-fixture")
     fixture.add_argument("--config")
     fixture.add_argument("--workspace")
+    fixture.add_argument("--profile")
     fixture.add_argument("--out", required=True)
     status = commands.add_parser("config-status")
     status.add_argument("--config")
     status.add_argument("--workspace")
+    status.add_argument("--profile")
     doctor = commands.add_parser("doctor")
     doctor.add_argument("--config")
     doctor.add_argument("--workspace")
@@ -163,7 +174,10 @@ def config_status(args, stdout, environ=None, context_resolver=None) -> int:
         searched = [str(item) for item in resolved.searched] if resolved is not None else []
 
     try:
-        context = context_resolver(environ=environ)
+        context = context_resolver(
+            profile=resolve_profile_name(getattr(args, "profile", None), environ),
+            environ=environ,
+        )
         cli_status = {
             "status": "available",
             "path": str(context.binary),
@@ -235,14 +249,15 @@ def export_lint_fixture(components: Components, out: str | Path) -> Path:
     return out
 
 
-def main(argv=None, stdout=None, components_factory=None) -> int:
+def main(argv=None, stdout=None, components_factory=None, environ=None) -> int:
     args = build_parser().parse_args(argv)
     stdout = stdout if stdout is not None else sys.stdout
     if args.command == "config-status":
-        return config_status(args, stdout, environ=None)
+        return config_status(args, stdout, environ=environ)
 
     factory = components_factory if components_factory is not None else build_components
     workspace = Path(args.workspace) if getattr(args, "workspace", None) else None
+    profile = getattr(args, "profile", None)
     try:
         if args.command == "preflight":
             read_factory = (
@@ -250,7 +265,9 @@ def main(argv=None, stdout=None, components_factory=None) -> int:
                 if components_factory is None or components_factory is build_components
                 else components_factory
             )
-            components = read_factory(args.config, environ=None, workspace=workspace)
+            components = read_factory(
+                args.config, environ=environ, workspace=workspace, profile=profile,
+            )
             payload = preflight_payload(components)
         elif args.command == "doctor":
             payload = run_doctor(
@@ -279,7 +296,7 @@ def main(argv=None, stdout=None, components_factory=None) -> int:
             "source-baseline", "lint-fixture",
         }:
             components = factory(
-                args.config, environ=None, workspace=workspace,
+                args.config, environ=environ, workspace=workspace, profile=profile,
             )
             if args.command == "resolve":
                 payload = components.publisher.resolve_control_plane()
