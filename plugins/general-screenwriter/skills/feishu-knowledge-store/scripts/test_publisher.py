@@ -745,5 +745,37 @@ source_revision_parts: [r1]
 
         self.assertEqual(self.cli.created_titles, [])
 
+    def test_reserved_page_outside_expected_parent_blocks_initialization(self):
+        self.cli.nodes["root"] = [
+            {"title": "AI_KB_INDEX_V1", "node_token": "rogue-index"},
+        ]
+
+        inspection = self.publisher.inspect_control_tree()
+
+        self.assertEqual(inspection["status"], "control_tree_ambiguous")
+        self.assertEqual(inspection["state"], "ambiguous")
+        self.assertTrue(any(
+            item["title"] == "AI_KB_INDEX_V1"
+            for item in inspection["misplaced"]
+        ))
+        with self.assertRaises(NeedsReview):
+            self.publisher.initialize()
+        self.assertEqual(self.cli.created_titles, [])
+
+    def test_complete_tree_with_extra_reserved_page_is_ambiguous(self):
+        self.publisher.initialize()
+        self.cli.nodes["root"].append({
+            "title": "AI_KB_INDEX_V1",
+            "node_token": "rogue-index",
+        })
+
+        inspection = self.publisher.inspect_control_tree()
+
+        self.assertEqual(inspection["status"], "control_tree_ambiguous")
+        self.assertTrue(any(
+            item["title"] == "AI_KB_INDEX_V1"
+            for item in inspection["misplaced"]
+        ))
+
 if __name__ == "__main__":
     unittest.main()

@@ -30,9 +30,20 @@ def config():
     )
 
 
+def space_config():
+    return KnowledgeConfig(
+        SourceConfig("source-space", "space", "https://example.feishu.cn/wiki/space/source"),
+        TargetConfig("target-space", None, "space"),
+        "user",
+        45,
+        (),
+    )
+
+
 class FakeCli:
     def __init__(self):
         self.nodes = {"root": []}
+        self.open_id = "ou_current_user"
         self.docs = {}
         self.titles_by_token = {}
         self.created_titles = []
@@ -42,6 +53,11 @@ class FakeCli:
         self.fail_create_titles = set()
         self.fail_fetch_titles = set()
         self._next = 0
+
+    def _json(self, *arguments):
+        if arguments[:2] == ("auth", "status"):
+            return {"data": {"user": {"open_id": self.open_id}}}
+        raise AssertionError(f"unexpected command: {arguments}")
 
     def _new_ids(self):
         self._next += 1
@@ -312,6 +328,169 @@ class SetupDoctorTests(unittest.TestCase):
                 config_path="config.json", authorized=True, initializer_confirmed=True,
             )
             cli.fail_fetch_titles = {setup_doctor.WRITE_VERIFICATION_TITLE}
+            report = verify_write_access(config_path="config.json", authorized=True)
+
+        self.assertEqual(report["status"], "write_result_uncertain")
+
+    def test_space_root_resource_grant_is_resolved_by_verified_acceptance_write(self):
+        cli = FakeCli()
+        resource_grant = ResourceAccessReport(
+            "resource_grant_required",
+            ("target.create", "target.acceptance_write"),
+            ("root-level create cannot be proven read-only",),
+        )
+        with patched_runtime(
+            cli,
+            config_obj=space_config(),
+            resource_report=resource_grant,
+        ):
+            initialized = init_target(
+                config_path="config.json",
+                authorized=True,
+                initializer_confirmed=True,
+            )
+            verified = verify_write_access(
+                config_path="config.json",
+                authorized=True,
+            )
+            final = run_doctor(config_path="config.json")
+
+        self.assertEqual(initialized["status"], "write_verification_required")
+        self.assertEqual(verified["status"], "ready")
+        self.assertEqual(final["status"], "ready")
+        self.assertTrue(final["ready"])
+        self.assertEqual(final["resource_access"]["status"], "ok")
+        self.assertEqual(
+            final["resource_access"]["read_only_status"],
+            "resource_grant_required",
+        )
+
+    def test_write_verification_marker_is_bound_to_authenticated_identity(self):
+        cli = FakeCli()
+        cli.open_id = "ou_first_user"
+        with patched_runtime(cli):
+            init_target(
+                config_path="config.json",
+                authorized=True,
+                initializer_confirmed=True,
+            )
+            verify_write_access(config_path="config.json", authorized=True)
+            cli.open_id = "ou_second_user"
+            report = run_doctor(config_path="config.json")
+
+        self.assertFalse(report["ready"])
+        self.assertEqual(report["status"], "write_verification_required")
+        self.assertEqual(
+            check(report, "write_verification")["status"],
+            "write_verification_required",
+        )
+
+    def test_verify_write_access_readback_exception_is_uncertain(self):
+        cli = FakeCli()
+        with patched_runtime(cli):
+            init_target(
+                config_path="config.json",
+                authorized=True,
+                initializer_confirmed=True,
+            )
+            original_inspect = Publisher.inspect_control_tree
+            calls = {"count": 0}
+
+            def flaky_inspect(self):
+                calls["count"] += 1
+                if calls["count"] == 1:
+                    return original_inspect(self)
+                raise TimeoutError("readback unavailable")
+
+            with patch.object(Publisher, "inspect_control_tree", flaky_inspect):
+                report = verify_write_access(
+                    config_path="config.json",
+                    authorized=True,
+                )
+
+        self.assertEqual(report["status"], "write_result_uncertain")
+        self.assertEqual(calls["count"], 2)
+
+    def test_init_target_readback_exception_is_uncertain(self):
+        cli = FakeCli()
+        cli.fail_after_create_titles = {"00_使用说明"}
+        with patched_runtime(cli):
+            original_inspect = Publisher.inspect_control_tree
+            calls = {"count": 0}
+
+            def flaky_inspect(self):
+                calls["count"] += 1
+                if calls["count"] <= 2:
+                    return original_inspect(self)
+                raise TimeoutError("readback unavailable")
+
+            with patch.object(Publisher, "inspect_control_tree", flaky_inspect):
+                report = init_target(
+                    config_path="config.json",
+                    authorized=True,
+                    initializer_confirmed=True,
+                )
+
+        self.assertEqual(report["status"], "write_result_uncertain")
+        self.assertEqual(cli.create_attempts["00_使用说明"], 1)
+
+    def test_verify_write_access_requires_a_stable_identity_before_writing(self):
+        cli = FakeCli()
+        with patched_runtime(cli):
+            init_target(
+                config_path="config.json",
+                authorized=True,
+                initializer_confirmed=True,
+            )
+            cli.open_id = None
+            created = len(cli.created_titles)
+            updates = len(cli.update_calls)
+            report = verify_write_access(config_path="config.json", authorized=True)
+
+        self.assertEqual(report["status"], "needs_escalation")
+        self.assertEqual(len(cli.created_titles), created)
+        self.assertEqual(len(cli.update_calls), updates)
+
+    def test_unrelated_resource_grant_is_not_hidden_by_write_acceptance(self):
+        cli = FakeCli()
+        resource_grant = ResourceAccessReport(
+            "resource_grant_required",
+            ("source.sample",),
+            ("source sample is not readable",),
+        )
+        with patched_runtime(
+            cli,
+            config_obj=space_config(),
+            resource_report=resource_grant,
+        ):
+            init_target(
+                config_path="config.json",
+                authorized=True,
+                initializer_confirmed=True,
+            )
+            verify_write_access(config_path="config.json", authorized=True)
+            report = run_doctor(config_path="config.json")
+
+        self.assertFalse(report["ready"])
+        self.assertEqual(report["status"], "resource_grant_required")
+
+    def test_malformed_verification_readback_is_uncertain(self):
+        cli = FakeCli()
+        with patched_runtime(cli):
+            init_target(
+                config_path="config.json",
+                authorized=True,
+                initializer_confirmed=True,
+            )
+            original_fetch = cli.fetch_doc
+
+            def malformed_fetch(token):
+                document = original_fetch(token)["data"]["document"]
+                if cli.titles_by_token.get(token) == setup_doctor.WRITE_VERIFICATION_TITLE:
+                    return {"data": {"document": {"revision_id": document["revision_id"]}}}
+                return {"data": {"document": document}}
+
+            cli.fetch_doc = malformed_fetch
             report = verify_write_access(config_path="config.json", authorized=True)
 
         self.assertEqual(report["status"], "write_result_uncertain")

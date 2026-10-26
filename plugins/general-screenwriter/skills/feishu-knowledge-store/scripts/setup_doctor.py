@@ -16,7 +16,7 @@ from lark_cli import LarkCli, redact_sensitive
 from lark_cli_context import CliContextError, resolve_cli_context
 from lark_cli_contract import REQUIRED_CAPABILITIES
 from publisher import NeedsReview, Publisher, TREE_ORDER, WRITE_VERIFICATION_TITLE
-from resource_access import check_resource_access
+from resource_access import authenticated_identity as read_authenticated_identity, check_resource_access
 from setup_state import SetupCheck, render_setup_report
 
 
@@ -237,8 +237,19 @@ def _tree_check(tree: Mapping[str, Any], initializer: bool) -> SetupCheck:
     )
 
 
-def _verification_body(profile: str | None) -> str:
+def _current_identity(context: _Context) -> tuple[str | None, str | None]:
+    try:
+        identity = read_authenticated_identity(context.cli)
+    except Exception as error:
+        return None, _safe_error(error)
+    if not identity:
+        return None, None
+    return identity, None
+
+
+def _verification_body(profile: str | None, authenticated_identity: str) -> str:
     payload = {
+        "authenticated_identity": authenticated_identity,
         "purpose": WRITE_VERIFICATION_PURPOSE,
         "profile": profile or "default",
         "schema_version": WRITE_VERIFICATION_SCHEMA_VERSION,
@@ -247,12 +258,19 @@ def _verification_body(profile: str | None) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
 
 
-def _verification_is_valid(content: str, profile: str | None) -> bool:
+def _verification_is_valid(
+    content: str,
+    profile: str | None,
+    authenticated_identity: str | None,
+) -> bool:
+    if not authenticated_identity:
+        return False
     try:
         payload = json.loads(content)
     except (TypeError, json.JSONDecodeError):
         return False
     return payload == {
+        "authenticated_identity": authenticated_identity,
         "purpose": WRITE_VERIFICATION_PURPOSE,
         "profile": profile or "default",
         "schema_version": WRITE_VERIFICATION_SCHEMA_VERSION,
@@ -263,34 +281,71 @@ def _verification_is_valid(content: str, profile: str | None) -> bool:
 def _read_verification(
     context: _Context,
     tree: Mapping[str, Any] | None = None,
+    authenticated_identity: str | None = None,
 ) -> tuple[bool, str, dict[str, Any]]:
-    inspection = dict(tree or context.publisher.inspect_control_tree())
+    try:
+        inspection = dict(tree) if tree is not None else dict(
+            context.publisher.inspect_control_tree()
+        )
+    except Exception as error:
+        return False, "readback_failed:" + _safe_error(error), dict(tree or {})
     token = inspection.get("verification_token")
     if not token:
         return False, "missing", inspection
+    if not authenticated_identity:
+        return False, "identity_missing", inspection
     try:
         current = context.publisher.fetch_current(str(token))
+        content = current["content"]
     except Exception as error:
-        return False, "unreadable:" + _safe_error(error), inspection
+        return False, "readback_failed:" + _safe_error(error), inspection
     profile = getattr(context.cli_context, "profile", None)
-    if not _verification_is_valid(current["content"], profile):
+    if not _verification_is_valid(content, profile, authenticated_identity):
         return False, "marker_mismatch", inspection
     return True, "verified", inspection
 
 
-def _write_verification_check(tree: Mapping[str, Any], context: _Context) -> SetupCheck:
+def _write_verification_check(
+    tree: Mapping[str, Any],
+    context: _Context,
+    authenticated_identity: str | None,
+    identity_error: str | None,
+    verification_result: tuple[bool, str, dict[str, Any]] | None = None,
+) -> SetupCheck:
     if tree.get("status") != "control_tree_complete":
         return _tree_check(tree, initializer=False)
-    valid, reason, _ = _read_verification(context, tree)
+    if identity_error:
+        return SetupCheck(
+            "write_verification", "waiting_admin", "identity_unavailable",
+            "the authenticated user identity could not be verified",
+            ("Recheck user authorization after the authentication error is resolved.",),
+            "Resolve the reported user authentication problem.",
+        )
+    if not authenticated_identity:
+        return SetupCheck(
+            "write_verification", "needs_escalation", "identity_missing",
+            "verified auth status did not expose a stable user identity",
+            ("Use a verified user identity that exposes an open ID or user ID.",),
+            "Sign in with a user account that exposes a stable user identifier.",
+        )
+    valid, reason, _ = verification_result or _read_verification(
+        context, tree, authenticated_identity,
+    )
     if valid:
         return _ready_check("write_verification", "write acceptance was verified")
+    uncertain = reason.startswith(("unreadable:", "readback_failed:"))
+    message = (
+        "write acceptance could not be read back completely"
+        if uncertain else
+        "write acceptance has not been verified for the current authenticated user"
+    )
     return SetupCheck(
         "write_verification",
-        "write_result_uncertain" if reason.startswith("unreadable:") else "write_verification_required",
-        "write_result_uncertain" if reason.startswith("unreadable:") else None,
-        "write acceptance has not been successfully verified",
+        "write_result_uncertain" if uncertain else "write_verification_required",
+        "write_result_uncertain" if uncertain else None,
+        message,
         (
-            "Run the dedicated acceptance write and read it back.",
+            "Read back the acceptance page before any retry; do not repeat the write blindly.",
         ),
         None,
     )
@@ -319,11 +374,42 @@ def run_doctor(
         return _failure_report(failure.check)
 
     checks = list(_context_ready_checks(context))
+    tree = _inspect_control_tree(context.publisher)
+    authenticated_identity, identity_error = _current_identity(context)
+    verification_result = None
+    if (
+        tree.get("status") == "control_tree_complete"
+        and authenticated_identity
+        and not identity_error
+    ):
+        verification_result = _read_verification(
+            context, tree, authenticated_identity,
+        )
+
     access_payload = None
     try:
         access = check_resource_access(context.config, context.cli)
         access_payload = access.to_dict()
-        if access.ok:
+        acceptance_write_proves_target = (
+            access.status == "resource_grant_required"
+            and context.config.target.root_mode == "space"
+            and bool(access.missing)
+            and set(access.missing).issubset({"target.create", "target.acceptance_write"})
+            and tree.get("status") == "control_tree_complete"
+            and bool(verification_result and verification_result[0])
+        )
+        if acceptance_write_proves_target:
+            checks.append(_ready_check(
+                "resource_access",
+                "the verified acceptance write resolved the read-only target-space create limitation",
+            ))
+            access_payload["read_only_status"] = access_payload["status"]
+            access_payload["read_only_missing"] = access_payload["missing"]
+            access_payload["status"] = "ok"
+            access_payload["missing"] = []
+            access_payload["effective_status"] = "ok"
+            access_payload["resolved_by"] = "write_verification"
+        elif access.ok:
             checks.append(_ready_check(
                 "resource_access", "user identity, source reads, and target checks passed",
             ))
@@ -340,10 +426,15 @@ def run_doctor(
             _safe_error(error), ("Rerun the read-only resource checks.",), None,
         ))
 
-    tree = _inspect_control_tree(context.publisher)
     checks.append(_tree_check(tree, bool(initializer)))
     if tree.get("status") == "control_tree_complete":
-        checks.append(_write_verification_check(tree, context))
+        checks.append(_write_verification_check(
+            tree,
+            context,
+            authenticated_identity,
+            identity_error,
+            verification_result,
+        ))
     report = render_setup_report(tuple(checks))
     if access_payload is not None:
         report["resource_access"] = access_payload
@@ -436,8 +527,14 @@ def init_target(
         context.publisher.initialize()
     except Exception as error:
         readback = _inspect_control_tree(context.publisher)
+        readback_unavailable = (
+            readback.get("status") == "network_blocked"
+            or bool(readback.get("error"))
+        )
         status = "write_result_uncertain" if (
-            readback.get("present") or readback.get("duplicates")
+            readback_unavailable
+            or readback.get("present") or readback.get("duplicates")
+            or readback.get("misplaced")
             or readback.get("state") == "incomplete"
         ) else _exception_status(error)
         report = render_setup_report(tuple(checks + [SetupCheck(
@@ -490,13 +587,14 @@ def init_target(
 def _verification_write(
     context: _Context,
     tree: Mapping[str, Any],
+    authenticated_identity: str,
 ) -> tuple[bool, str]:
     tokens = tree.get("tokens", {})
     parent_token = tokens.get(TREE_ORDER[-1])
     if not parent_token:
         return False, "missing_system_console"
     profile = getattr(context.cli_context, "profile", None)
-    body = _verification_body(profile)
+    body = _verification_body(profile, authenticated_identity)
     token = tree.get("verification_token")
 
     if token:
@@ -507,16 +605,22 @@ def _verification_write(
         try:
             context.cli.update_doc(str(token), current["revision_id"], body)
         except Exception as error:
-            valid, reason, _ = _read_verification(context)
+            valid, reason, _ = _read_verification(
+                context, authenticated_identity=authenticated_identity,
+            )
             return (True, "verified") if valid else (False, "write_uncertain:" + _safe_error(error))
     else:
         try:
             context.cli.create_doc(str(parent_token), WRITE_VERIFICATION_TITLE, body)
         except Exception as error:
-            valid, reason, _ = _read_verification(context)
+            valid, reason, _ = _read_verification(
+                context, authenticated_identity=authenticated_identity,
+            )
             return (True, "verified") if valid else (False, "write_uncertain:" + _safe_error(error))
 
-    valid, reason, _ = _read_verification(context)
+    valid, reason, _ = _read_verification(
+        context, authenticated_identity=authenticated_identity,
+    )
     return (True, "verified") if valid else (False, "readback_mismatch:" + reason)
 
 
@@ -553,6 +657,24 @@ def verify_write_access(
         ))
         return render_setup_report(tuple(checks))
 
+    authenticated_identity, identity_error = _current_identity(context)
+    if identity_error:
+        checks.append(SetupCheck(
+            "write_verification", "waiting_admin", "identity_unavailable",
+            "the authenticated user identity could not be verified",
+            ("Resolve the user authentication error, then rerun write verification.",),
+            "Resolve the reported user authentication problem.",
+        ))
+        return render_setup_report(tuple(checks))
+    if not authenticated_identity:
+        checks.append(SetupCheck(
+            "write_verification", "needs_escalation", "identity_missing",
+            "verified auth status did not expose a stable user identity",
+            ("Use a verified user identity that exposes an open ID or user ID.",),
+            "Sign in with a user account that exposes a stable user identifier.",
+        ))
+        return render_setup_report(tuple(checks))
+
     tokens = tree["tokens"]
     try:
         control_plane = ControlPlane(
@@ -578,7 +700,7 @@ def verify_write_access(
         return render_setup_report(tuple(checks))
 
     try:
-        success, reason = _verification_write(context, tree)
+        success, reason = _verification_write(context, tree, authenticated_identity)
     finally:
         control_plane.release_lock(lease)
 

@@ -8,7 +8,7 @@ if str(SCRIPTS) not in sys.path:
 
 from lark_cli import AuthenticationError, PermissionDenied
 from models import KnowledgeConfig, SourceConfig, TargetConfig
-from resource_access import check_resource_access
+from resource_access import authenticated_identity, check_resource_access
 
 
 def _flag(arguments, name):
@@ -317,6 +317,16 @@ class ResourceAccessTests(unittest.TestCase):
             call[:3] == ("drive", "permission.members", "auth") for call in cli.calls
         ))
 
+
+    def test_authenticated_identity_uses_verified_open_id(self):
+        cli = FakeCli(auth_result={"data": {"user": {"open_id": "ou_verified"}}})
+
+        self.assertEqual(authenticated_identity(cli), "open_id:ou_verified")
+
+    def test_authenticated_identity_requires_a_stable_user_identifier(self):
+        cli = FakeCli(auth_result={"data": {"user": {"name": "Writer"}}})
+
+        self.assertIsNone(authenticated_identity(cli))
 
     def test_details_redact_credential_values(self):
         cli = FakeCli(

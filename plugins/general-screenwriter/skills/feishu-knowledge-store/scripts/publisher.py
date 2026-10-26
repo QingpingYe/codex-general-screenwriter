@@ -34,6 +34,11 @@ CONTROL_TREE = (
 
 TREE_ORDER = ("00_使用说明", "01_知识内容", "02_导航与日志", "99_系统控制台")
 WRITE_VERIFICATION_TITLE = "AI_KB_WRITE_VERIFICATION_V1"
+RESERVED_SYSTEM_TITLES = frozenset(
+    TREE_ORDER
+    + tuple(child for _parent, children in CONTROL_TREE for child in children)
+    + (WRITE_VERIFICATION_TITLE,)
+)
 
 
 class Publisher:
@@ -187,7 +192,49 @@ class Publisher:
                     tokens["verification"] = verification_token
                     present.append(WRITE_VERIFICATION_TITLE)
 
-        if duplicates:
+        allowed_parents = {title: set() for title in RESERVED_SYSTEM_TITLES}
+        root_key = None if root_parent is None else str(root_parent)
+        for title in TREE_ORDER:
+            if roots.get(title):
+                allowed_parents[title].add(root_key)
+        for parent_title, expected_children in CONTROL_TREE:
+            parent_token = roots.get(parent_title)
+            if not parent_token:
+                continue
+            for child in expected_children:
+                allowed_parents[child].add(str(parent_token))
+        if console_token and verification_token:
+            allowed_parents[WRITE_VERIFICATION_TITLE].add(str(console_token))
+
+        misplaced: list[dict[str, Any]] = []
+        pending: list[tuple[str | None, str, list[Mapping[str, Any]]]] = [
+            (root_parent, root_label, root_items),
+        ]
+        scanned: set[str] = set()
+        while pending:
+            parent_token, parent_label, items = pending.pop(0)
+            parent_key = None if parent_token is None else str(parent_token)
+            for node in items:
+                title = node.get("title")
+                token = identify(node)
+                if title in RESERVED_SYSTEM_TITLES and parent_key not in allowed_parents[title]:
+                    misplaced.append({
+                        "parent": parent_label,
+                        "parent_token": parent_key,
+                        "title": title,
+                        "node_token": token,
+                        "reason": "reserved system title outside expected parent",
+                    })
+                if not token or token in scanned:
+                    continue
+                scanned.add(token)
+                pending.append((
+                    token,
+                    str(title or token),
+                    list(self.cli.list_nodes(self.space_id, parent_node_token=token)),
+                ))
+
+        if duplicates or misplaced:
             status = "control_tree_ambiguous"
             state = "ambiguous"
         elif missing:
@@ -210,6 +257,7 @@ class Publisher:
             "present": present,
             "missing": missing,
             "duplicates": duplicates,
+            "misplaced": misplaced,
             "tokens": tokens,
             "verification_token": verification_token,
             "root_parent": root_parent,

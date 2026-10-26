@@ -105,6 +105,54 @@ def check_resource_access(
     ))
 
 
+def authenticated_identity(cli: Any) -> str | None:
+    """Return a stable namespace-qualified identity from verified auth state."""
+    payload = _auth_status(cli)
+    if isinstance(payload, Mapping) and payload.get("ok") is False:
+        raise AuthenticationError("auth status reported failure")
+    return _stable_identity(payload)
+
+
+def _stable_identity(payload: Any) -> str | None:
+    values: dict[str, set[str]] = {
+        "open_id": set(),
+        "user_id": set(),
+        "union_id": set(),
+    }
+    _collect_identity_values(payload, values)
+    for name in ("open_id", "user_id", "union_id"):
+        found = values[name]
+        if len(found) == 1:
+            return f"{name}:{next(iter(found))}"
+    return None
+
+
+def _collect_identity_values(value: Any, values: dict[str, set[str]]) -> None:
+    if isinstance(value, Mapping):
+        for key, name in (
+            ("open_id", "open_id"),
+            ("openId", "open_id"),
+            ("user_open_id", "open_id"),
+            ("userOpenId", "open_id"),
+            ("user_id", "user_id"),
+            ("userId", "user_id"),
+            ("union_id", "union_id"),
+            ("unionId", "union_id"),
+        ):
+            candidate = value.get(key)
+            if isinstance(candidate, bool):
+                continue
+            if isinstance(candidate, (str, int)):
+                normalized = str(candidate).strip()
+                if normalized:
+                    values[name].add(normalized)
+        for nested in value.values():
+            _collect_identity_values(nested, values)
+    elif isinstance(value, (list, tuple)):
+        for nested in value:
+            _collect_identity_values(nested, values)
+
+
 def _check_source_read(config: KnowledgeConfig, cli: Any, sample_node_tokens: Iterable[str]) -> None:
     samples = tuple(token for token in sample_node_tokens if isinstance(token, str) and token.strip())
     source_ref = _parse_source_reference(config)
