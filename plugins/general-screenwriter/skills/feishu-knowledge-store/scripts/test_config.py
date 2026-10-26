@@ -116,6 +116,15 @@ class ConfigTests(unittest.TestCase):
         config = self.load(config_json({}), {}, which=lambda _: None)
         self.assertEqual(config.cli_candidates, ())
 
+    def test_knowledge_schema_rejects_profile_and_cli_state_fields(self):
+        for extra in (
+            {"profile": "team-a"},
+            {"cli_profile": "team-a"},
+            {"cli_context": {"profile": "team-a"}},
+        ):
+            with self.subTest(extra=extra):
+                with self.assertRaisesRegex(ConfigError, "unexpected"):
+                    self.load(config_json(extra), {})
 
 if __name__ == "__main__":
     unittest.main()

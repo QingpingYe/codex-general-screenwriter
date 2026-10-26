@@ -2,7 +2,11 @@ import unittest
 import tempfile
 from pathlib import Path
 
-from config_paths import ConfigResolutionError, resolve_config_path
+from config_paths import (
+    ConfigResolutionError,
+    resolve_config_destination,
+    resolve_config_path,
+)
 
 
 class ResolverTests(unittest.TestCase):
@@ -163,6 +167,37 @@ class ResolverTests(unittest.TestCase):
         self.assertEqual(resolved.path, expected)
         self.assertEqual(resolved.origin, "user")
 
+    def test_first_use_destination_prefers_explicit_environment_path(self):
+        destination = self.root / "chosen" / "config.json"
+        resolved = resolve_config_destination(
+            None,
+            self.workspace,
+            {"GENERAL_SCREENWRITER_KB_CONFIG": str(destination)},
+            home=self.root / "home",
+        )
+        self.assertEqual(resolved, destination)
+
+    def test_first_use_destination_preserves_existing_workspace_config(self):
+        existing = self.write(self.workspace / "feishu-knowledge-base.json")
+        destination = resolve_config_destination(
+            None,
+            self.workspace,
+            {},
+            home=self.root / "home",
+        )
+        self.assertEqual(destination, existing.resolve())
+
+    def test_first_use_destination_defaults_to_stable_user_directory(self):
+        appdata = self.root / "appdata"
+        expected = appdata / "general-screenwriter" / "feishu-knowledge-base.json"
+        destination = resolve_config_destination(
+            None,
+            self.workspace,
+            {"APPDATA": str(appdata)},
+            home=self.root / "home",
+            system="windows",
+        )
+        self.assertEqual(destination, expected)
 
 if __name__ == "__main__":
     unittest.main()

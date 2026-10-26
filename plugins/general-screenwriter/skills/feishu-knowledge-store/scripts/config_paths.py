@@ -8,6 +8,7 @@ from typing import Mapping
 
 
 @dataclass(frozen=True)
+
 class ResolvedConfigPath:
     path: Path
     origin: str
@@ -78,6 +79,45 @@ def resolve_config_path(
         searched=(*searched, *user_candidates),
     )
 
+def resolve_config_destination(
+    explicit_path: str | Path | None = None,
+    workspace: str | Path | None = None,
+    environ: Mapping[str, str] | None = None,
+    home: str | Path | None = None,
+    system: str | None = None,
+) -> Path:
+    """Return the durable path a first-use setup should write.
+
+    Explicit/environment destinations always win.  An already discoverable
+    workspace/ancestor/user configuration is preserved; otherwise the current
+    platform's standard user configuration location is used so a plugin cache
+    or package directory never becomes the durable destination.
+    """
+    environment = os.environ if environ is None else environ
+    direct = explicit_path
+    if direct is None:
+        direct = (
+            environment.get("GENERAL_SCREENWRITER_KB_CONFIG")
+            or environment.get("PICTUREBOOK_KB_CONFIG")
+        )
+    if direct is not None and str(direct).strip():
+        return _destination_path(direct)
+
+    try:
+        return resolve_config_path(None, workspace, environment, home, system).path
+    except ConfigResolutionError:
+        user_candidates = user_config_candidates(environment, home, system)
+        return _destination_path(user_candidates[0])
+
+
+# A clear first-use spelling for setup callers.
+first_use_config_destination = resolve_config_destination
+
+def _destination_path(path: str | Path) -> Path:
+    try:
+        return Path(path).expanduser().resolve()
+    except OSError:
+        return Path(path).expanduser().absolute()
 
 def _workspace_chain(workspace: str | Path) -> tuple[Path, ...]:
     current = Path(workspace).expanduser().resolve()
