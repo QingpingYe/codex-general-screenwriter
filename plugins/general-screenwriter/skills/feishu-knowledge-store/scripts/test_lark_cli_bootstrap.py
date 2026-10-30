@@ -14,6 +14,16 @@ from lark_cli_context import standard_cli_candidates
 from lark_runtime import CliInstallResult, RuntimePaths
 
 
+# The resolver always returns resolved absolute paths, so expected command
+# strings must be built from the same resolved form.  Besides expanding 8.3
+# short names and on-disk letter case (which differ between hosts), a Windows
+# literal is a *relative* path on POSIX hosts and would silently acquire the
+# working directory prefix there.
+TOOLS_BINARY = (
+    Path(r"C:\Tools\lark-cli.exe") if os.name == "nt" else Path("/opt/tools/lark-cli")
+).resolve()
+
+
 class Completed:
     def __init__(self, stdout="", returncode=0, stderr=""):
         self.stdout = stdout
@@ -145,7 +155,7 @@ class LarkCliBootstrapTests(unittest.TestCase):
         )
 
     def test_existing_supported_cli_is_used_without_install(self):
-        binary = Path(r"C:\Tools\lark-cli.exe")
+        binary = TOOLS_BINARY
         runner = Runner(*diagnostics_responses("1.0.95"))
         result = ensure_lark_cli(candidates=(binary,), runner=runner)
         self.assertEqual(result, {
@@ -158,7 +168,7 @@ class LarkCliBootstrapTests(unittest.TestCase):
         self.assertEqual(runner.commands, diagnostic_commands(binary))
 
     def test_newer_stable_cli_is_supported_without_install(self):
-        binary = Path(r"C:\Tools\lark-cli.exe")
+        binary = TOOLS_BINARY
         runner = Runner(*diagnostics_responses("1.0.100"))
         result = ensure_lark_cli(candidates=(binary,), runner=runner)
         self.assertEqual(result["status"], "available")
@@ -166,7 +176,7 @@ class LarkCliBootstrapTests(unittest.TestCase):
         self.assertEqual(result["capability_report"], capability_report())
 
     def test_capability_report_is_returned_with_missing_and_failed_probes(self):
-        binary = Path(r"C:\Tools\lark-cli.exe")
+        binary = TOOLS_BINARY
         results = (0, 1, 0, 0, OSError("denied"), 0)
         runner = Runner(*diagnostics_responses("1.0.95", results))
         result = ensure_lark_cli(candidates=(binary,), runner=runner)
@@ -181,7 +191,7 @@ class LarkCliBootstrapTests(unittest.TestCase):
     def test_missing_cli_reports_private_npm_install_command(self):
         runner = Runner(FileNotFoundError("lark-cli not found"))
         result = ensure_lark_cli(
-            candidates=(Path(r"C:\Tools\lark-cli.exe"),),
+            candidates=(TOOLS_BINARY,),
             runner=runner,
         )
         command = result["install_command"]
@@ -196,7 +206,7 @@ class LarkCliBootstrapTests(unittest.TestCase):
         self.assertFalse(runner.commands[1:])
 
     def test_install_flag_delegates_to_private_runtime_and_rechecks(self):
-        candidate = Path(r"C:\Tools\lark-cli.exe")
+        candidate = TOOLS_BINARY
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "lark-cli"
             installed = root / "1.0.96" / "node_modules" / ".bin" / (
@@ -247,7 +257,7 @@ class LarkCliBootstrapTests(unittest.TestCase):
         runner = Runner(Completed("not found", returncode=1))
         with mock.patch("lark_cli_bootstrap.install_private_cli", return_value=install_result):
             result = ensure_lark_cli(
-                candidates=(Path(r"C:\Tools\lark-cli.exe"),),
+                candidates=(TOOLS_BINARY,),
                 install=True,
                 runner=runner,
                 environ={},
@@ -260,40 +270,40 @@ class LarkCliBootstrapTests(unittest.TestCase):
     def test_unsupported_version_is_not_replaced(self):
         runner = Runner(Completed("lark-cli version 1.0.94\n"))
         result = ensure_lark_cli(
-            candidates=(Path(r"C:\Tools\lark-cli.exe"),),
+            candidates=(TOOLS_BINARY,),
             install=False,
             runner=runner,
         )
         self.assertEqual(result["status"], "unsupported")
         self.assertEqual(result["version"], "1.0.94")
-        self.assertEqual(runner.commands, [[r"C:\Tools\lark-cli.exe", "--version"]])
+        self.assertEqual(runner.commands, [[str(TOOLS_BINARY), "--version"]])
 
     def test_version_parse_failure_has_a_distinct_state(self):
         runner = Runner(Completed("lark-cli version unknown\n"))
         result = ensure_lark_cli(
-            candidates=(Path(r"C:\Tools\lark-cli.exe"),),
+            candidates=(TOOLS_BINARY,),
             install=False,
             runner=runner,
         )
         self.assertEqual(result["status"], "version_unparseable")
         self.assertIsNone(result["version"])
-        self.assertEqual(runner.commands, [[r"C:\Tools\lark-cli.exe", "--version"]])
+        self.assertEqual(runner.commands, [[str(TOOLS_BINARY), "--version"]])
 
     def test_prerelease_version_is_version_unparseable(self):
         runner = Runner(Completed("lark-cli version 1.0.95-rc.1\n"))
         result = ensure_lark_cli(
-            candidates=(Path(r"C:\Tools\lark-cli.exe"),),
+            candidates=(TOOLS_BINARY,),
             install=False,
             runner=runner,
         )
         self.assertEqual(result["status"], "version_unparseable")
         self.assertIsNone(result["version"])
-        self.assertEqual(runner.commands, [[r"C:\Tools\lark-cli.exe", "--version"]])
+        self.assertEqual(runner.commands, [[str(TOOLS_BINARY), "--version"]])
 
     def test_unrelated_node_version_does_not_override_lark_cli_version(self):
         runner = Runner(Completed("Node v22.10.0\nlark-cli version 1.0.94\n"))
         result = ensure_lark_cli(
-            candidates=(Path(r"C:\Tools\lark-cli.exe"),),
+            candidates=(TOOLS_BINARY,),
             install=False,
             runner=runner,
         )
@@ -303,13 +313,13 @@ class LarkCliBootstrapTests(unittest.TestCase):
     def test_runtime_version_diagnostic_is_not_a_cli_version(self):
         runner = Runner(Completed("lark-cli requires Node v22.10.0\n"))
         result = ensure_lark_cli(
-            candidates=(Path(r"C:\Tools\lark-cli.exe"),),
+            candidates=(TOOLS_BINARY,),
             install=False,
             runner=runner,
         )
         self.assertEqual(result["status"], "version_unparseable")
         self.assertIsNone(result["version"])
-        self.assertEqual(runner.commands, [[r"C:\Tools\lark-cli.exe", "--version"]])
+        self.assertEqual(runner.commands, [[str(TOOLS_BINARY), "--version"]])
 
     def test_install_failure_does_not_expose_npm_output_in_bootstrap_contract(self):
         install_result = CliInstallResult(
@@ -323,7 +333,7 @@ class LarkCliBootstrapTests(unittest.TestCase):
         runner = Runner(Completed("not found", returncode=1))
         with mock.patch("lark_cli_bootstrap.install_private_cli", return_value=install_result):
             result = ensure_lark_cli(
-                candidates=(Path(r"C:\Tools\lark-cli.exe"),),
+                candidates=(TOOLS_BINARY,),
                 install=True,
                 runner=runner,
                 environ={},

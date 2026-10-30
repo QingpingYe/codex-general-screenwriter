@@ -80,10 +80,14 @@ class RuntimePathTests(unittest.TestCase):
 
         paths = resolve_runtime_paths(environ=environ, platform="windows")
 
-        self.assertEqual(
-            paths.root,
-            Path(r"C:\Users\writer\AppData\Local\general-screenwriter\runtimes\lark-cli"),
-        )
+        # Expected values go through the same resolution as production: a
+        # Windows literal is relative on POSIX hosts, and existing prefixes are
+        # case-folded on Windows, so only the resolved form is comparable.
+        expected_root = (
+            Path(r"C:\Users\writer\AppData\Local")
+            / "general-screenwriter" / "runtimes" / "lark-cli"
+        ).resolve()
+        self.assertEqual(paths.root, expected_root)
         self.assertEqual(paths.node_dir, paths.root / "node_modules")
         self.assertEqual(paths.npm_prefix, paths.root)
         self.assertEqual(paths.cli_bin, paths.node_dir / ".bin" / "lark-cli.cmd")
@@ -237,7 +241,7 @@ class PrivateCliInstallTests(unittest.TestCase):
             with mock.patch("lark_runtime.shutil.which", return_value=npm):
                 result = install_private_cli(paths, "1.0.95", runner=runner)
 
-            expected_prefix = root / "1.0.95"
+            expected_prefix = (root / "1.0.95").resolve()
             expected_command = [
                 npm,
                 "install",

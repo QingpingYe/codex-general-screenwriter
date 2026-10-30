@@ -488,7 +488,10 @@ class FirstUseEndToEndTests(unittest.TestCase):
         self.assertEqual(len(npm_calls), 1)
         self.assertNotIn("-g", npm_calls[0])
         self.assertNotIn("skills", npm_calls[0])
-        self.assertIn(str(harness.user_data), npm_calls[0][npm_calls[0].index("--prefix") + 1])
+        self.assertIn(
+            str(harness.user_data.resolve()),
+            npm_calls[0][npm_calls[0].index("--prefix") + 1],
+        )
         self.assertTrue(harness.session.private_binary.is_file())
 
         second, third = harness.authorize()
@@ -539,7 +542,9 @@ class FirstUseEndToEndTests(unittest.TestCase):
         self.assertEqual(result["status"], "waiting_user")
         self.assertEqual(result["stage"], "device_auth")
         self.assertFalse(any(call[0] == "npm" for call in harness.runner.calls))
-        self.assertEqual(harness.session.last_binary, global_cli)
+        # The session records the binary as the resolver returned it, which is
+        # the resolved absolute path; compare against the same resolved form.
+        self.assertEqual(harness.session.last_binary, global_cli.resolve())
 
     def test_new_profile_preserves_existing_profiles(self):
         global_cli = Path(tempfile.gettempdir()) / "offline-global-lark-cli.cmd"

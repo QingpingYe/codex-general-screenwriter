@@ -103,6 +103,36 @@
 - Codex 官方 `validate_plugin.py` 不在本机（`~/.codex/skills/.system` 下没有
   plugin-creator），未运行；Codex 侧清单结构未改动，仅版本与描述文本变化。
 
+## CI 失败根因与修复（run #22 复盘）
+
+第一轮推送（5abaf65）后 CI 仍双平台失败。用本机 git 凭据拉取了两份 job 日志
+（`gh` API 的 job 日志端点，重定向到 blob 存储时不能带 Authorization 头），
+逐条定位到 **4 个此前从未在 CI 绿过的测试文件**，全部是路径跨平台可移植性
+问题——本机单机环境掩盖了它们：
+
+1. `test_config_paths.py`（windows 侧 2 例）、`test_first_use_e2e.py`
+   （windows 侧 2 例）：直接把 `tempfile.mkdtemp()` 返回的短路径（`RUNNER~1`）
+   与解析后的长路径比较。Windows 上 `Path.resolve()` 会把 8.3 短名还原为长名，
+   断言却拿原始短名字符串比较。修复：比较同一解析形式（`.resolve()`）。
+   本机复现方法：把 `TMP`/`TEMP` 指向一个 8.3 短名目录后运行同一测试。
+2. `test_lark_runtime.py`（ubuntu 侧 1 例 + windows 侧 1 例）：
+   - `test_windows_paths_stay_in_user_data_runtime` 在 POSIX 上直接比较
+     `C:\...` 字面量与解析结果；POSIX 视反斜杠为普通字符、`C:\...` 为相对路径，
+     解析结果带上了 `$PWD` 前缀。修复：断言改为与同样的 `.resolve()` 结果比较，
+     不再裸比字面量。
+   - `test_npm_install_uses_versioned_private_prefix_only` 的期望命令用未解析的
+     `root / "1.0.95"` 拼装，实际命令里的前缀已解析。修复：期望侧同样 `.resolve()`。
+3. `test_lark_cli_bootstrap.py`（ubuntu 侧 5 例 + windows 侧 5 例）：同一根因——
+   `Path(r"C:\Tools\lark-cli.exe")` 在 POSIX 是相对路径、在 Windows 又受大小写
+   归一影响（`C:\Tools` → `C:\tools`）。修复：引入模块级
+   `TOOLS_BINARY = (Path(r"C:\Tools\lark-cli.exe") if os.name == "nt" else
+   Path("/opt/tools/lark-cli")).resolve()`，期望命令统一由它拼装。
+
+覆盖率说明：这些用例在 run #20（0.6.3 收尾）时还不存在或未触及解析路径，
+所以此前 CI 绿；3308a3d 这批 first-use 代码把它们带进来后，三个平台差异
+一起暴露。修复后本机做了三层验证：正常 TEMP、8.3 短名 TEMP
+（`GSCRW-~1`）、Python 3.12 与 3.14 两套解释器，聚合套件均 100/100。
+
 ## 未覆盖 / 后续
 
 - Claude Code 会话内实际触发技能的行为验收（本机 CLI 2.1.309 仅做了

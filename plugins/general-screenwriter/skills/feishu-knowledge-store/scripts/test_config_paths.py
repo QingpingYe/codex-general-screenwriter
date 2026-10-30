@@ -175,7 +175,10 @@ class ResolverTests(unittest.TestCase):
             {"GENERAL_SCREENWRITER_KB_CONFIG": str(destination)},
             home=self.root / "home",
         )
-        self.assertEqual(resolved, destination)
+        # The resolver returns the resolved absolute form: hosts that expose a
+        # temporary directory through an 8.3 short name (Windows runners) or
+        # through symlinks would otherwise compare two spellings of one path.
+        self.assertEqual(resolved, destination.resolve())
 
     def test_first_use_destination_preserves_existing_workspace_config(self):
         existing = self.write(self.workspace / "feishu-knowledge-base.json")
@@ -197,7 +200,7 @@ class ResolverTests(unittest.TestCase):
             home=self.root / "home",
             system="windows",
         )
-        self.assertEqual(destination, expected)
+        self.assertEqual(destination, expected.resolve())
 
 if __name__ == "__main__":
     unittest.main()
