@@ -24,7 +24,7 @@ This repository is the active home for the plugin. It packages:
 In the ChatGPT desktop app plugin marketplace, add:
 
 ```text
-https://github.com/QingpingYe/codex-general-screenwriter.git
+https://github.com/QingpingYe/lvan-general-screenwriter.git
 ```
 
 Use `main` as the Git ref. For a small repository, leave the sparse path empty.
@@ -34,7 +34,7 @@ Use `main` as the Git ref. For a small repository, leave the sparse path empty.
 From Codex CLI, you can also run:
 
 ```powershell
-codex plugin marketplace add https://github.com/QingpingYe/codex-general-screenwriter.git --ref main
+codex plugin marketplace add https://github.com/QingpingYe/lvan-general-screenwriter.git --ref main
 codex plugin add general-screenwriter@general-screenwriter-github
 ```
 
@@ -45,17 +45,17 @@ codex plugin add general-screenwriter@general-screenwriter-github
 Claude Code 使用仓库根的 `.claude-plugin/marketplace.json`，插件清单位于 `plugins/general-screenwriter/.claude-plugin/plugin.json`。在 Claude Code 里直接输入：
 
 ```text
-/plugin marketplace add QingpingYe/codex-general-screenwriter
+/plugin marketplace add QingpingYe/lvan-general-screenwriter
 /plugin install general-screenwriter@general-screenwriter-git
 ```
 
 也可以在终端运行：
 
 ```bash
-claude plugin marketplace add QingpingYe/codex-general-screenwriter
+claude plugin marketplace add QingpingYe/lvan-general-screenwriter
 ```
 
-桌面端图形入口是输入框旁 **+ → Add plugins**。内网 Git 镜像用完整 URL 添加，例如 `claude plugin marketplace add https://gcode.iwgame.com/ai/agent/codex-general-screenwriter.git`（要求本机装有 Git）。第三方 marketplace 默认不自动更新；在 `/plugin` → Marketplaces 打开 auto-update，或手动 Update。
+桌面端图形入口是输入框旁 **+ → Add plugins**。内网 Git 镜像用完整 URL 添加，例如 `claude plugin marketplace add https://gcode.iwgame.com/ai/agent/lvan-general-screenwriter.git`（要求本机装有 Git）。第三方 marketplace 默认不自动更新；在 `/plugin` → Marketplaces 打开 auto-update，或手动 Update。
 
 本插件不含 MCP server，Claude Code 侧无需额外权限配置或运行时前置即可使用；技能调用方式为 `/general-screenwriter:<skill-name>`。
 

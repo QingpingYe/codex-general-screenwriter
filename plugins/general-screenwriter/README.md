@@ -46,7 +46,7 @@
 - 未确认的默认图片 API 调用
 - 用户技能的可视化管理界面（当前仅支持自然语言管理）
 
-运行时强制、脚本校验与提示词约束的边界见 [ENFORCEMENT.md](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/docs/ENFORCEMENT.md)。
+运行时强制、脚本校验与提示词约束的边界见 [ENFORCEMENT.md](https://github.com/QingpingYe/lvan-general-screenwriter/blob/main/docs/ENFORCEMENT.md)。
 
 ## 操作指南
 
@@ -54,9 +54,9 @@
 
 Claude Code 安装入口：`/plugin install general-screenwriter@general-screenwriter-git`；Codex 安装入口见下方链接。
 
-- [安装插件](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#add-the-plugin)
-- [使用插件](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#use-the-plugin)
-- [飞书知识库准备](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#feishu-knowledge-setup)
-- [配置发现规则](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#configuration-discovery)
-- [飞书维护与诊断命令](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#feishu-runtime-commands)
-- [本地验证与发布](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#verify-locally)
+- [安装插件](https://github.com/QingpingYe/lvan-general-screenwriter/blob/main/README.md#add-the-plugin)
+- [使用插件](https://github.com/QingpingYe/lvan-general-screenwriter/blob/main/README.md#use-the-plugin)
+- [飞书知识库准备](https://github.com/QingpingYe/lvan-general-screenwriter/blob/main/README.md#feishu-knowledge-setup)
+- [配置发现规则](https://github.com/QingpingYe/lvan-general-screenwriter/blob/main/README.md#configuration-discovery)
+- [飞书维护与诊断命令](https://github.com/QingpingYe/lvan-general-screenwriter/blob/main/README.md#feishu-runtime-commands)
+- [本地验证与发布](https://github.com/QingpingYe/lvan-general-screenwriter/blob/main/README.md#verify-locally)

@@ -167,7 +167,7 @@ class ReleaseChecklistTests(unittest.TestCase):
     def test_plugin_readme_links_to_canonical_operator_guide(self):
         plugin_text = PLUGIN_README.read_text(encoding="utf-8")
         repo_text = REPO_README.read_text(encoding="utf-8")
-        base_url = "https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md"
+        base_url = "https://github.com/QingpingYe/lvan-general-screenwriter/blob/main/README.md"
         headings = re.findall(r"^## (.+)$", repo_text, re.MULTILINE)
         anchors = {heading.lower().replace(" ", "-") for heading in headings}
         for anchor in (

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 仓库更名为 `lvan-general-screenwriter`：README、双宿主清单的 `repository` 字段与安装示例更新为新地址；插件名与 marketplace 名不变，纯引用改动，不升版本。历史设计文档中的旧链接保持原样。
+
 ## [0.9.0] - 2026-10-30
 
 ### Added

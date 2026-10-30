@@ -100,7 +100,7 @@ class ClaudeManifestTests(_ManifestTestCase):
 
         self.assertIn("Claude Code", text)
         self.assertIn(
-            "/plugin marketplace add QingpingYe/codex-general-screenwriter", text
+            "/plugin marketplace add QingpingYe/lvan-general-screenwriter", text
         )
         self.assertIn("general-screenwriter@general-screenwriter-git", text)
 
