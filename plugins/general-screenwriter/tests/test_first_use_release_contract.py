@@ -111,9 +111,9 @@ class FirstUseReleaseDocsTests(unittest.TestCase):
         marketplace = json.loads(MARKETPLACE.read_text(encoding="utf-8"))
         changelog = CHANGELOG.read_text(encoding="utf-8")
 
-        self.assertEqual(manifest["version"], "0.8.0")
+        self.assertEqual(manifest["version"], "0.9.0")
         self.assertIn("first-use", manifest["description"].lower())
-        self.assertIn("## [0.8.0]", changelog)
+        self.assertIn("## [0.9.0]", changelog)
         self.assertIn("first-use", changelog.lower())
         entry = marketplace["plugins"][0]
         self.assertEqual(entry["name"], "general-screenwriter")

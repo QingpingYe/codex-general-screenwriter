@@ -1,0 +1,18 @@
+{
+  "name": "general-screenwriter",
+  "version": "0.9.0",
+  "description": "General screenwriting workshop for Codex and Claude Code with natural-language first-use setup, picturebook, shortdrama, and longform TV type packs, editorial workflow, quality gates, staging planning, and a gated illustration workflow.",
+  "author": {
+    "name": "YeQingping"
+  },
+  "repository": "https://github.com/QingpingYe/codex-general-screenwriter.git",
+  "keywords": [
+    "general screenwriting",
+    "screenwriting",
+    "short drama",
+    "tv series",
+    "children books",
+    "creative writing",
+    "first-use setup"
+  ]
+}

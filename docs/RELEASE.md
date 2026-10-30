@@ -12,23 +12,32 @@ users do not run Feishu setup commands.
    python .\scripts\run_plugin_tests.py
    ```
 
-2. Run plugin structure validation:
+2. Run plugin structure validation for both hosts:
 
    ```powershell
    $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { "$HOME\.codex" }
    python "$codexHome\skills\.system\plugin-creator\scripts\validate_plugin.py" .\plugins\general-screenwriter
+   claude plugin validate .\plugins\general-screenwriter
    ```
 
-3. Run the unified release gate. It runs `first_use_contract` and
-   `setup_docs_contract` before the offline regression:
+   The Claude Code pass reads `.claude-plugin/plugin.json`; the Codex pass reads
+   `.codex-plugin/plugin.json`. The dual-harness contract gate verifies both
+   manifests and the repository-root `.claude-plugin/marketplace.json` stay in
+   sync with the same name and version.
+
+3. Run the unified release gate. It runs `dual_harness_contract`,
+   `first_use_contract`, and `setup_docs_contract` before the offline
+   regression:
 
    ```powershell
    python .\scripts\release_gate.py
    ```
 
 4. Confirm the version in `plugins/general-screenwriter/.codex-plugin/plugin.json`,
-   `docs/CHANGELOG.md`, and the release tag describe the same release. Run the
-   release-version gate with the tag value:
+   `plugins/general-screenwriter/.claude-plugin/plugin.json`, the
+   `.claude-plugin/marketplace.json` entry, `docs/CHANGELOG.md`, and the release
+   tag describe the same release. Run the release-version gate with the tag
+   value:
 
    ```powershell
    $env:GENERAL_SCREENWRITER_EXPECTED_VERSION = "<release-version>"
@@ -44,9 +53,10 @@ users do not run Feishu setup commands.
 
 Run `python scripts/release_gate.py` before any release. The gate runs the
 ordered checks (registry contract, knowledge adapter, user-skill gates, DAG
-scheduler, quality gate, exporter contract, first-use contract, setup docs
-contract, offline regression, governance check, packaging check), stops on the
-first failure, and exits nonzero. A failed run must not be released. Migration
+scheduler, quality gate, exporter contract, dual-harness contract, first-use
+contract, setup docs contract, offline regression, governance check, packaging
+check), stops on the first failure, and exits nonzero. A failed run must not be
+released. Migration
 status is reported with
 `plugins/general-screenwriter/scripts/migration_report.py`, which is
 read-only: it never rewrites run manifests, knowledge keys, or user artifacts.

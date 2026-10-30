@@ -262,13 +262,13 @@ class PluginContractTests(unittest.TestCase):
 
     def test_plugin_readme_matches_current_capabilities(self):
         text = PLUGIN_README.read_text(encoding="utf-8")
-        self.assertIn("Codex 原生", text)
+        self.assertIn("Codex 与 Claude Code", text)
         self.assertIn("不依赖 WorkBuddy 团队运行时", text)
         self.assertNotIn("外部知识库同步", text)
 
     def test_repo_readme_matches_current_capabilities(self):
         text = REPO_README.read_text(encoding="utf-8")
-        self.assertIn("Codex 原生", text)
+        self.assertIn("Codex 与 Claude Code", text)
         self.assertIn("不依赖 WorkBuddy 团队运行时", text)
 
     def test_plugin_readme_uses_current_multi_agent_boundary(self):

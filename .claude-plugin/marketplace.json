@@ -1,0 +1,18 @@
+{
+  "name": "general-screenwriter-git",
+  "description": "general-screenwriter 仓库自带 marketplace：同一插件同时支持 Codex 与 Claude Code。",
+  "owner": {
+    "name": "QingpingYe"
+  },
+  "plugins": [
+    {
+      "name": "general-screenwriter",
+      "description": "通用编剧创作插件：首次使用自然语言初始化，绘本/短剧/长篇连续剧类型包，飞书权威知识库，量化质量门与插画工作流。",
+      "version": "0.9.0",
+      "source": "./plugins/general-screenwriter",
+      "author": {
+        "name": "QingpingYe"
+      }
+    }
+  ]
+}

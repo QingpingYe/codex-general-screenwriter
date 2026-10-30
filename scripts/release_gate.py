@@ -16,6 +16,7 @@ GATE_STEPS = (
     ("dag_scheduler", "plugins/general-screenwriter/tests/test_stage_dag.py"),
     ("quality_gate", "plugins/general-screenwriter/tests/test_quality_gate_contract.py"),
     ("exporter_contract", "plugins/general-screenwriter/tests/test_exporter_contract.py"),
+    ("dual_harness_contract", "plugins/general-screenwriter/tests/test_dual_harness_contract.py"),
     ("first_use_contract", "plugins/general-screenwriter/tests/test_first_use_release_contract.py"),
     ("setup_docs_contract", "plugins/general-screenwriter/tests/test_setup_contract.py"),
     ("offline_regression", "scripts/run_plugin_tests.py"),

@@ -71,6 +71,7 @@ def build_package_report(root: Path) -> PackageReport:
         "README.md",
         "config/plugin-contract.json",
         ".codex-plugin/plugin.json",
+        ".claude-plugin/plugin.json",
         "skills/general-screenwriter/SKILL.md",
     ):
         if not (plugin / relative).is_file():

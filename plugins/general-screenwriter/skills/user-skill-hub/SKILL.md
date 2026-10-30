@@ -1,3 +1,8 @@
+---
+name: user-skill-hub
+description: 以自然语言创建、导入/适配、更新或覆盖轻量用户技能的入口；负责归属确认、契约校验与本地安装，不执行任何 git 操作。
+---
+
 # User Skill Hub
 
 ## 用途

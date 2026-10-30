@@ -295,6 +295,7 @@
       "dag_scheduler",
       "quality_gate",
       "exporter_contract",
+      "dual_harness_contract",
       "first_use_contract",
       "setup_docs_contract",
       "offline_regression",

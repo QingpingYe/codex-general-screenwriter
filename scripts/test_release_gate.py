@@ -40,9 +40,9 @@ class ReleaseGateTests(unittest.TestCase):
             [name for name, _ in release_gate.GATE_STEPS],
             ["registry_contract", "knowledge_adapter", "user_skill_trees",
              "user_skill_hub", "user_skill_runtime", "dag_scheduler",
-             "quality_gate", "exporter_contract", "first_use_contract",
-             "setup_docs_contract", "offline_regression", "governance_check",
-             "packaging_check"],
+             "quality_gate", "exporter_contract", "dual_harness_contract",
+             "first_use_contract", "setup_docs_contract", "offline_regression",
+             "governance_check", "packaging_check"],
         )
 
     def test_contract_declares_release_gate(self):

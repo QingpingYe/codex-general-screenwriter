@@ -361,23 +361,46 @@ class LauncherTests(unittest.TestCase):
         )
         return path
 
+    def _pythonless_directory(self, directory):
+        """Return an empty directory suitable as a PATH without any Python."""
+        path = Path(directory) / "pythonless-bin"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
     def _powershell(self):
         return shutil.which("pwsh") or shutil.which("powershell")
 
     def _run_powershell(self, script, probe, environment):
+        # -ExecutionPolicy Bypass scopes the policy to this one invocation so
+        # the launcher's own behavior is tested on hosts whose machine policy is
+        # Restricted (the Windows client default); it changes no machine state.
         command = [
             self._powershell(), "-NoProfile", "-NonInteractive",
+            "-ExecutionPolicy", "Bypass",
             "-File", str(SCRIPTS / "runtime_launcher.ps1"),
             "-Script", str(probe),
         ]
-        return subprocess.run(command, capture_output=True, text=True, env=environment, check=False)
+        return subprocess.run(
+            command, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", env=environment, check=False,
+        )
 
     def _run_shell(self, probe, environment):
         bash = shutil.which("bash")
         if bash is None:
             self.skipTest("bash is unavailable")
         command = [bash, str(SCRIPTS / "runtime_launcher.sh"), probe.as_posix()]
-        return subprocess.run(command, capture_output=True, text=True, env=environment, check=False)
+        return subprocess.run(
+            command, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", env=environment, check=False,
+        )
+
+    def _neutral_environment(self):
+        """Copy the environment and drop variables that would inject a Python."""
+        environment = os.environ.copy()
+        for variable in ("CODEX_PYTHON", "PYTHON"):
+            environment.pop(variable, None)
+        return environment
 
     def test_powershell_launcher_uses_host_system_user_priority(self):
         powershell = self._powershell()
@@ -389,10 +412,15 @@ class LauncherTests(unittest.TestCase):
             probe = self._probe_script(directory)
             for preferred in cases:
                 with self.subTest(preferred=preferred):
-                    environment = os.environ.copy()
+                    environment = self._neutral_environment()
                     environment["GENERAL_SCREENWRITER_HOST_PYTHON"] = sys.executable if preferred == "host" else missing
                     environment["GENERAL_SCREENWRITER_SYSTEM_PYTHON"] = sys.executable if preferred == "system" else missing
                     environment["GENERAL_SCREENWRITER_USER_PYTHON"] = sys.executable if preferred == "user" else missing
+                    if preferred == "user":
+                        # The user-level candidate is the last resort: it only
+                        # wins when no host, system, or PATH Python exists, so
+                        # strip a PATH Python that would legitimately outrank it.
+                        environment["PATH"] = str(self._pythonless_directory(directory))
                     result = self._run_powershell(powershell, probe, environment)
                     self.assertEqual(result.returncode, 0, result.stderr)
                     payload = json.loads(result.stdout)
@@ -404,10 +432,15 @@ class LauncherTests(unittest.TestCase):
             probe = self._probe_script(directory)
             for preferred in ("host", "system", "user"):
                 with self.subTest(preferred=preferred):
-                    environment = os.environ.copy()
+                    environment = self._neutral_environment()
                     environment["GENERAL_SCREENWRITER_HOST_PYTHON"] = sys.executable if preferred == "host" else missing
                     environment["GENERAL_SCREENWRITER_SYSTEM_PYTHON"] = sys.executable if preferred == "system" else missing
                     environment["GENERAL_SCREENWRITER_USER_PYTHON"] = sys.executable if preferred == "user" else missing
+                    if preferred == "user":
+                        # See the PowerShell launcher test: a PATH Python is a
+                        # system candidate and legitimately outranks the user
+                        # fallback, so remove it for this assertion.
+                        environment["PATH"] = str(self._pythonless_directory(directory))
                     result = self._run_shell(probe, environment)
                     self.assertEqual(result.returncode, 0, result.stderr)
                     payload = json.loads(result.stdout)
@@ -417,13 +450,20 @@ class LauncherTests(unittest.TestCase):
         missing = str(Path(tempfile.gettempdir()) / "missing-python-for-setup-test")
         with tempfile.TemporaryDirectory() as directory:
             probe = self._probe_script(directory)
-            environment = os.environ.copy()
-            environment["PATH"] = ""
+            environment = self._neutral_environment()
+            # An empty *directory* keeps PATH valid for the host shell itself
+            # (Windows PowerShell fails to start with an empty PATH) while no
+            # python resolves on it.
+            environment["PATH"] = str(self._pythonless_directory(directory))
             environment["GENERAL_SCREENWRITER_HOST_PYTHON"] = missing
             environment["GENERAL_SCREENWRITER_SYSTEM_PYTHON"] = missing
             environment["GENERAL_SCREENWRITER_USER_PYTHON"] = missing
-            environment["USERPROFILE"] = ""
-            environment["LOCALAPPDATA"] = ""
+            # Point the user-level candidate roots at the empty temp directory
+            # instead of blanking them: a blank USERPROFILE breaks Windows
+            # PowerShell's own module autoloading, which is unrelated to what
+            # this test asserts.
+            environment["USERPROFILE"] = directory
+            environment["LOCALAPPDATA"] = str(Path(directory) / "AppData" / "Local")
             if self._powershell():
                 result = self._run_powershell(self._powershell(), probe, environment)
                 self.assertEqual(result.returncode, 2)

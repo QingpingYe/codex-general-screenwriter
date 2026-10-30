@@ -1,8 +1,8 @@
-# General Screenwriter for Codex
+# General Screenwriter for Codex and Claude Code
 
-这是由 `general-screenwriter` 包提供的 Codex 原生通用编剧创作插件，不依赖 WorkBuddy 团队运行时。原绘本编剧工坊已升级为通用工作台；当前包名和入口 Skill 都是 `general-screenwriter`，旧插件名不再是当前标识。当前三类媒介均可派发，绘本是完整创作路径，短剧和长篇连续剧是已激活的最小可用类型包，并具备内容级确定性校验、类型专属导出器和真实执行的代表性创作样例。
+这是由 `general-screenwriter` 包提供的通用编剧创作插件，同时支持 Codex 与 Claude Code 两种宿主，不依赖 WorkBuddy 团队运行时。原绘本编剧工坊已升级为通用工作台；当前包名和入口 Skill 都是 `general-screenwriter`，旧插件名不再是当前标识。当前三类媒介均可派发，绘本是完整创作路径，短剧和长篇连续剧是已激活的最小可用类型包，并具备内容级确定性校验、类型专属导出器和真实执行的代表性创作样例。
 
-This repository is the active home for the Codex plugin. It packages:
+This repository is the active home for the plugin. It packages:
 
 - General screenwriter type packs
 - Editorial workflow
@@ -16,6 +16,10 @@ This repository is the active home for the Codex plugin. It packages:
 本文件是安装、使用、配置、同步和验证流程的唯一维护入口。[插件 README](plugins/general-screenwriter/README.md) 保留包内能力与边界说明，并链接到这里。
 
 ## Add the plugin
+
+插件同时支持 Codex 与 Claude Code，两个宿主共享同一份 `skills/`，各读各的清单。
+
+### Codex
 
 In the ChatGPT desktop app plugin marketplace, add:
 
@@ -36,6 +40,25 @@ codex plugin add general-screenwriter@general-screenwriter-github
 
 如果 `general-screenwriter-github` 已注册，安装时只需第二条命令。
 
+### Claude Code
+
+Claude Code 使用仓库根的 `.claude-plugin/marketplace.json`，插件清单位于 `plugins/general-screenwriter/.claude-plugin/plugin.json`。在 Claude Code 里直接输入：
+
+```text
+/plugin marketplace add QingpingYe/codex-general-screenwriter
+/plugin install general-screenwriter@general-screenwriter-git
+```
+
+也可以在终端运行：
+
+```bash
+claude plugin marketplace add QingpingYe/codex-general-screenwriter
+```
+
+桌面端图形入口是输入框旁 **+ → Add plugins**。内网 Git 镜像用完整 URL 添加，例如 `claude plugin marketplace add https://gcode.iwgame.com/ai/agent/codex-general-screenwriter.git`（要求本机装有 Git）。第三方 marketplace 默认不自动更新；在 `/plugin` → Marketplaces 打开 auto-update，或手动 Update。
+
+本插件不含 MCP server，Claude Code 侧无需额外权限配置或运行时前置即可使用；技能调用方式为 `/general-screenwriter:<skill-name>`。
+
 ## Use the plugin
 
 Start a new Codex chat and try:
@@ -43,6 +66,8 @@ Start a new Codex chat and try:
 ```text
 帮我从零开始策划一个 32 页、面向 3-6 岁儿童的中文绘本故事，主题是学会分享。
 ```
+
+在 Claude Code 中，功能与调用方式一致；宿主专属触发示例：Codex 里可输入 `$setup`，Claude Code 里输入 `/general-screenwriter:setup`。跨宿主引用技能统一使用中性写法 `general-screenwriter:<skill>`。
 
 也可以直接使用其他 active 类型包：
 

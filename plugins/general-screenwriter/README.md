@@ -1,6 +1,8 @@
-# General Screenwriter Workshop for Codex
+# General Screenwriter Workshop for Codex and Claude Code
 
-这是原「绘本编剧工坊」升级后的 Codex 原生通用编剧创作插件，不依赖 WorkBuddy 团队运行时。当前包名和入口 Skill 都是 `general-screenwriter`；旧插件名不再是当前标识。旧配置路径、旧 run manifest 和旧 lead owner 保留兼容读取。当前支持通用创作内核、类型包工作流、飞书权威知识库、量化质量门、文字工艺、分镜规划、结构化插画提示词、显式确认后的图片生成和插画导出预览。
+这是原「绘本编剧工坊」升级后的通用编剧创作插件，同时支持 Codex 与 Claude Code 两种宿主，不依赖 WorkBuddy 团队运行时。当前包名和入口 Skill 都是 `general-screenwriter`；旧插件名不再是当前标识。旧配置路径、旧 run manifest 和旧 lead owner 保留兼容读取。当前支持通用创作内核、类型包工作流、飞书权威知识库、量化质量门、文字工艺、分镜规划、结构化插画提示词、显式确认后的图片生成和插画导出预览。
+
+两个宿主共享同一份 `skills/`，各自读取自己的清单：Codex 使用 `.codex-plugin/plugin.json` 与 `.agents/plugins/marketplace.json`，Claude Code 使用 `.claude-plugin/plugin.json` 与本仓库根 `.claude-plugin/marketplace.json`。技能正文只使用中性引用（如 `general-screenwriter:setup`），不包含任何单一宿主的触发语法。
 
 首次使用时直接说“帮我初始化编剧插件”；涉及飞书知识库的请求会先检查 setup 状态，由 AI 在内部补齐运行时、账户、授权、链接配置和写入验收，完成后继续原任务。正常流程不需要用户执行飞书命令、手工准备配置文件或重开会话。
 
@@ -8,7 +10,7 @@
 
 - 通用编剧创作内核：类型解析、阶段编排、确认门、修订轮次、质量门和解析快照
 - 绘本主编式入口工作流：意图识别、简报门、角色切换、确认门、版本化落盘
-- 可选阶段 DAG：Codex 多 Agent 工具可用时派发子 Agent；不可用时顺序降级
+- 可选阶段 DAG：宿主多 Agent 工具可用时派发子 Agent；不可用时顺序降级
 - `text-craft`：儿童绘本文本创作方法论（picturebook 类型包使用）
 - `craft-benchmark-check`：picturebook 页脚本的十五项文字工艺指标量化自测
 - `staging-planner`：picturebook 跨页分镜站位与空间一致性规划
@@ -49,6 +51,8 @@
 ## 操作指南
 
 安装、使用、配置、同步和验证流程统一维护在仓库根 README。本文件保留插件能力与边界说明；以下链接在独立安装的插件包中同样可用。
+
+Claude Code 安装入口：`/plugin install general-screenwriter@general-screenwriter-git`；Codex 安装入口见下方链接。
 
 - [安装插件](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#add-the-plugin)
 - [使用插件](https://github.com/QingpingYe/codex-general-screenwriter/blob/main/README.md#use-the-plugin)

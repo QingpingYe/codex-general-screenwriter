@@ -45,6 +45,20 @@ class PackageCheckTests(unittest.TestCase):
             report = build_package_report(Path(temp))
             self.assertFalse(any("__pycache__" in file for file in report.files))
 
+    def test_missing_claude_manifest_fails_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            plugin = Path(temp) / "plugins" / "general-screenwriter"
+            (plugin / ".codex-plugin").mkdir(parents=True)
+            (plugin / ".codex-plugin" / "plugin.json").write_text(
+                json.dumps({"version": TEST_VERSION}),
+                encoding="utf-8",
+            )
+            report = build_package_report(Path(temp))
+            self.assertFalse(report.ok)
+            self.assertTrue(
+                any(".claude-plugin/plugin.json" in error for error in report.errors)
+            )
+
     def test_json_token_fields_must_be_placeholders(self):
         with tempfile.TemporaryDirectory() as temp:
             plugin = Path(temp) / "plugins" / "general-screenwriter"

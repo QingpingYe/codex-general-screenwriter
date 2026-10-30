@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-30
+
+### Added
+
+- Dual-harness packaging: the same plugin now installs in Claude Code through `.claude-plugin/plugin.json` and the repository-root `.claude-plugin/marketplace.json`, sharing one `skills/` tree with the existing Codex `.codex-plugin/plugin.json` and `.agents/plugins/marketplace.json`.
+- `dual_harness_contract` release gate and `tests/test_dual_harness_contract.py`: manifest identity, marketplace binding, cross-manifest version sync, and harness-neutral skill bodies are enforced offline.
+- 双宿主安装文档：README 增加 Claude Code 安装与使用小节；RELEASE.md 增加 `claude plugin validate` 步骤。
+
+### Changed
+
+- Skill bodies are harness-neutral: no Codex `$skill` or Claude `/plugin:skill` invocation syntax; host-specific trigger examples live in the READMEs. `user-skill-hub` gains YAML frontmatter so Claude Code can load it.
+- `stage-orchestration` and the entry skill now describe multi-agent dispatch as "host multi-agent tools when available, sequential fallback otherwise" instead of Codex-only wording.
+- Package gate requires both `.codex-plugin/plugin.json` and `.claude-plugin/plugin.json`.
+- 插件版本升至 0.9.0。
+
+### Compatibility
+
+- Codex 侧清单、marketplace 与既有安装方式不变；Claude Code 侧的安装、技能发现与产物写入门语义与 Codex 一致。
+- Claude Code 不提供宿主内置 Node/Python 链；本插件运行时全部为 Python 脚本与设置启动器，不依赖 MCP server，无 Node 运行时前置。
+
 ## [0.8.0] - 2026-10-26
 
 ### Added

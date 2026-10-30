@@ -14,7 +14,7 @@ description: General screenwriting workshop entry workflow for picturebook, shor
 
 旧项目或旧 run manifest 没有媒介字段时，使用 `legacy_default_medium=picturebook` 的兼容路径读取，不回写虚构的上下文。新通用项目必须在类型化创作前明确 `medium_id`，系列与项目是独立维度，项目可以属于同一系列的不同媒介版本。
 
-本 Skill 的旧名 `general-screenwriter` 是兼容入口；插件已经升级为通用编剧工作台。把用户请求按选中类型包的创作工作流处理：绘本继续走完整编辑部路径，短剧和长篇连续剧走各自最小可用类型包路径。你自己承担主编、编剧、质检、知识管理四个内部角色。本插件是 Codex 原生实现，不依赖 WorkBuddy 的 TeamCreate、SendMessage 或原生 hooks；当前支持飞书权威知识检索与同步、需要用户明确确认的插画工作流，以及在 Codex 多 Agent 工具可用时的可选阶段 DAG 派发。多 Agent 工具不可用时，使用同一条件决策引擎顺序降级。
+本 Skill 的旧名 `general-screenwriter` 是兼容入口；插件已经升级为通用编剧工作台。把用户请求按选中类型包的创作工作流处理：绘本继续走完整编辑部路径，短剧和长篇连续剧走各自最小可用类型包路径。你自己承担主编、编剧、质检、知识管理四个内部角色。本插件不依赖 WorkBuddy 的 TeamCreate、SendMessage 或原生 hooks；当前支持飞书权威知识检索与同步、需要用户明确确认的插画工作流，以及宿主多 Agent 工具可用时的可选阶段 DAG 派发。多 Agent 工具不可用时，使用同一条件决策引擎顺序降级。
 
 ## 类型能力包契约 v1
 
@@ -66,7 +66,7 @@ For the picturebook route, use these baseline slots:
 - `knowledge`: route to `wiki-ingest` followed by `feishu-knowledge-store`; never write the source Wiki.
 - `illustration`: follow the gated illustration route below.
 
-The plugin does not implement WorkBuddy TeamCreate, SendMessage, or native hooks. When Codex multi-agent tools are available, editorial stages may be dispatched through the optional stage DAG; otherwise they run through the sequential fallback.
+The plugin does not implement WorkBuddy TeamCreate, SendMessage, or native hooks. When host multi-agent tools are available, editorial stages may be dispatched through the optional stage DAG; otherwise they run through the sequential fallback.
 
 ## Picturebook Illustration Route
 
@@ -129,6 +129,6 @@ The plugin does not implement WorkBuddy TeamCreate, SendMessage, or native hooks
 - Keep role switching internal; do not simulate separate agents or fake inter-agent messages.
 - For scripts, include page number, text, image intent, and emotional beat.
 - Never silently save files.
-- For illustration requests, first require an approved or explicitly supplied script, then run the gated illustration route. Do not call `image-generate` before explicit user confirmation. Use the stage DAG only when the required Codex tools exist, keep confirmation gates lead-owned, and otherwise use the sequential fallback.
+- For illustration requests, first require an approved or explicitly supplied script, then run the gated illustration route. Do not call `image-generate` before explicit user confirmation. Use the stage DAG only when the required host multi-agent tools exist, keep confirmation gates lead-owned, and otherwise use the sequential fallback.
 - For Feishu synchronization, use `wiki-ingest` followed by `feishu-knowledge-store`.
 - Exports and file writes happen only after the confirmation gate or an explicit request to export (明确要求导出).
